@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pubsync-postgres
+    environment:
+      POSTGRES_USER: pubsync
+      POSTGRES_PASSWORD: pubsync
+      POSTGRES_DB: pubsync
+    ports:
+      - "55432:5432"
+    volumes:
+      - pubsync-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pubsync -d pubsync"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pubsync-postgres-data:

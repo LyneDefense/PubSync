@@ -1,0 +1,21 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+backend/.venv/
+
+# Environment
+.env
+backend/.env
+
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend dependencies/build output
+node_modules/
+dist/
+build/

@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pubsync-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-pubsync}
+      POSTGRES_USER: ${DB_USER:-pubsync}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
+    volumes:
+      - pubsync_postgres_data:/var/lib/postgresql/data
+    networks:
+      - pubsync-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pubsync} -d ${DB_NAME:-pubsync}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: pubsync-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-pubsync}:${DB_PASSWORD:-change_me}@postgres:5432/${DB_NAME:-pubsync}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-domain.com}
+      PUBLISH_TIME_HOUR: ${PUBLISH_TIME_HOUR:-8}
+      PUBLISH_TIME_MINUTE: ${PUBLISH_TIME_MINUTE:-0}
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+    networks:
+      - pubsync-network
+      - shared-nginx-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+networks:
+  pubsync-network:
+    driver: bridge
+  shared-nginx-network:
+    external: true
+    name: ${SHARED_NGINX_NETWORK:-eyangpet-deployment_eyangpet-network}
+
+volumes:
+  pubsync_postgres_data:
