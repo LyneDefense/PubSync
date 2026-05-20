@@ -87,7 +87,7 @@ start() {
 
     cd "$DEPLOY_DIR"
     echo -e "${GREEN}启动 PubSync 独立服务...${NC}"
-    docker compose up -d
+    docker compose up -d --remove-orphans
     docker compose ps
 }
 
@@ -95,7 +95,7 @@ stop() {
     check_linux_server
     check_docker_compose
     cd "$DEPLOY_DIR"
-    docker compose down
+    docker compose down --remove-orphans
 }
 
 restart() {
@@ -110,7 +110,7 @@ update() {
     build_frontend
     cd "$DEPLOY_DIR"
     echo -e "${GREEN}构建并启动 PubSync 服务...${NC}"
-    docker compose up -d --build
+    docker compose up -d --build --remove-orphans
     docker compose ps
 }
 
@@ -120,22 +120,19 @@ update_backend() {
     check_docker_compose
     cd "$DEPLOY_DIR"
     docker compose up -d --build backend
-    docker compose up -d nginx
 }
 
 update_frontend() {
     build_frontend
-    reload_nginx
+    echo -e "${GREEN}前端已更新。宿主机 nginx 直接读取 frontend/dist，通常不需要重载 nginx。${NC}"
 }
 
 reload_nginx() {
     check_linux_server
-    check_env
-    check_docker_compose
-    cd "$DEPLOY_DIR"
-    echo -e "${GREEN}检查并重载 PubSync nginx...${NC}"
-    docker compose exec nginx nginx -t
-    docker compose exec nginx nginx -s reload
+    check_command sudo
+    echo -e "${GREEN}检查并重载宿主机 nginx...${NC}"
+    sudo nginx -t
+    sudo systemctl reload nginx
 }
 
 logs() {
@@ -210,18 +207,18 @@ case "$1" in
         echo ""
         echo "首次部署:"
         echo "  init             创建 .env 和 backups 目录"
-        echo "  update           构建前端和后端，启动 postgres/backend/nginx"
+        echo "  update           构建前端和后端，启动 postgres/backend"
         echo ""
         echo "日常更新:"
         echo "  update           更新全部"
         echo "  update-backend   只更新后端"
-        echo "  update-frontend  只更新前端并重载 nginx"
+        echo "  update-frontend  只更新前端"
         echo ""
         echo "服务管理:"
         echo "  start            启动 PubSync 服务"
         echo "  stop             停止 PubSync 服务"
         echo "  restart          重启 PubSync 服务"
-        echo "  reload-nginx     检查并重载 PubSync nginx"
+        echo "  reload-nginx     检查并重载宿主机 nginx"
         echo "  logs [service]   查看日志，例如: ./deploy.sh logs backend"
         echo "  status           查看容器状态和资源占用"
         echo "  db-backup        备份 PostgreSQL 数据库"

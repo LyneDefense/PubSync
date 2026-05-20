@@ -58,12 +58,12 @@ Then visit:
 
 ## Production Deploy
 
-PubSync is designed to run as an independent Docker Compose stack:
+PubSync is designed to run as an independent deployment:
 
 - Front end: `https://pubsync.your-domain.com/`
 - API: `https://pubsync.your-domain.com/api/`
 
-The included stack exposes HTTP through its own nginx container. Use a server-level TLS reverse proxy, CDN, or certificate-managed nginx/Caddy entrypoint if you want HTTPS on the public domain.
+The production setup uses Docker for PostgreSQL and the FastAPI backend, and uses the host nginx for public HTTP/HTTPS, static frontend files, and `/api/` reverse proxying.
 
 Run the deployment commands on your Ubuntu server. Your local macOS machine is only for development.
 
@@ -80,7 +80,7 @@ Edit `pubsync-deployment/.env`, then run:
 ./deploy.sh update
 ```
 
-See `pubsync-deployment/README.md` for standalone deployment details, including what to do if another service already uses port `80`.
+See `pubsync-deployment/README.md` for host nginx deployment details.
 
 ## Next Integrations
 

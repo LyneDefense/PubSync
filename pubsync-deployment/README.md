@@ -1,20 +1,18 @@
-# PubSync Standalone Deployment
+# PubSync Deployment With Host Nginx
 
 These commands are intended to run on your Ubuntu/Linux server, not on your local macOS development machine.
 
-PubSync is deployed as an independent Docker Compose stack:
+PubSync is deployed as:
 
-- `pubsync-db`: PostgreSQL
-- `pubsync-backend`: FastAPI backend
-- `pubsync-nginx`: standalone nginx serving the Vue frontend and proxying API requests
+- `pubsync-db`: PostgreSQL in Docker
+- `pubsync-backend`: FastAPI backend in Docker, exposed only on `127.0.0.1`
+- Host nginx: serves the Vue frontend from `frontend/dist` and proxies `/api/` to the backend
 
 Production routes:
 
-- Frontend: `http://your-domain.com/`
-- API: `http://your-domain.com/api/`
-- API docs: `http://your-domain.com/api/docs`
-
-For HTTPS, put this stack behind your server-level TLS reverse proxy, CDN, or a separate certificate-managed nginx/Caddy entrypoint.
+- Frontend: `https://enceladus.online/`
+- API: `https://enceladus.online/api/`
+- API docs: `https://enceladus.online/api/docs`
 
 ## First Deploy
 
@@ -30,8 +28,8 @@ cd PubSync/pubsync-deployment
 Edit `.env`:
 
 ```env
-DOMAIN=pubsync.example.com
-NGINX_HTTP_PORT=80
+DOMAIN=enceladus.online
+BACKEND_HOST_PORT=18000
 FRONTEND_BASE_PATH=/
 DB_NAME=pubsync
 DB_USER=pubsync
@@ -41,43 +39,89 @@ PIP_TRUSTED_HOST=mirrors.cloud.tencent.com
 NPM_REGISTRY=https://registry.npmmirror.com
 WECHAT_APP_ID=wx...
 WECHAT_APP_SECRET=...
-CORS_ORIGINS=https://pubsync.example.com
+CORS_ORIGINS=https://enceladus.online,http://enceladus.online
 ```
 
-Start the stack:
+Start the Docker services and build the frontend:
 
 ```bash
 ./deploy.sh update
 ```
+
+This starts only PostgreSQL and the backend in Docker. It does not start a Docker nginx container.
+
+## Configure Host Nginx
+
+Create a host nginx site:
+
+```bash
+sudo nano /etc/nginx/sites-available/pubsync
+```
+
+Use this config:
+
+```nginx
+server {
+    listen 80;
+    server_name enceladus.online www.enceladus.online;
+
+    root /home/ubuntu/PubSync/frontend/dist;
+    index index.html;
+
+    location = /api {
+        return 301 /api/;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:18000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+Enable and reload:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/pubsync /etc/nginx/sites-enabled/pubsync
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+If another enabled nginx config already handles `enceladus.online`, edit that existing config instead of enabling a duplicate server block.
+
+## HTTPS
+
+If certbot is installed:
+
+```bash
+sudo certbot --nginx -d enceladus.online -d www.enceladus.online
+```
+
+Then test:
+
+```bash
+curl https://enceladus.online/api/health
+```
+
+Expected:
+
+```json
+{"status":"ok"}
+```
+
+## If Docker Build Is Interrupted
 
 If the Docker build is stopped during `pip install`, it will not damage the project or database. The incomplete image layer is discarded, and the next build resumes from the last completed cached layer. The pip step itself may run again, but the Dockerfile uses a BuildKit pip cache so already downloaded packages can usually be reused.
-
-Then visit:
-
-```text
-http://pubsync.example.com/
-http://pubsync.example.com/api/docs
-```
-
-## If Port 80 Is Already Used
-
-Only one process can listen on host port `80`. If another service already owns it, set PubSync to an internal port:
-
-```env
-NGINX_HTTP_PORT=8081
-```
-
-Then run:
-
-```bash
-./deploy.sh update
-```
-
-Point your server-level reverse proxy at:
-
-```text
-http://127.0.0.1:8081
-```
 
 ## WeChat IP Whitelist
 
