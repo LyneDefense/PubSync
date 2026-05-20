@@ -52,16 +52,18 @@ Then visit:
 ## Architecture
 
 - `backend/`: FastAPI, SQLAlchemy, APScheduler, PostgreSQL.
-- `frontend/`: Vue 3 + Vite app deployed under `/pubsync/`.
+- `frontend/`: Vue 3 + Vite app.
 - `docker-compose.yml`: local PostgreSQL.
-- `pubsync-deployment/`: production deployment scripts for sharing the existing eyangpet nginx and domain.
+- `pubsync-deployment/`: standalone production deployment scripts.
 
 ## Production Deploy
 
-PubSync is designed to share the same nginx and domain as `eyangpet`:
+PubSync is designed to run as an independent Docker Compose stack:
 
-- Front end: `https://your-domain.com/pubsync/`
-- API: `https://your-domain.com/pubsync/api/`
+- Front end: `https://pubsync.your-domain.com/`
+- API: `https://pubsync.your-domain.com/api/`
+
+The included stack exposes HTTP through its own nginx container. Use a server-level TLS reverse proxy, CDN, or certificate-managed nginx/Caddy entrypoint if you want HTTPS on the public domain.
 
 Run the deployment commands on your Ubuntu server. Your local macOS machine is only for development.
 
@@ -75,11 +77,10 @@ cd pubsync-deployment
 Edit `pubsync-deployment/.env`, then run:
 
 ```bash
-./deploy.sh install-nginx
 ./deploy.sh update
 ```
 
-See `pubsync-deployment/README.md` for the shared nginx details.
+See `pubsync-deployment/README.md` for standalone deployment details, including what to do if another service already uses port `80`.
 
 ## Next Integrations
 

@@ -28,14 +28,13 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://${DB_USER:-pubsync}:${DB_PASSWORD:-change_me}@postgres:5432/${DB_NAME:-pubsync}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-domain.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       PUBLISH_TIME_HOUR: ${PUBLISH_TIME_HOUR:-8}
       PUBLISH_TIME_MINUTE: ${PUBLISH_TIME_MINUTE:-0}
       WECHAT_APP_ID: ${WECHAT_APP_ID:-}
       WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
     networks:
       - pubsync-network
-      - shared-nginx-network
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""]
       interval: 30s
@@ -43,12 +42,31 @@ services:
       start_period: 30s
       retries: 3
 
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: pubsync-nginx
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+    environment:
+      NGINX_SERVER_NAME: ${DOMAIN:-_}
+    volumes:
+      - ../frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - pubsync-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx-health >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 networks:
   pubsync-network:
     driver: bridge
-  shared-nginx-network:
-    external: true
-    name: ${SHARED_NGINX_NETWORK:-eyangpet-deployment_eyangpet-network}
 
 volumes:
   pubsync_postgres_data:
