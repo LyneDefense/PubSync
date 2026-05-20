@@ -66,6 +66,9 @@ build_frontend() {
     echo -e "${GREEN}构建 Vue 前端...${NC}"
     cd "$FRONTEND_DIR"
     export VITE_BASE_PATH="${FRONTEND_BASE_PATH:-/}"
+    if [ -n "${NPM_REGISTRY:-}" ]; then
+        export npm_config_registry="$NPM_REGISTRY"
+    fi
     npm install
     npm run build
     cd "$DEPLOY_DIR"

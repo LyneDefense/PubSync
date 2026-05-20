@@ -21,6 +21,9 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.cloud.tencent.com}
     container_name: pubsync-backend
     restart: unless-stopped
     depends_on:

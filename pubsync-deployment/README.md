@@ -36,6 +36,9 @@ FRONTEND_BASE_PATH=/
 DB_NAME=pubsync
 DB_USER=pubsync
 DB_PASSWORD=change_me_to_a_strong_password
+PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+PIP_TRUSTED_HOST=mirrors.cloud.tencent.com
+NPM_REGISTRY=https://registry.npmmirror.com
 WECHAT_APP_ID=wx...
 WECHAT_APP_SECRET=...
 CORS_ORIGINS=https://pubsync.example.com
@@ -46,6 +49,8 @@ Start the stack:
 ```bash
 ./deploy.sh update
 ```
+
+If the Docker build is stopped during `pip install`, it will not damage the project or database. The incomplete image layer is discarded, and the next build resumes from the last completed cached layer. The pip step itself may run again, but the Dockerfile uses a BuildKit pip cache so already downloaded packages can usually be reused.
 
 Then visit:
 
