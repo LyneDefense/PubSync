@@ -1,5 +1,6 @@
 from datetime import datetime
 from html import escape
+from html.parser import HTMLParser
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -104,7 +105,125 @@ def normalize_article_title(title: str) -> str:
 
 
 def normalize_article_html(content_html: str) -> str:
-    return content_html.replace("<h1", "<h2").replace("</h1>", "</h2>")
+    normalized = content_html.replace("<h1", "<h2").replace("</h1>", "</h2>")
+    return format_wechat_article_html(normalized)
+
+
+class WeChatArticleHTMLFormatter(HTMLParser):
+    allowed_tags = {"section", "h2", "h3", "p", "ul", "li", "blockquote", "a", "img", "strong", "br"}
+
+    styles = {
+        "section": (
+            "margin:0 0 26px;padding:0 0 22px;border-bottom:1px solid #edf2f7;"
+        ),
+        "h2": (
+            "margin:30px 0 16px;padding:12px 14px;border-left:4px solid #0f766e;"
+            "background:#f0fdfa;border-radius:6px;color:#0f172a;font-size:18px;"
+            "line-height:1.45;font-weight:700;"
+        ),
+        "h3": (
+            "margin:20px 0 10px;color:#0f766e;font-size:16px;line-height:1.5;font-weight:700;"
+        ),
+        "p": (
+            "margin:0 0 14px;color:#374151;font-size:15px;line-height:1.85;"
+            "letter-spacing:0;text-align:justify;"
+        ),
+        "ul": "margin:8px 0 16px;padding-left:20px;color:#374151;",
+        "li": "margin:0 0 8px;color:#374151;font-size:15px;line-height:1.75;",
+        "blockquote": (
+            "margin:18px 0;padding:14px 16px;border-left:4px solid #14b8a6;"
+            "background:#f8fafc;color:#475569;font-size:15px;line-height:1.75;"
+            "border-radius:0 6px 6px 0;"
+        ),
+        "a": "color:#0f766e;text-decoration:none;border-bottom:1px solid #99f6e4;",
+        "img": (
+            "display:block;width:100%;height:auto;margin:18px 0;border-radius:8px;"
+        ),
+        "strong": "color:#111827;font-weight:700;",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.open_tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag not in self.allowed_tags:
+            return
+        if tag == "br":
+            self.parts.append("<br />")
+            return
+        if tag == "img":
+            src = self.attr_value(attrs, "src")
+            if not src:
+                return
+            alt = self.attr_value(attrs, "alt") or "文章配图"
+            self.parts.append(
+                f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
+                f'style="{self.styles["img"]}" />'
+            )
+            return
+
+        attrs_html = self.build_attrs(tag, attrs)
+        self.parts.append(f"<{tag}{attrs_html}>")
+        self.open_tags.append(tag)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag not in self.allowed_tags or tag in {"br", "img"}:
+            return
+        if tag in self.open_tags:
+            while self.open_tags:
+                current = self.open_tags.pop()
+                self.parts.append(f"</{current}>")
+                if current == tag:
+                    break
+
+    def handle_data(self, data: str) -> None:
+        if data:
+            self.parts.append(escape(data))
+
+    def handle_entityref(self, name: str) -> None:
+        self.parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.parts.append(f"&#{name};")
+
+    def close_remaining_tags(self) -> None:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+
+    def build_attrs(self, tag: str, attrs: list[tuple[str, str | None]]) -> str:
+        parts = [f'style="{self.styles.get(tag, "")}"'] if tag in self.styles else []
+        if tag == "a":
+            href = self.attr_value(attrs, "href")
+            if href:
+                parts.append(f'href="{escape(href, quote=True)}"')
+        return " " + " ".join(parts) if parts else ""
+
+    @staticmethod
+    def attr_value(attrs: list[tuple[str, str | None]], name: str) -> str | None:
+        for key, value in attrs:
+            if key.lower() == name and value:
+                return value
+        return None
+
+
+def format_wechat_article_html(content_html: str) -> str:
+    parser = WeChatArticleHTMLFormatter()
+    parser.feed(content_html)
+    parser.close_remaining_tags()
+    formatted = "".join(parser.parts).strip()
+    return (
+        '<section style="margin:0;padding:0;color:#1f2937;font-size:16px;line-height:1.75;'
+        'letter-spacing:0;background:#ffffff;">'
+        f"{formatted}"
+        "</section>"
+    )
 
 
 def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
@@ -230,8 +349,8 @@ def render_article_html(intro: str, news_items: list[NewsItem]) -> str:
             ]
         )
 
-    sections.append("<p style=\"margin-top: 32px; color: #666;\">以上内容由 PubSync 自动整理，发布前请人工核对来源和事实。</p>")
-    return "\n".join(sections)
+    sections.append("<p>以上内容由 PubSync 自动整理，发布前请人工核对来源和事实。</p>")
+    return format_wechat_article_html("\n".join(sections))
 
 
 def update_article(db: Session, article: Article, **values: str | None) -> Article:
