@@ -114,32 +114,30 @@ class WeChatArticleHTMLFormatter(HTMLParser):
 
     styles = {
         "section": (
-            "margin:0 0 26px;padding:0 0 22px;border-bottom:1px solid #edf2f7;"
+            "margin:0 0 28px;padding:0 0 24px;border-bottom:1px solid rgba(148,163,184,0.45);"
         ),
         "h2": (
-            "margin:30px 0 16px;padding:12px 14px;border-left:4px solid #0f766e;"
-            "background:#f0fdfa;border-radius:6px;color:#0f172a;font-size:18px;"
-            "line-height:1.45;font-weight:700;"
+            "margin:30px 0 18px;padding:2px 0 2px 14px;border-left:4px solid #14b8a6;"
+            "background:transparent;color:inherit;font-size:18px;line-height:1.45;font-weight:700;"
         ),
         "h3": (
-            "margin:20px 0 10px;color:#0f766e;font-size:16px;line-height:1.5;font-weight:700;"
+            "margin:20px 0 10px;color:inherit;font-size:16px;line-height:1.5;font-weight:700;"
         ),
         "p": (
-            "margin:0 0 14px;color:#374151;font-size:15px;line-height:1.85;"
+            "margin:0 0 14px;color:inherit;font-size:15px;line-height:1.85;"
             "letter-spacing:0;text-align:justify;"
         ),
-        "ul": "margin:8px 0 16px;padding-left:20px;color:#374151;",
-        "li": "margin:0 0 8px;color:#374151;font-size:15px;line-height:1.75;",
+        "ul": "margin:8px 0 16px;padding-left:20px;color:inherit;",
+        "li": "margin:0 0 8px;color:inherit;font-size:15px;line-height:1.75;",
         "blockquote": (
             "margin:18px 0;padding:14px 16px;border-left:4px solid #14b8a6;"
-            "background:#f8fafc;color:#475569;font-size:15px;line-height:1.75;"
-            "border-radius:0 6px 6px 0;"
+            "background:transparent;color:inherit;font-size:15px;line-height:1.75;"
         ),
         "a": "color:#0f766e;text-decoration:none;border-bottom:1px solid #99f6e4;",
         "img": (
             "display:block;width:100%;height:auto;margin:18px 0;border-radius:8px;"
         ),
-        "strong": "color:#111827;font-weight:700;",
+        "strong": "color:inherit;font-weight:700;",
     }
 
     def __init__(self) -> None:
@@ -250,8 +248,8 @@ def format_wechat_article_html(content_html: str) -> str:
     parser.close_remaining_tags()
     formatted = "".join(parser.parts).strip()
     return (
-        '<section style="margin:0;padding:0;color:#1f2937;font-size:16px;line-height:1.75;'
-        'letter-spacing:0;background:#ffffff;">'
+        '<section style="margin:0;padding:0;color:inherit;font-size:16px;line-height:1.75;'
+        'letter-spacing:0;background:transparent;">'
         f"{formatted}"
         "</section>"
     )
