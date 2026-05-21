@@ -241,13 +241,14 @@ def minimax_text(settings: Settings, prompt: str) -> str:
         "messages": [
             {
                 "role": "system",
+                "name": "PubSync",
                 "content": "你是严谨的 AI 新闻编辑。所有输出必须是合法 JSON，不要输出 Markdown 代码块。",
             },
-            {"role": "user", "content": prompt},
+            {"role": "user", "name": "User", "content": prompt},
         ],
         "temperature": 0.2,
     }
-    data = minimax_post(settings, "/text/chatcompletion_v2", payload, timeout=180)
+    data = minimax_post(settings, "/chat/completions", payload, timeout=180)
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
         message = choices[0].get("message") if isinstance(choices[0], dict) else None

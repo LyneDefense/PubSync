@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     openai_text_model: str = "gpt-4.1"
     openai_image_model: str = "gpt-image-1"
     minimax_api_key: str = ""
-    minimax_text_model: str = "MiniMax-M1"
+    minimax_text_model: str = "MiniMax-M2.7"
     minimax_image_model: str = "image-01"
     generate_article_images: bool = True
     max_article_images: int = 3

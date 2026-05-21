@@ -47,7 +47,7 @@ CORS_ORIGINS=https://enceladus.online,http://enceladus.online
 LLM_PROVIDER=minimax
 IMAGE_PROVIDER=minimax
 MINIMAX_API_KEY=...
-MINIMAX_TEXT_MODEL=MiniMax-M1
+MINIMAX_TEXT_MODEL=MiniMax-M2.7
 MINIMAX_IMAGE_MODEL=image-01
 
 # Optional OpenAI provider config.
