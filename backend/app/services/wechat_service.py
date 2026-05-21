@@ -1,3 +1,5 @@
+from html.parser import HTMLParser
+from urllib.parse import urljoin
 import struct
 import time
 import zlib
@@ -26,7 +28,8 @@ def send_article_to_wechat_draft(db: Session, article: Article) -> Article:
         access_token = get_access_token(settings.wechat_app_id, settings.wechat_app_secret)
         cover_bytes, content_type = get_cover_image(article.cover_image_url)
         thumb_media_id = upload_permanent_cover(access_token, cover_bytes, content_type)
-        draft_media_id = add_draft(access_token, article, thumb_media_id)
+        content_html = prepare_wechat_content_html(access_token, article.content_html, settings.public_api_base_url)
+        draft_media_id = add_draft(access_token, article, thumb_media_id, content_html)
 
         article.wechat_draft_id = draft_media_id
         article.status = ArticleStatus.sent_to_wechat
@@ -72,18 +75,21 @@ def get_access_token(app_id: str, app_secret: str) -> str:
 
 
 def get_cover_image(cover_image_url: str) -> tuple[bytes, str]:
-    if cover_image_url:
+    return get_image_bytes(cover_image_url) or (build_fallback_png(), "image/png")
+
+
+def get_image_bytes(image_url: str) -> tuple[bytes, str] | None:
+    if image_url:
         try:
             with httpx.Client(timeout=15, follow_redirects=True) as client:
-                response = client.get(cover_image_url)
+                response = client.get(image_url)
             response.raise_for_status()
             content_type = response.headers.get("content-type", "image/jpeg").split(";")[0]
-            if content_type in {"image/jpeg", "image/png", "image/gif", "image/bmp"} and len(response.content) <= 2 * 1024 * 1024:
+            if content_type in {"image/jpeg", "image/png", "image/gif", "image/bmp"} and len(response.content) <= 10 * 1024 * 1024:
                 return response.content, content_type
         except httpx.HTTPError:
             pass
-
-    return build_fallback_png(), "image/png"
+    return None
 
 
 def upload_permanent_cover(access_token: str, image_bytes: bytes, content_type: str) -> str:
@@ -107,14 +113,54 @@ def upload_permanent_cover(access_token: str, image_bytes: bytes, content_type: 
     return str(media_id)
 
 
-def add_draft(access_token: str, article: Article, thumb_media_id: str) -> str:
+def upload_article_image(access_token: str, image_bytes: bytes, content_type: str) -> str:
+    extension = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/bmp": "bmp",
+    }.get(content_type, "jpg")
+
+    with httpx.Client(timeout=30) as client:
+        response = client.post(
+            f"{WECHAT_API_BASE}/cgi-bin/media/uploadimg",
+            params={"access_token": access_token},
+            files={"media": (f"article-image.{extension}", image_bytes, content_type)},
+        )
+    data = parse_wechat_response(response, "上传正文图片失败")
+    url = data.get("url")
+    if not url:
+        raise WeChatAPIError(f"上传正文图片失败：微信返回缺少 url，响应为 {safe_wechat_payload(data)}")
+    return str(url)
+
+
+def prepare_wechat_content_html(access_token: str, content_html: str, public_api_base_url: str) -> str:
+    image_sources = extract_image_sources(content_html)
+    replacements: dict[str, str] = {}
+
+    for src in image_sources:
+        absolute_src = make_absolute_image_url(src, public_api_base_url)
+        image = get_image_bytes(absolute_src)
+        if not image:
+            continue
+        image_bytes, content_type = image
+        replacements[src] = upload_article_image(access_token, image_bytes, content_type)
+
+    prepared = content_html
+    for original, replacement in replacements.items():
+        prepared = prepared.replace(f'src="{original}"', f'src="{replacement}"')
+        prepared = prepared.replace(f"src='{original}'", f"src='{replacement}'")
+    return prepared
+
+
+def add_draft(access_token: str, article: Article, thumb_media_id: str, content_html: str) -> str:
     payload = {
         "articles": [
             {
                 "title": article.title[:64],
                 "author": "PubSync",
                 "digest": article.intro[:120],
-                "content": article.content_html,
+                "content": content_html,
                 "content_source_url": "",
                 "thumb_media_id": thumb_media_id,
                 "show_cover_pic": 1,
@@ -135,6 +181,39 @@ def add_draft(access_token: str, article: Article, thumb_media_id: str) -> str:
     if not media_id:
         raise WeChatAPIError(f"新建微信草稿失败：微信返回缺少 media_id，响应为 {safe_wechat_payload(data)}")
     return str(media_id)
+
+
+class ImageSrcParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sources: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "img":
+            return
+        for key, value in attrs:
+            if key.lower() == "src" and value:
+                self.sources.append(value)
+
+
+def extract_image_sources(content_html: str) -> list[str]:
+    parser = ImageSrcParser()
+    parser.feed(content_html)
+    sources: list[str] = []
+    seen: set[str] = set()
+    for src in parser.sources:
+        if src not in seen:
+            seen.add(src)
+            sources.append(src)
+    return sources
+
+
+def make_absolute_image_url(src: str, public_api_base_url: str) -> str:
+    if src.startswith(("http://", "https://")):
+        return src
+    if not public_api_base_url:
+        return src
+    return urljoin(f"{public_api_base_url.rstrip('/')}/", src.lstrip("/"))
 
 
 def parse_wechat_response(response: httpx.Response, prefix: str) -> dict:
