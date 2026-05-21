@@ -2,9 +2,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,7 +22,9 @@ from app.schemas import (
     SettingRead,
     SettingUpdate,
 )
+from app.services.ai_service import AIServiceError
 from app.services.article_service import generate_article_from_selected_news, update_article
+from app.services.auth_service import create_token, verify_credentials, verify_token
 from app.services.news_service import fetch_latest_news, list_news
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
 
@@ -28,6 +32,16 @@ from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_d
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 def scheduled_news_fetch() -> None:
@@ -70,9 +84,30 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    path = request.url.path
+    public_path = path == "/health" or path == "/auth/login" or path.startswith("/static/")
+    if request.method == "OPTIONS" or public_path:
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not verify_token(token, settings):
+        return JSONResponse({"detail": "请先登录"}, status_code=401)
+    return await call_next(request)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/auth/login", response_model=LoginResponse)
+def login(payload: LoginRequest) -> LoginResponse:
+    if not verify_credentials(payload.username, payload.password, settings):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    return LoginResponse(access_token=create_token(settings))
 
 
 @app.get("/dashboard", response_model=DashboardRead)
@@ -92,7 +127,10 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
 
 @app.post("/news/fetch", response_model=list[NewsItemRead])
 def fetch_news_endpoint(db: Session = Depends(get_db)) -> list[NewsItem]:
-    fetch_latest_news(db)
+    try:
+        fetch_latest_news(db)
+    except AIServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return list_news(db)
 
 
@@ -119,6 +157,8 @@ def generate_article_endpoint(db: Session = Depends(get_db)) -> Article:
         return generate_article_from_selected_news(db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AIServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/articles/latest", response_model=ArticleRead | None)

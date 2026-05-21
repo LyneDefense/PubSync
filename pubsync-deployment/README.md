@@ -42,8 +42,12 @@ NPM_REGISTRY=https://registry.npmmirror.com
 WECHAT_APP_ID=wx...
 WECHAT_APP_SECRET=...
 CORS_ORIGINS=https://enceladus.online,http://enceladus.online
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_me_to_a_strong_password
+AUTH_SECRET=change_me_to_a_random_long_secret
+SESSION_HOURS=24
 
-# AI workflow. If the selected provider key is empty, PubSync falls back to mock news and template articles.
+# AI workflow. The selected provider key is required for news fetching and article generation.
 LLM_PROVIDER=minimax
 IMAGE_PROVIDER=minimax
 MINIMAX_BASE_URL=https://api.minimax.io/v1
@@ -97,11 +101,7 @@ When the selected provider key is configured, the daily job does this:
 8. If AUTO_SEND_WECHAT_DRAFT=true, upload the cover and create a WeChat draft.
 ```
 
-If the selected provider key is empty, PubSync keeps the current safe fallback:
-
-```text
-mock news -> template article -> manual WeChat draft sending
-```
+If the selected provider key is empty, news fetching and article generation return a configuration error instead of creating placeholder content.
 
 ## Host Nginx
 
@@ -165,6 +165,8 @@ Expected:
 ```json
 {"status":"ok"}
 ```
+
+The console at `https://enceladus.online/PubSync/` requires the fixed admin username and password from `.env`.
 
 ## Common Commands
 

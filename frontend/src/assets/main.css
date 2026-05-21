@@ -108,10 +108,33 @@ nav a:hover {
   background: #dedacf;
 }
 
-main {
+.workspace {
   padding: 28px;
   display: grid;
   gap: 20px;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #ece9df;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: 0 18px 50px rgba(23, 23, 23, 0.08);
+}
+
+.login-panel h1 {
+  margin: 8px 0 10px;
+  font-size: 30px;
+  line-height: 1.15;
 }
 
 .eyebrow {
@@ -350,7 +373,7 @@ dd {
 }
 
 @media (max-width: 640px) {
-  main {
+  .workspace {
     padding: 16px;
   }
 

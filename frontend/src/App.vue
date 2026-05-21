@@ -2,11 +2,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import {
+  clearAuthToken,
   fetchNews,
   generateArticle,
   getDashboard,
+  getAuthToken,
   getLatestArticle,
   listNews,
+  login,
   sendArticleToWechat,
   updateArticle,
   updateNewsSelection
@@ -26,6 +29,14 @@ const article = ref<Article | null>(null)
 const message = ref('')
 const isError = ref(false)
 const pendingAction = ref<string | null>(null)
+const isAuthenticated = ref(Boolean(getAuthToken()))
+const isLoggingIn = ref(false)
+const loginMessage = ref('')
+
+const loginForm = reactive({
+  username: '',
+  password: ''
+})
 
 const form = reactive<ArticleUpdate>({
   title: '',
@@ -76,6 +87,29 @@ async function loadAll() {
   dashboard.value = nextDashboard
   news.value = nextNews
   setArticle(nextArticle)
+}
+
+async function handleLogin() {
+  isLoggingIn.value = true
+  loginMessage.value = ''
+  try {
+    await login(loginForm.username, loginForm.password)
+    isAuthenticated.value = true
+    await loadAll()
+  } catch (error) {
+    loginMessage.value = error instanceof Error ? error.message : '登录失败'
+  } finally {
+    isLoggingIn.value = false
+  }
+}
+
+function handleLogout() {
+  clearAuthToken()
+  isAuthenticated.value = false
+  dashboard.value = null
+  news.value = []
+  setArticle(null)
+  showMessage('')
 }
 
 async function refreshDashboardAndArticle() {
@@ -140,14 +174,39 @@ function formatDate(value: string) {
 }
 
 onMounted(() => {
-  loadAll().catch((error) => {
-    showMessage(error instanceof Error ? `无法连接 API：${error.message}` : '无法连接 API', true)
-  })
+  if (isAuthenticated.value) {
+    loadAll().catch((error) => {
+      clearAuthToken()
+      isAuthenticated.value = false
+      loginMessage.value = error instanceof Error ? error.message : '登录已失效，请重新登录'
+    })
+  }
 })
 </script>
 
 <template>
-  <div class="app-shell">
+  <main v-if="!isAuthenticated" class="login-shell">
+    <form class="login-panel" @submit.prevent="handleLogin">
+      <div>
+        <p class="eyebrow">PubSync</p>
+        <h1>登录工作台</h1>
+      </div>
+      <label>
+        用户名
+        <input v-model="loginForm.username" type="text" autocomplete="username" required />
+      </label>
+      <label>
+        密码
+        <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="primary" :disabled="isLoggingIn">
+        {{ isLoggingIn ? '登录中' : '登录' }}
+      </button>
+      <p v-if="loginMessage" class="message error" role="alert">{{ loginMessage }}</p>
+    </form>
+  </main>
+
+  <div v-else class="app-shell">
     <aside class="sidebar">
       <div>
         <p class="eyebrow">PubSync</p>
@@ -159,9 +218,10 @@ onMounted(() => {
         <a href="#article">文章草稿</a>
         <a href="#settings">配置</a>
       </nav>
+      <button type="button" @click="handleLogout">退出登录</button>
     </aside>
 
-    <main>
+    <main class="workspace">
       <section id="dashboard" class="toolbar">
         <div>
           <p class="eyebrow">今日流程</p>
@@ -278,7 +338,7 @@ onMounted(() => {
         <div class="section-header">
           <div>
             <p class="eyebrow">配置</p>
-            <h2>当前 MVP 设置</h2>
+            <h2>运行设置</h2>
           </div>
         </div>
         <dl>
@@ -287,8 +347,8 @@ onMounted(() => {
             <dd>{{ apiBaseText }}</dd>
           </div>
           <div>
-            <dt>数据库</dt>
-            <dd>PostgreSQL</dd>
+            <dt>新闻来源</dt>
+            <dd>RSS/Atom 候选源 + 大模型筛选与改写</dd>
           </div>
           <div>
             <dt>微信接口</dt>

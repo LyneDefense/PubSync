@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     publish_time_hour: int = 8
     publish_time_minute: int = 0
     auto_send_wechat_draft: bool = False
+    admin_username: str = "admin"
+    admin_password: str = "change_me"
+    auth_secret: str = ""
+    session_hours: int = 24
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
     llm_provider: str = "openai"

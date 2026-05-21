@@ -1,10 +1,10 @@
 # PubSync
 
-PubSync is an MVP for an AI news-to-WeChat draft workflow.
+PubSync is an AI news-to-WeChat draft workflow.
 
 The current version is intentionally small but has real front-end/back-end separation, a Vue front end, and a real PostgreSQL data model.
 
-## MVP Scope
+## Scope
 
 - Fetch today's AI news candidates.
 - Select 5-10 important items.
@@ -85,7 +85,7 @@ See `pubsync-deployment/README.md` for host nginx deployment details.
 
 ## Next Integrations
 
-- Replace mock news with RSS/news API ingestion.
+- Add richer source management and article review controls.
 - Add LLM-based ranking and article generation.
 - Add richer WeChat draft status handling and media cleanup.
 - Add auth before exposing this outside local development.

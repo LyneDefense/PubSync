@@ -40,3 +40,8 @@ export interface ArticleUpdate {
   cover_image_url: string
   content_html: string
 }
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+}
