@@ -27,7 +27,7 @@ from app.schemas import (
 from app.services.ai_service import AIServiceError
 from app.services.article_service import generate_article_from_selected_news, update_article
 from app.services.auth_service import create_token, verify_credentials, verify_token
-from app.services.news_service import delete_placeholder_news, fetch_latest_news, list_news
+from app.services.news_service import fetch_latest_news, list_news
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
 
 
@@ -178,11 +178,6 @@ def fetch_news_endpoint(db: Session = Depends(get_db)) -> list[NewsItem]:
 @app.get("/news", response_model=list[NewsItemRead])
 def list_news_endpoint(db: Session = Depends(get_db)) -> list[NewsItem]:
     return list_news(db)
-
-
-@app.delete("/news/placeholders")
-def delete_placeholder_news_endpoint(db: Session = Depends(get_db)) -> dict[str, int]:
-    return {"deleted": delete_placeholder_news(db)}
 
 
 @app.patch("/news/{news_id}", response_model=NewsItemRead)

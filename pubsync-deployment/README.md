@@ -102,7 +102,7 @@ When the selected provider key is configured, the daily job does this:
 8. If AUTO_SEND_WECHAT_DRAFT=true, upload the cover and create a WeChat draft.
 ```
 
-If the selected provider key is empty, news fetching and article generation return a configuration error instead of creating placeholder content.
+If the selected provider key is empty, news fetching and article generation return a configuration error and do not create fallback content.
 
 ## Host Nginx
 
@@ -168,13 +168,6 @@ Expected:
 ```
 
 The console at `https://enceladus.online/PubSync/` requires the fixed admin username and password from `.env`.
-
-If old placeholder news is still visible after upgrading, use the console action `清理占位数据`, or call:
-
-```bash
-curl -X DELETE https://enceladus.online/PubSync/api/news/placeholders \
-  -H "Authorization: Bearer <token>"
-```
 
 ## Common Commands
 
