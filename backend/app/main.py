@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,7 @@ from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_d
 
 
 settings = get_settings()
+Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 
@@ -33,7 +36,9 @@ def scheduled_news_fetch() -> None:
     db = SessionLocal()
     try:
         fetch_latest_news(db)
-        generate_article_from_selected_news(db)
+        article = generate_article_from_selected_news(db)
+        if settings.auto_send_wechat_draft:
+            send_article_to_wechat_draft(db, article)
     finally:
         db.close()
 
@@ -55,6 +60,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PubSync API", version="0.1.0", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,

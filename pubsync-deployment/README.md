@@ -42,6 +42,15 @@ NPM_REGISTRY=https://registry.npmmirror.com
 WECHAT_APP_ID=wx...
 WECHAT_APP_SECRET=...
 CORS_ORIGINS=https://enceladus.online,http://enceladus.online
+
+# AI workflow. Leave OPENAI_API_KEY empty to keep using mock news and template articles.
+OPENAI_API_KEY=sk-...
+OPENAI_TEXT_MODEL=gpt-4.1
+OPENAI_IMAGE_MODEL=gpt-image-1
+GENERATE_ARTICLE_IMAGES=true
+MAX_ARTICLE_IMAGES=3
+PUBLIC_API_BASE_URL=https://enceladus.online/PubSync/api
+AUTO_SEND_WECHAT_DRAFT=false
 ```
 
 ## Deploy
@@ -58,6 +67,27 @@ Check local service ports:
 ```bash
 curl http://127.0.0.1:18082/
 curl http://127.0.0.1:18000/health
+```
+
+## AI Workflow
+
+When `OPENAI_API_KEY` is configured, the daily job does this:
+
+```text
+1. Use the text model with web search to discover recent AI news.
+2. Store deduplicated candidates in PostgreSQL.
+3. Select important items by model-assigned importance score.
+4. Generate section images for the top selected items.
+5. Generate a WeChat-style article with HTML formatting.
+6. Generate a cover image.
+7. Save the article locally.
+8. If AUTO_SEND_WECHAT_DRAFT=true, upload the cover and create a WeChat draft.
+```
+
+If `OPENAI_API_KEY` is empty, PubSync keeps the current safe fallback:
+
+```text
+mock news -> template article -> manual WeChat draft sending
 ```
 
 ## Host Nginx

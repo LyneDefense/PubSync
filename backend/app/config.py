@@ -8,8 +8,16 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:8000"
     publish_time_hour: int = 8
     publish_time_minute: int = 0
+    auto_send_wechat_draft: bool = False
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
+    openai_api_key: str = ""
+    openai_text_model: str = "gpt-4.1"
+    openai_image_model: str = "gpt-image-1"
+    generate_article_images: bool = True
+    max_article_images: int = 3
+    public_api_base_url: str = ""
+    static_dir: str = "static"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -34,10 +34,20 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       PUBLISH_TIME_HOUR: ${PUBLISH_TIME_HOUR:-8}
       PUBLISH_TIME_MINUTE: ${PUBLISH_TIME_MINUTE:-0}
+      AUTO_SEND_WECHAT_DRAFT: ${AUTO_SEND_WECHAT_DRAFT:-false}
       WECHAT_APP_ID: ${WECHAT_APP_ID:-}
       WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4.1}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1}
+      GENERATE_ARTICLE_IMAGES: ${GENERATE_ARTICLE_IMAGES:-true}
+      MAX_ARTICLE_IMAGES: ${MAX_ARTICLE_IMAGES:-3}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+      STATIC_DIR: /app/static
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-18000}:8000"
+    volumes:
+      - pubsync_generated_media:/app/static
     networks:
       - pubsync-network
     healthcheck:
@@ -72,3 +82,4 @@ networks:
 
 volumes:
   pubsync_postgres_data:
+  pubsync_generated_media:

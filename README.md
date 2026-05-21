@@ -9,6 +9,7 @@ The current version is intentionally small but has real front-end/back-end separ
 - Fetch today's AI news candidates.
 - Select 5-10 important items.
 - Generate a WeChat-style article draft.
+- Use an LLM to discover recent AI news, rewrite and structure the article, and generate missing visuals when configured.
 - Edit title, intro, cover image, and HTML.
 - Send to a WeChat official account draft.
 - Store news, articles, and settings in PostgreSQL.
