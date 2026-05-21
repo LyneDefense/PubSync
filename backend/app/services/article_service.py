@@ -72,6 +72,11 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
         apply_planned_images(settings, selected_news, news_payload)
 
     article_data = generate_wechat_article(settings, news_payload)
+    content_html = ensure_article_images(
+        str(article_data["content_html"]),
+        news_payload,
+        min_images=max(0, min(settings.min_article_images, settings.max_article_images)),
+    )
     try:
         cover_image_url = generate_image(
             settings,
@@ -83,7 +88,7 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
     return (
         normalize_article_title(str(article_data["title"]))[:300],
         str(article_data["intro"]),
-        normalize_article_html(str(article_data["content_html"])),
+        normalize_article_html(content_html),
         cover_image_url or DEFAULT_COVER,
     )
 
@@ -117,7 +122,7 @@ class WeChatArticleHTMLFormatter(HTMLParser):
             "margin:0 0 28px;padding:0 0 24px;border-bottom:1px solid rgba(148,163,184,0.45);"
         ),
         "h2": (
-            "margin:34px 0 18px;padding:0 0 10px;border-bottom:2px solid #14b8a6;"
+            "margin:34px 0 18px;padding:0 0 10px;border-bottom:2px solid rgba(148,163,184,0.65);"
             "background:transparent;color:inherit;font-size:19px;line-height:1.45;font-weight:700;"
         ),
         "h3": (
@@ -130,7 +135,7 @@ class WeChatArticleHTMLFormatter(HTMLParser):
         "ul": "margin:8px 0 16px;padding-left:20px;color:inherit;",
         "li": "margin:0 0 8px;color:inherit;font-size:15px;line-height:1.75;",
         "blockquote": (
-            "margin:18px 0 18px 2px;padding:2px 0 2px 14px;border-left:3px solid rgba(20,184,166,0.75);"
+            "margin:18px 0 18px 2px;padding:2px 0 2px 14px;border-left:3px solid rgba(100,116,139,0.75);"
             "background:transparent;color:inherit;font-size:15px;line-height:1.75;"
         ),
         "a": "color:#0f766e;text-decoration:none;border-bottom:1px solid #99f6e4;",
@@ -282,21 +287,20 @@ def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: 
     try:
         plan = plan_article_images(settings, planning_items, min_images=min_images, max_images=max_images)
     except AIServiceError:
-        plan = {"items": [], "fallback_prompts": []}
+        plan = {"items": []}
 
+    selected_plans = select_image_plans(plan.get("items", []), min_images=min_images, max_images=max_images)
     generated_count = 0
-    for item_plan in plan.get("items", []):
+    for item_plan in selected_plans:
         if generated_count >= max_images:
             break
-        if not isinstance(item_plan, dict) or not item_plan.get("should_generate"):
-            continue
         try:
             index = int(item_plan.get("index"))
         except (TypeError, ValueError):
             continue
         if index < 0 or index >= len(selected_news):
             continue
-        prompt = str(item_plan.get("prompt") or "").strip()
+        prompt = make_safe_image_prompt(str(item_plan.get("prompt") or item_plan.get("fallback_prompt") or "").strip())
         if not prompt or not is_safe_image_prompt(prompt):
             continue
         try:
@@ -306,56 +310,142 @@ def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: 
         news_payload[index]["image_url"] = image_url
         generated_count += 1
 
-    fallback_prompts = [str(prompt) for prompt in plan.get("fallback_prompts", []) if str(prompt).strip()]
-    fallback_index = 0
-    while generated_count < min_images and generated_count < max_images:
-        target_index = first_news_without_image(news_payload)
-        if target_index is None:
+
+def select_image_plans(raw_items: object, min_images: int, max_images: int) -> list[dict]:
+    if max_images <= 0 or not isinstance(raw_items, list):
+        return []
+
+    valid_items = [item for item in raw_items if isinstance(item, dict)]
+    natural = [
+        normalize_image_plan(item, forced=False)
+        for item in valid_items
+        if item.get("should_generate") and normalize_risk_level(item.get("risk_level")) != "high"
+    ]
+    selected = dedupe_image_plans(natural)[:max_images]
+
+    if len(selected) >= min_images:
+        return selected
+
+    selected_indexes = {item["index"] for item in selected if "index" in item}
+    fallback_pool = sorted(
+        dedupe_image_plans(
+            [
+                normalize_image_plan(item, forced=True)
+                for item in valid_items
+                if item.get("index") not in selected_indexes
+            ]
+        ),
+        key=lambda item: risk_rank(item.get("risk_level")),
+    )
+    for item in fallback_pool:
+        if len(selected) >= min_images or len(selected) >= max_images:
             break
-        prompt = fallback_prompts[fallback_index] if fallback_index < len(fallback_prompts) else build_fallback_section_prompt(selected_news)
-        fallback_index += 1
-        if not is_safe_image_prompt(prompt):
-            prompt = build_fallback_section_prompt(selected_news)
+        if item.get("index") in selected_indexes:
+            continue
+        selected.append(item)
+        selected_indexes.add(item["index"])
+    return selected
+
+
+def normalize_image_plan(item: dict, forced: bool) -> dict:
+    plan = dict(item)
+    if forced:
+        plan["prompt"] = plan.get("fallback_prompt") or plan.get("prompt") or ""
+    return plan
+
+
+def dedupe_image_plans(items: list[dict]) -> list[dict]:
+    deduped: list[dict] = []
+    seen: set[int] = set()
+    for item in items:
         try:
-            image_url = generate_image(settings, prompt, f"fallback-{generated_count + 1}")
-        except AIServiceError:
+            index = int(item.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if index in seen:
+            continue
+        item["index"] = index
+        seen.add(index)
+        deduped.append(item)
+    return deduped
+
+
+def normalize_risk_level(value: object) -> str:
+    risk = str(value or "medium").strip().lower()
+    return risk if risk in {"low", "medium", "high"} else "medium"
+
+
+def risk_rank(value: object) -> int:
+    return {"low": 0, "medium": 1, "high": 2}[normalize_risk_level(value)]
+
+
+def ensure_article_images(content_html: str, news_payload: list[dict], min_images: int) -> str:
+    if min_images <= 0 or count_image_tags(content_html) >= min_images:
+        return content_html
+
+    next_html = content_html
+    for item in news_payload:
+        image_url = str(item.get("image_url") or "").strip()
+        if not image_url or image_url in next_html:
+            continue
+        next_html = insert_image_after_matching_heading(next_html, str(item.get("title") or ""), image_url)
+        if count_image_tags(next_html) >= min_images:
             break
-        news_payload[target_index]["image_url"] = image_url
-        generated_count += 1
+    return next_html
 
 
-def first_news_without_image(news_payload: list[dict]) -> int | None:
-    for index, item in enumerate(news_payload):
-        if not item.get("image_url"):
-            return index
-    return None
+def count_image_tags(content_html: str) -> int:
+    return content_html.lower().count("<img")
+
+
+def insert_image_after_matching_heading(content_html: str, title: str, image_url: str) -> str:
+    image_html = f'<img src="{escape(image_url, quote=True)}" alt="文章配图" />'
+    title_key = title[:18]
+    lower_title_key = title_key.lower()
+    search_from = 0
+    while True:
+        h2_start = content_html.lower().find("<h2", search_from)
+        if h2_start < 0:
+            break
+        h2_end = content_html.lower().find("</h2>", h2_start)
+        if h2_end < 0:
+            break
+        heading_text = content_html[h2_start:h2_end].lower()
+        if lower_title_key and lower_title_key in heading_text:
+            insert_at = h2_end + len("</h2>")
+            return f"{content_html[:insert_at]}{image_html}{content_html[insert_at:]}"
+        search_from = h2_end + len("</h2>")
+
+    first_h2_end = content_html.lower().find("</h2>")
+    if first_h2_end >= 0:
+        insert_at = first_h2_end + len("</h2>")
+        return f"{content_html[:insert_at]}{image_html}{content_html[insert_at:]}"
+    return f"{image_html}{content_html}"
 
 
 def is_safe_image_prompt(prompt: str) -> bool:
     lower = prompt.lower()
     required_negative_terms = ["no human", "no face", "no logo", "no brand"]
     risky_terms = [
-        "portrait",
-        "celebrity",
-        "person",
-        "people",
+        "portrait of",
+        "realistic portrait",
         "human face",
-        "real logo",
-        "photorealistic news",
-        "screenshot",
+        "company logo",
+        "brand logo",
+        "photorealistic photo of",
+        "screenshot of",
     ]
     return all(term in lower for term in required_negative_terms) and not any(term in lower for term in risky_terms)
 
 
-def build_fallback_section_prompt(news_items: list[NewsItem]) -> str:
-    topics = "; ".join(item.category for item in news_items[:5])
-    return (
-        "Abstract AI technology editorial infographic, 16:9, visualizing multiple AI news themes with chips, "
-        "network lines, data flows, cloud infrastructure, charts, and geometric shapes. "
-        "No human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
-        "no photorealistic news scene, no UI screenshot, no text. "
-        f"Themes: {topics}"
+def make_safe_image_prompt(prompt: str) -> str:
+    if not prompt:
+        return ""
+    safety_suffix = (
+        " Abstract editorial infographic style. No human, no face, no celebrity, no real person, "
+        "no fictional person, no logo, no brand mark, no photorealistic news scene, no UI screenshot, no text."
     )
+    return f"{prompt.rstrip()} {safety_suffix}"
 
 
 def build_cover_prompt(news_items: list[NewsItem]) -> str:

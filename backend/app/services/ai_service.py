@@ -128,7 +128,9 @@ def plan_article_images(settings: Settings, news_items: list[dict[str, Any]], mi
 - 如果新闻涉及具体人物、CEO、创始人、政治人物、明星、个人肖像、真实公司 logo、产品界面截图、灾难或真实现场，不要为该条新闻生成图片。
 - 配图只能是抽象科技视觉、信息图、概念插画或数据/芯片/网络/云/机器人等非人物隐喻。
 - prompt 必须动态贴合新闻内容，不能使用固定模板；但必须包含安全约束：no human, no face, no celebrity, no real person, no logo, no brand mark, no photorealistic news scene, no UI screenshot, no text.
-- 如果安全新闻不足，请增加 fallback_prompts，主题应覆盖整篇文章的共同主线，仍然只能是抽象科技信息图。
+- 请给每条新闻都返回 risk_level 和 fallback_prompt。即使 should_generate=false，也要给出一个在必须补足最低配图数量时可用的安全抽象 fallback_prompt。
+- fallback_prompt 必须由新闻内容动态生成，不能套固定模板，且同样包含上面的安全约束。
+- risk_level 只能是 low、medium、high。涉及真实人物肖像、logo、产品界面或真实现场的新闻应标为 high，但 fallback_prompt 仍可改写成抽象信息图方向。
 
 新闻：
 {json.dumps(news_items, ensure_ascii=False, indent=2)}
@@ -139,20 +141,18 @@ def plan_article_images(settings: Settings, news_items: list[dict[str, Any]], mi
     {{
       "index": 0,
       "should_generate": true,
+      "risk_level": "low",
       "risk_reason": "为什么安全或为什么不安全",
-      "prompt": "英文生图提示词"
+      "prompt": "英文生图提示词",
+      "fallback_prompt": "英文安全抽象兜底提示词"
     }}
-  ],
-  "fallback_prompts": ["英文兜底提示词"]
+  ]
 }}
 """
     data = create_json_response(settings=settings, prompt=prompt)
     items = data.get("items")
     if not isinstance(items, list):
         data["items"] = []
-    fallbacks = data.get("fallback_prompts")
-    if not isinstance(fallbacks, list):
-        data["fallback_prompts"] = []
     return data
 
 
