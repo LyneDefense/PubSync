@@ -29,7 +29,7 @@ def generate_article_from_selected_news(db: Session) -> Article:
         title, intro, content_html, cover_image_url = generate_ai_article_content(settings, selected_news)
     else:
         today = datetime.now().strftime("%Y-%m-%d")
-        title = f"AI 早报：{today} 重要动态"
+        title = normalize_article_title(f"{today} 重要动态")
         intro = f"今天精选 {len(selected_news)} 条 AI 行业大事件，覆盖模型、产品、基础设施和监管动态。"
         content_html = render_article_html(intro, selected_news)
         cover_image_url = DEFAULT_COVER
@@ -85,6 +85,26 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
         normalize_article_html(str(article_data["content_html"])),
         cover_image_url or DEFAULT_COVER,
     )
+
+
+def normalize_article_title(title: str) -> str:
+    clean_title = " ".join(title.strip().split())
+    prefix = "AI科技早报 | "
+    if not clean_title:
+        return f"{prefix}今日 AI 行业重要动态"
+    if clean_title.startswith(prefix):
+        return clean_title
+    if clean_title.startswith("AI科技早报|"):
+        return f"{prefix}{clean_title.split('|', 1)[1].strip()}"
+    for stale_prefix in ("AI 早报：", "AI早报：", "AI科技早报："):
+        if clean_title.startswith(stale_prefix):
+            clean_title = clean_title.removeprefix(stale_prefix).strip()
+            break
+    return f"{prefix}{clean_title}"
+
+
+def normalize_article_html(content_html: str) -> str:
+    return content_html.replace("<h1", "<h2").replace("</h1>", "</h2>")
 
 
 def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
