@@ -13,9 +13,6 @@ import httpx
 from app.config import Settings
 
 
-OPENAI_API_BASE = "https://api.openai.com/v1"
-MINIMAX_API_BASE = "https://api.minimax.io/v1"
-
 DEFAULT_NEWS_SOURCE_URLS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -309,7 +306,7 @@ def openai_post(settings: Settings, path: str, payload: dict[str, Any], timeout:
 
     with httpx.Client(timeout=timeout) as client:
         response = client.post(
-            f"{OPENAI_API_BASE}{path}",
+            f"{settings.openai_base_url.rstrip('/')}{path}",
             headers={
                 "Authorization": f"Bearer {settings.openai_api_key}",
                 "Content-Type": "application/json",
@@ -322,7 +319,7 @@ def openai_post(settings: Settings, path: str, payload: dict[str, Any], timeout:
 def minimax_post(settings: Settings, path: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     with httpx.Client(timeout=timeout) as client:
         response = client.post(
-            f"{MINIMAX_API_BASE}{path}",
+            f"{settings.minimax_base_url.rstrip('/')}{path}",
             headers={
                 "Authorization": f"Bearer {settings.minimax_api_key}",
                 "Content-Type": "application/json",

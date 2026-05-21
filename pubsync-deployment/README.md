@@ -46,11 +46,13 @@ CORS_ORIGINS=https://enceladus.online,http://enceladus.online
 # AI workflow. If the selected provider key is empty, PubSync falls back to mock news and template articles.
 LLM_PROVIDER=minimax
 IMAGE_PROVIDER=minimax
+MINIMAX_BASE_URL=https://api.minimax.io/v1
 MINIMAX_API_KEY=...
 MINIMAX_TEXT_MODEL=MiniMax-M2.7
 MINIMAX_IMAGE_MODEL=image-01
 
 # Optional OpenAI provider config.
+OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=
 OPENAI_TEXT_MODEL=gpt-4.1
 OPENAI_IMAGE_MODEL=gpt-image-1
