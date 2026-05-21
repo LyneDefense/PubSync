@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 
 import {
   clearAuthToken,
@@ -15,7 +15,9 @@ import {
   updateArticle,
   updateNewsSelection
 } from './api'
-import type { Article, ArticleUpdate, Dashboard, NewsItem } from './api/types'
+import type { Article, ArticleUpdate, Dashboard, NewsItem, OperationTask } from './api/types'
+
+type TaskActionName = 'fetch' | 'generate'
 
 const statusText: Record<string, string> = {
   draft: '草稿',
@@ -33,6 +35,11 @@ const pendingAction = ref<string | null>(null)
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
+const taskProgress = reactive<Record<TaskActionName, number>>({
+  fetch: 0,
+  generate: 0
+})
+const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
 const loginForm = reactive({
   username: '',
@@ -68,6 +75,80 @@ async function runAction(name: string, label: string, action: () => Promise<void
     showMessage(error instanceof Error ? error.message : '操作失败', true)
   } finally {
     pendingAction.value = null
+  }
+}
+
+function startFakeProgress(name: TaskActionName) {
+  window.clearInterval(progressTimers[name])
+  taskProgress[name] = 4
+  progressTimers[name] = window.setInterval(() => {
+    const current = taskProgress[name]
+    if (current < 68) {
+      taskProgress[name] = Math.min(68, current + 4)
+      return
+    }
+    if (current < 90) {
+      taskProgress[name] = Math.min(90, current + 1.5)
+      return
+    }
+    taskProgress[name] = Math.min(95, current + 0.3)
+  }, 700)
+}
+
+function stopFakeProgress(name: TaskActionName, completed: boolean) {
+  window.clearInterval(progressTimers[name])
+  progressTimers[name] = undefined
+  taskProgress[name] = completed ? 100 : 0
+}
+
+function resetFakeProgress(name: TaskActionName) {
+  taskProgress[name] = 0
+}
+
+function taskButtonStyle(name: TaskActionName) {
+  return { '--progress': `${taskProgress[name]}%` }
+}
+
+async function runTaskAction(
+  name: TaskActionName,
+  label: string,
+  startTask: () => Promise<OperationTask>,
+  onSuccess: () => Promise<void>,
+  timeoutMessage: string
+) {
+  pendingAction.value = name
+  startFakeProgress(name)
+  showMessage(label)
+  try {
+    const task = await startTask()
+    showMessage(task.message)
+
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await wait(5000)
+      const latestTask = await getTask(task.id)
+      showMessage(latestTask.message)
+
+      if (latestTask.status === 'succeeded') {
+        stopFakeProgress(name, true)
+        await onSuccess()
+        await wait(350)
+        showMessage('操作完成')
+        return
+      }
+
+      if (latestTask.status === 'failed') {
+        throw new Error(latestTask.error_message || latestTask.message || '任务失败')
+      }
+    }
+
+    await onSuccess()
+    throw new Error(timeoutMessage)
+  } catch (error) {
+    stopFakeProgress(name, false)
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+  } finally {
+    pendingAction.value = null
+    window.setTimeout(() => resetFakeProgress(name), 300)
   }
 }
 
@@ -124,35 +205,28 @@ async function refreshDashboardAndArticle() {
 }
 
 async function handleFetchNews() {
-  await runAction('fetch', '正在抓取新闻', async () => {
-    news.value = await fetchNews()
-    await refreshDashboardAndArticle()
-  })
+  await runTaskAction(
+    'fetch',
+    '已提交后台抓取任务',
+    fetchNews,
+    async () => {
+      news.value = await listNews()
+      await refreshDashboardAndArticle()
+    },
+    '新闻仍在后台抓取，请稍后刷新页面查看最新候选新闻'
+  )
 }
 
 async function handleGenerateArticle() {
-  await runAction('generate', '已提交后台生成任务', async () => {
-    const task = await generateArticle()
-    showMessage(task.message)
-
-    for (let attempt = 0; attempt < 180; attempt += 1) {
-      await wait(5000)
-      const latestTask = await getTask(task.id)
-      showMessage(latestTask.message)
-
-      if (latestTask.status === 'succeeded') {
+  await runTaskAction(
+    'generate',
+    '已提交后台生成任务',
+    generateArticle,
+    async () => {
         await refreshDashboardAndArticle()
-        return
-      }
-
-      if (latestTask.status === 'failed') {
-        throw new Error(latestTask.error_message || '文章生成失败')
-      }
-    }
-
-    await refreshDashboardAndArticle()
-    throw new Error('文章还在后台生成，请稍后刷新页面查看最新文章')
-  })
+    },
+    '文章还在后台生成，请稍后刷新页面查看最新文章'
+  )
 }
 
 async function handleSendWechat() {
@@ -205,6 +279,11 @@ onMounted(() => {
     })
   }
 })
+
+onUnmounted(() => {
+  window.clearInterval(progressTimers.fetch)
+  window.clearInterval(progressTimers.generate)
+})
 </script>
 
 <template>
@@ -251,11 +330,25 @@ onMounted(() => {
           <h2>抓取、筛选、生成、入草稿箱</h2>
         </div>
         <div class="actions">
-          <button type="button" :disabled="Boolean(pendingAction)" @click="handleFetchNews">
-            {{ pendingAction === 'fetch' ? '抓取中' : '重新抓取' }}
+          <button
+            type="button"
+            class="task-button"
+            :class="{ running: pendingAction === 'fetch' }"
+            :style="taskButtonStyle('fetch')"
+            :disabled="Boolean(pendingAction)"
+            @click="handleFetchNews"
+          >
+            <span>{{ pendingAction === 'fetch' ? `抓取中 ${Math.round(taskProgress.fetch)}%` : '重新抓取' }}</span>
           </button>
-          <button type="button" :disabled="Boolean(pendingAction)" @click="handleGenerateArticle">
-            {{ pendingAction === 'generate' ? '生成中' : '生成文章' }}
+          <button
+            type="button"
+            class="task-button"
+            :class="{ running: pendingAction === 'generate' }"
+            :style="taskButtonStyle('generate')"
+            :disabled="Boolean(pendingAction)"
+            @click="handleGenerateArticle"
+          >
+            <span>{{ pendingAction === 'generate' ? `生成中 ${Math.round(taskProgress.generate)}%` : '生成文章' }}</span>
           </button>
           <button type="button" class="primary" :disabled="!hasArticle || Boolean(pendingAction)" @click="handleSendWechat">
             {{ pendingAction === 'wechat' ? '发送中' : '发送草稿箱' }}

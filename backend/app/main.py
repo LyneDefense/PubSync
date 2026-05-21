@@ -85,6 +85,44 @@ def run_article_generation_task(task_id: str) -> None:
         db.close()
 
 
+def run_news_fetch_task(task_id: str) -> None:
+    db = SessionLocal()
+    try:
+        task = db.get(OperationTask, task_id)
+        if not task:
+            return
+
+        task.status = TaskStatus.running
+        task.message = "正在抓取新闻并进行 AI 筛选"
+        task.error_message = None
+        db.commit()
+
+        created_items = fetch_latest_news(db)
+        task.status = TaskStatus.succeeded
+        task.message = f"新闻抓取完成，新增 {len(created_items)} 条"
+        task.error_message = None
+        db.commit()
+    except AIServiceError as exc:
+        db.rollback()
+        task = db.get(OperationTask, task_id)
+        if task:
+            task.status = TaskStatus.failed
+            task.message = "新闻抓取失败"
+            task.error_message = str(exc)
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        task = db.get(OperationTask, task_id)
+        if task:
+            task.status = TaskStatus.failed
+            task.message = "新闻抓取失败"
+            task.error_message = f"{type(exc).__name__}: {exc}"
+            db.commit()
+        raise
+    finally:
+        db.close()
+
+
 def scheduled_news_fetch() -> None:
     from app.database import SessionLocal
 
@@ -166,13 +204,19 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
     )
 
 
-@app.post("/news/fetch", response_model=list[NewsItemRead])
-def fetch_news_endpoint(db: Session = Depends(get_db)) -> list[NewsItem]:
-    try:
-        fetch_latest_news(db)
-    except AIServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return list_news(db)
+@app.post("/news/fetch", response_model=OperationTaskRead)
+def fetch_news_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
+    task = OperationTask(
+        id=str(uuid4()),
+        task_type="news_fetch",
+        status=TaskStatus.queued,
+        message="已加入后台抓取任务",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    background_tasks.add_task(run_news_fetch_task, task.id)
+    return task
 
 
 @app.get("/news", response_model=list[NewsItemRead])

@@ -54,7 +54,7 @@ export function getDashboard() {
 }
 
 export function fetchNews() {
-  return request<NewsItem[]>('/news/fetch', { method: 'POST' })
+  return request<OperationTask>('/news/fetch', { method: 'POST' })
 }
 
 export function listNews() {
