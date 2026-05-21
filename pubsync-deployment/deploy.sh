@@ -10,7 +10,6 @@ NC='\033[0m'
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$DEPLOY_DIR")"
-FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
 check_linux_server() {
     if [ "$(uname -s)" != "Linux" ]; then
@@ -61,29 +60,18 @@ init() {
 build_frontend() {
     check_linux_server
     check_env
-    check_command npm
+    check_docker_compose
 
-    echo -e "${GREEN}构建 Vue 前端...${NC}"
-    cd "$FRONTEND_DIR"
-    export VITE_BASE_PATH="${FRONTEND_BASE_PATH:-/}"
-    if [ -n "${NPM_REGISTRY:-}" ]; then
-        export npm_config_registry="$NPM_REGISTRY"
-    fi
-    npm install
-    npm run build
     cd "$DEPLOY_DIR"
-    echo -e "${GREEN}前端构建完成${NC}"
+    echo -e "${GREEN}构建前端 Docker 镜像...${NC}"
+    docker compose build frontend
+    echo -e "${GREEN}前端镜像构建完成${NC}"
 }
 
 start() {
     check_linux_server
     check_env
     check_docker_compose
-
-    if [ ! -d "$FRONTEND_DIR/dist" ]; then
-        echo -e "${YELLOW}前端 dist 不存在，先构建前端${NC}"
-        build_frontend
-    fi
 
     cd "$DEPLOY_DIR"
     echo -e "${GREEN}启动 PubSync 独立服务...${NC}"
@@ -107,7 +95,6 @@ update() {
     check_linux_server
     check_env
     check_docker_compose
-    build_frontend
     cd "$DEPLOY_DIR"
     echo -e "${GREEN}构建并启动 PubSync 服务...${NC}"
     docker compose up -d --build --remove-orphans
@@ -123,8 +110,11 @@ update_backend() {
 }
 
 update_frontend() {
-    build_frontend
-    echo -e "${GREEN}前端已更新。宿主机 nginx 直接读取 frontend/dist，通常不需要重载 nginx。${NC}"
+    check_linux_server
+    check_env
+    check_docker_compose
+    cd "$DEPLOY_DIR"
+    docker compose up -d --build frontend
 }
 
 reload_nginx() {
@@ -207,12 +197,12 @@ case "$1" in
         echo ""
         echo "首次部署:"
         echo "  init             创建 .env 和 backups 目录"
-        echo "  update           构建前端和后端，启动 postgres/backend"
+        echo "  update           构建前端和后端，启动 postgres/backend/frontend"
         echo ""
         echo "日常更新:"
         echo "  update           更新全部"
         echo "  update-backend   只更新后端"
-        echo "  update-frontend  只更新前端"
+        echo "  update-frontend  只更新前端容器"
         echo ""
         echo "服务管理:"
         echo "  start            启动 PubSync 服务"

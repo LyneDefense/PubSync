@@ -60,10 +60,10 @@ Then visit:
 
 PubSync is designed to run as an independent deployment:
 
-- Front end: `https://pubsync.your-domain.com/`
-- API: `https://pubsync.your-domain.com/api/`
+- Front end: `https://enceladus.online/PubSync/`
+- API: `https://enceladus.online/PubSync/api/`
 
-The production setup uses Docker for PostgreSQL and the FastAPI backend, and uses the host nginx for public HTTP/HTTPS, static frontend files, and `/api/` reverse proxying.
+The production setup uses Docker for PostgreSQL, the FastAPI backend, and the frontend nginx service. The host nginx handles public HTTPS and routes `/PubSync/` to the frontend service and `/PubSync/api/` to the backend service.
 
 Run the deployment commands on your Ubuntu server. Your local macOS machine is only for development.
 

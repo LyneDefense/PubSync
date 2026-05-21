@@ -1,36 +1,38 @@
-# PubSync Deployment With Host Nginx
+# PubSync Deployment
 
-These commands are intended to run on your Ubuntu/Linux server, not on your local macOS development machine.
+These commands are intended to run on your Ubuntu/Linux server.
 
-PubSync is deployed as:
+## Architecture
 
-- `pubsync-db`: PostgreSQL in Docker
-- `pubsync-backend`: FastAPI backend in Docker, exposed only on `127.0.0.1`
-- Host nginx: serves the Vue frontend from `frontend/dist` and proxies `/api/` to the backend
+PubSync uses three Docker services and your existing host nginx:
+
+```text
+Browser
+  -> host nginx :443
+      /PubSync/      -> http://127.0.0.1:18082  pubsync-frontend
+      /PubSync/api/  -> http://127.0.0.1:18000  pubsync-backend
+
+Docker Compose
+  pubsync-frontend  nginx serving the Vue build
+  pubsync-backend   FastAPI
+  pubsync-db        PostgreSQL
+```
 
 Production routes:
 
-- Frontend: `https://enceladus.online/`
-- API: `https://enceladus.online/api/`
-- API docs: `https://enceladus.online/api/docs`
+- Frontend: `https://enceladus.online/PubSync/`
+- API: `https://enceladus.online/PubSync/api/`
+- API docs: `https://enceladus.online/PubSync/api/docs`
 
-## First Deploy
+## Environment
 
-On the server:
-
-```bash
-cd /home/ubuntu
-git clone git@github.com:LyneDefense/PubSync.git
-cd PubSync/pubsync-deployment
-./deploy.sh init
-```
-
-Edit `.env`:
+Edit `pubsync-deployment/.env`:
 
 ```env
 DOMAIN=enceladus.online
 BACKEND_HOST_PORT=18000
-FRONTEND_BASE_PATH=/
+FRONTEND_HOST_PORT=18082
+FRONTEND_BASE_PATH=/PubSync/
 DB_NAME=pubsync
 DB_USER=pubsync
 DB_PASSWORD=change_me_to_a_strong_password
@@ -42,99 +44,83 @@ WECHAT_APP_SECRET=...
 CORS_ORIGINS=https://enceladus.online,http://enceladus.online
 ```
 
-Start the Docker services and build the frontend:
+## Deploy
 
 ```bash
+cd /home/ubuntu/PubSync
+git pull
+cd pubsync-deployment
 ./deploy.sh update
 ```
 
-This starts only PostgreSQL and the backend in Docker. It does not start a Docker nginx container.
-
-## Configure Host Nginx
-
-Create a host nginx site:
+Check local service ports:
 
 ```bash
-sudo nano /etc/nginx/sites-available/pubsync
+curl http://127.0.0.1:18082/
+curl http://127.0.0.1:18000/health
 ```
 
-Use this config:
+## Host Nginx
+
+Your current domain config is:
+
+```text
+/etc/nginx/sites-enabled/nightly-pick
+```
+
+Add these locations inside the existing HTTPS `server { ... }` for `enceladus.online`, before any broader `location /` block:
 
 ```nginx
-server {
-    listen 80;
-    server_name enceladus.online www.enceladus.online;
+location = /PubSync {
+    return 301 /PubSync/;
+}
 
-    root /home/ubuntu/PubSync/frontend/dist;
-    index index.html;
+location = /PubSync/api {
+    return 301 /PubSync/api/;
+}
 
-    location = /api {
-        return 301 /api/;
-    }
+location /PubSync/api/ {
+    proxy_pass http://127.0.0.1:18000/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+}
 
-    location /api/ {
-        proxy_pass http://127.0.0.1:18000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
+location /PubSync/ {
+    proxy_pass http://127.0.0.1:18082/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
 }
 ```
 
-Enable and reload:
+Reload host nginx:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/pubsync /etc/nginx/sites-enabled/pubsync
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-If another enabled nginx config already handles `enceladus.online`, edit that existing config instead of enabling a duplicate server block.
-
-## HTTPS
-
-If certbot is installed:
+Test:
 
 ```bash
-sudo certbot --nginx -d enceladus.online -d www.enceladus.online
-```
-
-Then test:
-
-```bash
-curl https://enceladus.online/api/health
+curl https://enceladus.online/PubSync/api/health
 ```
 
 Expected:
 
 ```json
 {"status":"ok"}
-```
-
-## If Docker Build Is Interrupted
-
-If the Docker build is stopped during `pip install`, it will not damage the project or database. The incomplete image layer is discarded, and the next build resumes from the last completed cached layer. The pip step itself may run again, but the Dockerfile uses a BuildKit pip cache so already downloaded packages can usually be reused.
-
-## WeChat IP Whitelist
-
-After deployment, add the server public outbound IPv4 to:
-
-```text
-微信公众平台 -> 设置与开发 -> 基本配置 -> IP 白名单
-```
-
-Check the server IP:
-
-```bash
-curl -4 ifconfig.me
 ```
 
 ## Common Commands
@@ -144,6 +130,7 @@ curl -4 ifconfig.me
 ./deploy.sh update-backend
 ./deploy.sh update-frontend
 ./deploy.sh logs backend
+./deploy.sh logs frontend
 ./deploy.sh status
 ./deploy.sh db-backup
 ```
