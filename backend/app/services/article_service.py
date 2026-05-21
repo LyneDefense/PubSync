@@ -146,6 +146,8 @@ class WeChatArticleHTMLFormatter(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.open_tags: list[str] = []
+        self.skipped_tags: list[str] = []
+        self.pending_text_tags: list[tuple[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -166,6 +168,10 @@ class WeChatArticleHTMLFormatter(HTMLParser):
             return
 
         attrs_html = self.build_attrs(tag, attrs)
+        if tag in {"p", "blockquote", "h2", "h3", "li"}:
+            self.pending_text_tags.append((tag, attrs_html))
+            return
+        self.flush_pending_text_tags()
         self.parts.append(f"<{tag}{attrs_html}>")
         self.open_tags.append(tag)
 
@@ -174,8 +180,18 @@ class WeChatArticleHTMLFormatter(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if tag in self.skipped_tags:
+            while self.skipped_tags:
+                current = self.skipped_tags.pop()
+                if current == tag:
+                    break
+            return
+        if self.pending_text_tags and self.pending_text_tags[-1][0] == tag:
+            self.pending_text_tags.pop()
+            return
         if tag not in self.allowed_tags or tag in {"br", "img"}:
             return
+        self.flush_pending_text_tags()
         if tag in self.open_tags:
             while self.open_tags:
                 current = self.open_tags.pop()
@@ -184,18 +200,33 @@ class WeChatArticleHTMLFormatter(HTMLParser):
                     break
 
     def handle_data(self, data: str) -> None:
+        if self.skipped_tags:
+            return
         if data:
+            if self.pending_text_tags and should_skip_public_paragraph(data):
+                self.skipped_tags.append(self.pending_text_tags.pop()[0])
+                return
+            self.flush_pending_text_tags()
             self.parts.append(escape(data))
 
     def handle_entityref(self, name: str) -> None:
+        self.flush_pending_text_tags()
         self.parts.append(f"&{name};")
 
     def handle_charref(self, name: str) -> None:
+        self.flush_pending_text_tags()
         self.parts.append(f"&#{name};")
 
     def close_remaining_tags(self) -> None:
+        self.flush_pending_text_tags()
         while self.open_tags:
             self.parts.append(f"</{self.open_tags.pop()}>")
+
+    def flush_pending_text_tags(self) -> None:
+        while self.pending_text_tags:
+            tag, attrs_html = self.pending_text_tags.pop(0)
+            self.parts.append(f"<{tag}{attrs_html}>")
+            self.open_tags.append(tag)
 
     def build_attrs(self, tag: str, attrs: list[tuple[str, str | None]]) -> str:
         parts = [f'style="{self.styles.get(tag, "")}"'] if tag in self.styles else []
@@ -224,6 +255,14 @@ def format_wechat_article_html(content_html: str) -> str:
         f"{formatted}"
         "</section>"
     )
+
+
+def should_skip_public_paragraph(text: str) -> bool:
+    compact = " ".join(text.strip().split())
+    if not compact:
+        return False
+    internal_markers = ("发布于", "分类：", "重要性：", "重要性", "importance")
+    return sum(marker in compact for marker in internal_markers) >= 2
 
 
 def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
@@ -342,9 +381,8 @@ def render_article_html(intro: str, news_items: list[NewsItem]) -> str:
             [
                 "<section style=\"margin-top: 24px;\">",
                 f"<h2>{index}. {escape(item.title)}</h2>",
-                f"<p><strong>{escape(item.category)}</strong> · {escape(item.source)} · 重要性 {item.importance_score}/100</p>",
                 f"<p>{escape(item.summary)}</p>",
-                f"<p>来源：<a href=\"{escape(item.url)}\">{escape(item.url)}</a></p>",
+                f"<p>来源：<a href=\"{escape(item.url)}\">{escape(item.source)}</a></p>",
                 "</section>",
             ]
         )

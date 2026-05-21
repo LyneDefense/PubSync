@@ -91,9 +91,9 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
 - 每条新闻建议 220-360 个中文字，既要有事实，也要有背景解释和影响分析。
 - 每条新闻都保留来源链接。
 - 正文 HTML 只能使用 section/h2/h3/p/ul/li/blockquote/a/img/strong 标签，不要使用 script、iframe、table、外链 CSS、class 或 style。
-- 排版结构要适合微信公众号：每条新闻使用一个 section；section 内顺序为 h2、元信息 p、可选图片、正文段落、blockquote 编辑观察、来源链接 p。
+- 排版结构要适合微信公众号：每条新闻使用一个 section；section 内顺序为 h2、可选图片、正文段落、blockquote 编辑观察、来源链接 p。
 - h2 使用“01｜新闻标题”这种编号格式，不要重复写过长标题。
-- 元信息 p 用“发布于 YYYY-MM-DD｜分类：xxx｜重要性：xx/100”格式。
+- 不要在正文中展示发布时间、分类、重要性分数、内部评分、候选池排序等后台筛选信息。
 - 正文段落保持短段落，每段 80-140 个中文字；不要把三四个观点塞进一个超长段落。
 - 每条新闻用 2-3 个正文 p，加 1 个 blockquote“编辑观察”，形成可扫读节奏。
 - 来源链接放在最后一行，格式为“来源：<a href='真实URL'>来源名称</a>”，不要单独展示长 URL。
