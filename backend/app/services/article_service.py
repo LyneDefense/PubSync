@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Article, ArticleNewsItem, ArticleStatus, NewsItem
-from app.services.ai_service import AIServiceError, generate_image, generate_wechat_article, is_ai_enabled
+from app.services.ai_service import AIServiceError, generate_image, generate_wechat_article, is_ai_enabled, plan_article_images
 
 
 DEFAULT_COVER = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=1200&q=80"
@@ -53,31 +53,22 @@ def generate_article_from_selected_news(db: Session) -> Article:
 
 
 def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tuple[str, str, str, str]:
-    news_payload = []
-    max_images = max(0, settings.max_article_images)
-    for index, item in enumerate(selected_news):
-        image_url = None
-        if settings.generate_article_images and index < max_images and should_generate_image(item):
-            try:
-                image_url = generate_image(
-                    settings,
-                    build_news_image_prompt(item),
-                    f"news-{item.id}",
-                )
-            except AIServiceError:
-                image_url = None
-        news_payload.append(
-            {
-                "title": item.title,
-                "source": item.source,
-                "url": item.url,
-                "published_at": item.published_at.isoformat(),
-                "summary": item.summary,
-                "category": item.category,
-                "importance_score": item.importance_score,
-                "image_url": image_url,
-            }
-        )
+    news_payload = [
+        {
+            "title": item.title,
+            "source": item.source,
+            "url": item.url,
+            "published_at": item.published_at.isoformat(),
+            "summary": item.summary,
+            "category": item.category,
+            "importance_score": item.importance_score,
+            "image_url": None,
+        }
+        for item in selected_news
+    ]
+
+    if settings.generate_article_images:
+        apply_planned_images(settings, selected_news, news_payload)
 
     article_data = generate_wechat_article(settings, news_payload)
     try:
@@ -96,46 +87,98 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
     )
 
 
-def normalize_article_title(title: str) -> str:
-    title = title.strip()
-    prefix = "AI科技早报 | "
-    if title.startswith(prefix):
-        return title
-    if title.startswith("AI科技早报|"):
-        return f"{prefix}{title.split('|', 1)[1].strip()}"
-    if title.startswith("AI 早报："):
-        title = title.removeprefix("AI 早报：").strip()
-    return f"{prefix}{title}"
+def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
+    max_images = max(0, settings.max_article_images)
+    min_images = max(0, min(settings.min_article_images, max_images))
+    if max_images <= 0:
+        return
 
-
-def normalize_article_html(content_html: str) -> str:
-    return content_html.replace("<h1", "<h2").replace("</h1>", "</h2>")
-
-
-def should_generate_image(item: NewsItem) -> bool:
-    text = f"{item.title} {item.summary}"
-    sensitive_terms = [
-        "黄仁勋",
-        "马斯克",
-        "Sam Altman",
-        "Altman",
-        "Jensen Huang",
-        "Elon Musk",
-        "人物",
-        "CEO",
-        "创始人",
+    planning_items = [
+        {
+            "index": index,
+            "title": item.title,
+            "summary": item.summary,
+            "category": item.category,
+            "source": item.source,
+        }
+        for index, item in enumerate(selected_news)
     ]
-    return not any(term.lower() in text.lower() for term in sensitive_terms)
+    try:
+        plan = plan_article_images(settings, planning_items, min_images=min_images, max_images=max_images)
+    except AIServiceError:
+        plan = {"items": [], "fallback_prompts": []}
+
+    generated_count = 0
+    for item_plan in plan.get("items", []):
+        if generated_count >= max_images:
+            break
+        if not isinstance(item_plan, dict) or not item_plan.get("should_generate"):
+            continue
+        try:
+            index = int(item_plan.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index >= len(selected_news):
+            continue
+        prompt = str(item_plan.get("prompt") or "").strip()
+        if not prompt or not is_safe_image_prompt(prompt):
+            continue
+        try:
+            image_url = generate_image(settings, prompt, f"news-{selected_news[index].id}")
+        except AIServiceError:
+            continue
+        news_payload[index]["image_url"] = image_url
+        generated_count += 1
+
+    fallback_prompts = [str(prompt) for prompt in plan.get("fallback_prompts", []) if str(prompt).strip()]
+    fallback_index = 0
+    while generated_count < min_images and generated_count < max_images:
+        target_index = first_news_without_image(news_payload)
+        if target_index is None:
+            break
+        prompt = fallback_prompts[fallback_index] if fallback_index < len(fallback_prompts) else build_fallback_section_prompt(selected_news)
+        fallback_index += 1
+        if not is_safe_image_prompt(prompt):
+            prompt = build_fallback_section_prompt(selected_news)
+        try:
+            image_url = generate_image(settings, prompt, f"fallback-{generated_count + 1}")
+        except AIServiceError:
+            break
+        news_payload[target_index]["image_url"] = image_url
+        generated_count += 1
 
 
-def build_news_image_prompt(item: NewsItem) -> str:
+def first_news_without_image(news_payload: list[dict]) -> int | None:
+    for index, item in enumerate(news_payload):
+        if not item.get("image_url"):
+            return index
+    return None
+
+
+def is_safe_image_prompt(prompt: str) -> bool:
+    lower = prompt.lower()
+    required_negative_terms = ["no human", "no face", "no logo", "no brand"]
+    risky_terms = [
+        "portrait",
+        "celebrity",
+        "person",
+        "people",
+        "human face",
+        "real logo",
+        "photorealistic news",
+        "screenshot",
+    ]
+    return all(term in lower for term in required_negative_terms) and not any(term in lower for term in risky_terms)
+
+
+def build_fallback_section_prompt(news_items: list[NewsItem]) -> str:
+    topics = "; ".join(item.category for item in news_items[:5])
     return (
-        "Abstract editorial technology infographic, 16:9 composition. "
-        "Strictly no human face, no human figure, no celebrity, no real person, no fictional person, "
-        "no real logo, no brand mark, no photorealistic news scene. "
-        f"topic: {item.title}. Context: {item.summary}. "
-        "Use abstract chips, networks, charts, datacenter shapes, typography-free visual metaphors. "
-        "Clean modern AI newsletter style, suitable for WeChat article section image."
+        "Abstract AI technology editorial infographic, 16:9, visualizing multiple AI news themes with chips, "
+        "network lines, data flows, cloud infrastructure, charts, and geometric shapes. "
+        "No human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
+        "no photorealistic news scene, no UI screenshot, no text. "
+        f"Themes: {topics}"
     )
 
 
@@ -143,8 +186,8 @@ def build_cover_prompt(news_items: list[NewsItem]) -> str:
     topics = "; ".join(item.title for item in news_items[:5])
     return (
         "Modern Chinese AI newsletter cover image, 16:9 composition, abstract technology infographic, "
-        "strictly no human face, no human figure, no celebrity, no real logo, no brand mark, "
-        "no photorealistic news scene, polished editorial style. Topics: "
+        "no human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
+        "no photorealistic news scene, no UI screenshot, no text, polished editorial style. Topics: "
         f"{topics}"
     )
 

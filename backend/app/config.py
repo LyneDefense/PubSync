@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     minimax_image_model: str = "image-01"
     generate_article_images: bool = True
     max_article_images: int = 3
+    min_article_images: int = 1
     news_source_urls: str = ""
     news_lookback_hours: int = 72
     max_news_candidates: int = 40

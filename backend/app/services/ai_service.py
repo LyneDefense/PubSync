@@ -114,6 +114,44 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
     return data
 
 
+def plan_article_images(settings: Settings, news_items: list[dict[str, Any]], min_images: int, max_images: int) -> dict[str, Any]:
+    prompt = f"""
+你是 AI 新闻公众号的视觉编辑。请基于新闻事实规划正文配图。
+
+目标：
+- 除封面外，正文最好有 {min_images}-{max_images} 张配图。
+- 不是每条新闻都需要配图。只给最适合抽象视觉表达的新闻配图。
+- 如果新闻涉及具体人物、CEO、创始人、政治人物、明星、个人肖像、真实公司 logo、产品界面截图、灾难或真实现场，不要为该条新闻生成图片。
+- 配图只能是抽象科技视觉、信息图、概念插画或数据/芯片/网络/云/机器人等非人物隐喻。
+- prompt 必须动态贴合新闻内容，不能使用固定模板；但必须包含安全约束：no human, no face, no celebrity, no real person, no logo, no brand mark, no photorealistic news scene, no UI screenshot, no text.
+- 如果安全新闻不足，请增加 fallback_prompts，主题应覆盖整篇文章的共同主线，仍然只能是抽象科技信息图。
+
+新闻：
+{json.dumps(news_items, ensure_ascii=False, indent=2)}
+
+输出 JSON：
+{{
+  "items": [
+    {{
+      "index": 0,
+      "should_generate": true,
+      "risk_reason": "为什么安全或为什么不安全",
+      "prompt": "英文生图提示词"
+    }}
+  ],
+  "fallback_prompts": ["英文兜底提示词"]
+}}
+"""
+    data = create_json_response(settings=settings, prompt=prompt)
+    items = data.get("items")
+    if not isinstance(items, list):
+        data["items"] = []
+    fallbacks = data.get("fallback_prompts")
+    if not isinstance(fallbacks, list):
+        data["fallback_prompts"] = []
+    return data
+
+
 def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str | None:
     if not prompt.strip():
         return None
