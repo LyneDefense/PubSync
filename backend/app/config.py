@@ -11,11 +11,19 @@ class Settings(BaseSettings):
     auto_send_wechat_draft: bool = False
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
+    llm_provider: str = "openai"
+    image_provider: str = "openai"
     openai_api_key: str = ""
     openai_text_model: str = "gpt-4.1"
     openai_image_model: str = "gpt-image-1"
+    minimax_api_key: str = ""
+    minimax_text_model: str = "MiniMax-M1"
+    minimax_image_model: str = "image-01"
     generate_article_images: bool = True
     max_article_images: int = 3
+    news_source_urls: str = ""
+    news_lookback_hours: int = 72
+    max_news_candidates: int = 40
     public_api_base_url: str = ""
     static_dir: str = "static"
 

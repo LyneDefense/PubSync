@@ -1,6 +1,9 @@
 import base64
 import json
 import re
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,6 +14,15 @@ from app.config import Settings
 
 
 OPENAI_API_BASE = "https://api.openai.com/v1"
+MINIMAX_API_BASE = "https://api.minimax.io/v1"
+
+DEFAULT_NEWS_SOURCE_URLS = [
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "https://venturebeat.com/category/ai/feed/",
+    "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "https://hnrss.org/newest?q=AI",
+    "https://hnrss.org/newest?q=OpenAI",
+]
 
 
 class AIServiceError(RuntimeError):
@@ -18,23 +30,36 @@ class AIServiceError(RuntimeError):
 
 
 def is_ai_enabled(settings: Settings) -> bool:
-    return bool(settings.openai_api_key)
+    provider = settings.llm_provider.lower()
+    if provider == "openai":
+        return bool(settings.openai_api_key)
+    if provider == "minimax":
+        return bool(settings.minimax_api_key)
+    return False
 
 
 def discover_ai_news(settings: Settings) -> list[dict[str, Any]]:
-    prompt = """
-你是一个严谨的 AI 行业新闻编辑。请联网检索最近 24-48 小时的重要 AI 资讯，优先使用官方博客、研究机构、公司公告、权威科技媒体。
+    candidates = fetch_news_candidates(settings)
+    if not candidates:
+        raise AIServiceError("没有从新闻源抓取到候选新闻，请检查 NEWS_SOURCE_URLS")
 
-返回 8-12 条候选新闻。每条必须有真实来源 URL。不要使用 example.com。不要编造发布时间、来源或链接。
+    prompt = f"""
+你是一个严谨的 AI 行业新闻编辑。请从候选新闻中筛选最近 24-72 小时内最重要的 AI 资讯。
 
-筛选标准：
-- 模型发布、产品更新、研究进展、开源项目、基础设施、政策监管、企业应用。
-- 排除纯营销、低质量转载和无法核验来源的内容。
+要求：
+- 只能使用候选新闻里提供的事实、标题、来源、链接和发布时间。
+- 不要编造候选集中不存在的新闻。
+- 排除低质量转载、重复新闻、广告稿和无法判断主题的内容。
+- 返回 8-12 条；如果候选不足，可少于 8 条。
+- 每条必须保留真实 URL，不能使用 example.com。
+
+候选新闻：
+{json.dumps(candidates, ensure_ascii=False, indent=2)}
 
 输出 JSON，格式为：
-{
+{{
   "items": [
-    {
+    {{
       "title": "中文标题",
       "source": "来源名称",
       "url": "https://...",
@@ -44,15 +69,11 @@ def discover_ai_news(settings: Settings) -> list[dict[str, Any]]:
       "importance_score": 0-100,
       "key_facts": ["事实1", "事实2", "事实3"],
       "image_prompt": "如果需要配图，用于生成科技媒体风格概念图的英文提示词"
-    }
+    }}
   ]
-}
+}}
 """
-    data = create_json_response(
-        settings=settings,
-        prompt=prompt,
-        use_web_search=True,
-    )
+    data = create_json_response(settings=settings, prompt=prompt)
     items = data.get("items", [])
     if not isinstance(items, list):
         raise AIServiceError("AI 新闻发现返回格式不正确：items 不是列表")
@@ -83,7 +104,7 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
   "content_html": "公众号正文 HTML"
 }}
 """
-    data = create_json_response(settings=settings, prompt=prompt, use_web_search=False)
+    data = create_json_response(settings=settings, prompt=prompt)
     for key in ("title", "intro", "content_html"):
         if not data.get(key):
             raise AIServiceError(f"AI 文章生成返回缺少 {key}")
@@ -94,7 +115,152 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
     if not prompt.strip():
         return None
 
-    response = openai_post(
+    provider = settings.image_provider.lower()
+    if provider == "minimax":
+        image_bytes, extension = generate_minimax_image(settings, prompt)
+    elif provider == "openai":
+        image_bytes, extension = generate_openai_image(settings, prompt)
+    else:
+        raise AIServiceError(f"不支持的 IMAGE_PROVIDER: {settings.image_provider}")
+
+    static_root = Path(settings.static_dir)
+    target_dir = static_root / "generated"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{safe_slug(filename_prefix)}-{uuid4().hex[:10]}.{extension}"
+    target_path = target_dir / filename
+    target_path.write_bytes(image_bytes)
+
+    public_path = f"/static/generated/{filename}"
+    if settings.public_api_base_url:
+        return f"{settings.public_api_base_url.rstrip('/')}{public_path}"
+    return public_path
+
+
+def fetch_news_candidates(settings: Settings) -> list[dict[str, Any]]:
+    urls = parse_source_urls(settings.news_source_urls) or DEFAULT_NEWS_SOURCE_URLS
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(24, settings.news_lookback_hours))
+    candidates: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    with httpx.Client(timeout=20, follow_redirects=True) as client:
+        for url in urls:
+            try:
+                response = client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPError:
+                continue
+            for item in parse_feed(response.text, source_url=url):
+                item_url = str(item.get("url", "")).strip()
+                if not item_url or item_url in seen_urls:
+                    continue
+                published_at = parse_datetime(item.get("published_at"))
+                if published_at and published_at < cutoff:
+                    continue
+                seen_urls.add(item_url)
+                candidates.append(item)
+                if len(candidates) >= settings.max_news_candidates:
+                    return candidates
+    return candidates
+
+
+def parse_feed(xml_text: str, source_url: str) -> list[dict[str, Any]]:
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+
+    items: list[dict[str, Any]] = []
+    for node in root.findall(".//item"):
+        title = text_of(node, "title")
+        url = text_of(node, "link")
+        published = text_of(node, "pubDate") or text_of(node, "published")
+        summary = text_of(node, "description")
+        if title and url:
+            items.append(build_candidate(title, url, published, summary, source_url))
+
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
+    for node in root.findall(".//atom:entry", ns):
+        title = text_of(node, "atom:title", ns)
+        url = ""
+        for link in node.findall("atom:link", ns):
+            href = link.attrib.get("href")
+            if href:
+                url = href
+                break
+        published = text_of(node, "atom:published", ns) or text_of(node, "atom:updated", ns)
+        summary = text_of(node, "atom:summary", ns)
+        if title and url:
+            items.append(build_candidate(title, url, published, summary, source_url))
+    return items
+
+
+def build_candidate(title: str, url: str, published: str, summary: str, source_url: str) -> dict[str, Any]:
+    return {
+        "title": clean_text(title)[:500],
+        "source": source_name_from_url(source_url),
+        "url": url.strip(),
+        "published_at": normalize_datetime_string(published),
+        "summary": clean_text(strip_html(summary))[:1000],
+    }
+
+
+def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
+    provider = settings.llm_provider.lower()
+    if provider == "minimax":
+        text = minimax_text(settings, prompt)
+    elif provider == "openai":
+        text = openai_text(settings, prompt)
+    else:
+        raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
+
+    try:
+        parsed = json.loads(extract_json_object(text))
+    except json.JSONDecodeError as exc:
+        raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from exc
+    if not isinstance(parsed, dict):
+        raise AIServiceError("AI 返回 JSON 不是对象")
+    return parsed
+
+
+def openai_text(settings: Settings, prompt: str) -> str:
+    payload: dict[str, Any] = {
+        "model": settings.openai_text_model,
+        "input": prompt,
+        "text": {"format": {"type": "json_object"}},
+    }
+    data = openai_post(settings=settings, path="/responses", payload=payload, timeout=180)
+    return extract_openai_response_text(data)
+
+
+def minimax_text(settings: Settings, prompt: str) -> str:
+    if not settings.minimax_api_key:
+        raise AIServiceError("未配置 MINIMAX_API_KEY")
+
+    payload = {
+        "model": settings.minimax_text_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是严谨的 AI 新闻编辑。所有输出必须是合法 JSON，不要输出 Markdown 代码块。",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+    }
+    data = minimax_post(settings, "/text/chatcompletion_v2", payload, timeout=180)
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            return str(message["content"])
+    reply = data.get("reply")
+    if isinstance(reply, str):
+        return reply
+    raise AIServiceError(f"MiniMax 文本响应中没有可解析内容：{data}")
+
+
+def generate_openai_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
+    data = openai_post(
         settings=settings,
         path="/images/generations",
         payload={
@@ -106,46 +272,34 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
         },
         timeout=120,
     )
-    data = response.get("data")
-    if not isinstance(data, list) or not data:
-        raise AIServiceError("图片生成返回为空")
-
-    first = data[0]
+    images = data.get("data")
+    if not isinstance(images, list) or not images:
+        raise AIServiceError("OpenAI 图片生成返回为空")
+    first = images[0]
     if not isinstance(first, dict) or not first.get("b64_json"):
-        raise AIServiceError("图片生成返回缺少 b64_json")
-
-    image_bytes = base64.b64decode(str(first["b64_json"]))
-    static_root = Path(settings.static_dir)
-    target_dir = static_root / "generated"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{safe_slug(filename_prefix)}-{uuid4().hex[:10]}.png"
-    target_path = target_dir / filename
-    target_path.write_bytes(image_bytes)
-
-    public_path = f"/static/generated/{filename}"
-    if settings.public_api_base_url:
-        return f"{settings.public_api_base_url.rstrip('/')}{public_path}"
-    return public_path
+        raise AIServiceError("OpenAI 图片生成返回缺少 b64_json")
+    return base64.b64decode(str(first["b64_json"])), "png"
 
 
-def create_json_response(settings: Settings, prompt: str, use_web_search: bool) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "model": settings.openai_text_model,
-        "input": prompt,
-        "text": {"format": {"type": "json_object"}},
-    }
-    if use_web_search:
-        payload["tools"] = [{"type": "web_search_preview"}]
+def generate_minimax_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
+    if not settings.minimax_api_key:
+        raise AIServiceError("未配置 MINIMAX_API_KEY")
 
-    data = openai_post(settings=settings, path="/responses", payload=payload, timeout=180)
-    text = extract_response_text(data)
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from exc
-    if not isinstance(parsed, dict):
-        raise AIServiceError("AI 返回 JSON 不是对象")
-    return parsed
+    data = minimax_post(
+        settings,
+        "/image_generation",
+        {
+            "model": settings.minimax_image_model,
+            "prompt": prompt,
+            "aspect_ratio": "16:9",
+            "response_format": "base64",
+        },
+        timeout=180,
+    )
+    image = first_base64_image(data)
+    if not image:
+        raise AIServiceError(f"MiniMax 图片生成返回缺少 base64 图片：{data}")
+    return base64.b64decode(image), "jpg"
 
 
 def openai_post(settings: Settings, path: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -161,19 +315,39 @@ def openai_post(settings: Settings, path: str, payload: dict[str, Any], timeout:
             },
             json=payload,
         )
+    return parse_json_response(response, "OpenAI")
+
+
+def minimax_post(settings: Settings, path: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    with httpx.Client(timeout=timeout) as client:
+        response = client.post(
+            f"{MINIMAX_API_BASE}{path}",
+            headers={
+                "Authorization": f"Bearer {settings.minimax_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+    return parse_json_response(response, "MiniMax")
+
+
+def parse_json_response(response: httpx.Response, provider: str) -> dict[str, Any]:
     try:
         data = response.json()
     except ValueError as exc:
-        raise AIServiceError(f"OpenAI 返回非 JSON 响应，HTTP {response.status_code}") from exc
+        raise AIServiceError(f"{provider} 返回非 JSON 响应，HTTP {response.status_code}") from exc
 
     if response.status_code >= 400:
-        raise AIServiceError(f"OpenAI 请求失败，HTTP {response.status_code}: {data}")
+        raise AIServiceError(f"{provider} 请求失败，HTTP {response.status_code}: {data}")
     if not isinstance(data, dict):
-        raise AIServiceError("OpenAI 返回格式不正确")
+        raise AIServiceError(f"{provider} 返回格式不正确")
+    base_resp = data.get("base_resp")
+    if isinstance(base_resp, dict) and base_resp.get("status_code") not in (None, 0):
+        raise AIServiceError(f"{provider} 请求失败：{base_resp}")
     return data
 
 
-def extract_response_text(data: dict[str, Any]) -> str:
+def extract_openai_response_text(data: dict[str, Any]) -> str:
     direct = data.get("output_text")
     if isinstance(direct, str) and direct.strip():
         return direct
@@ -197,6 +371,96 @@ def extract_response_text(data: dict[str, Any]) -> str:
     if not text:
         raise AIServiceError("OpenAI 响应中没有可解析文本")
     return text
+
+
+def first_base64_image(data: dict[str, Any]) -> str:
+    for key in ("image_base64", "base64", "b64_json"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    images = data.get("data") or data.get("images")
+    if isinstance(images, dict):
+        for key in ("image_base64", "images", "data"):
+            nested = images.get(key)
+            if isinstance(nested, str) and nested:
+                return nested
+            if isinstance(nested, list) and nested:
+                first = nested[0]
+                if isinstance(first, str):
+                    return first
+                if isinstance(first, dict):
+                    for image_key in ("image_base64", "base64", "b64_json"):
+                        value = first.get(image_key)
+                        if isinstance(value, str) and value:
+                            return value
+    if isinstance(images, list) and images:
+        first = images[0]
+        if isinstance(first, str):
+            return first
+        if isinstance(first, dict):
+            for key in ("image_base64", "base64", "b64_json"):
+                value = first.get(key)
+                if isinstance(value, str) and value:
+                    return value
+    return ""
+
+
+def extract_json_object(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?", "", stripped).strip()
+        stripped = re.sub(r"```$", "", stripped).strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        return stripped[start : end + 1]
+    return stripped
+
+
+def parse_source_urls(value: str) -> list[str]:
+    return [url.strip() for url in value.split(",") if url.strip()]
+
+
+def text_of(node: ET.Element, path: str, ns: dict[str, str] | None = None) -> str:
+    child = node.find(path, ns or {})
+    if child is None or child.text is None:
+        return ""
+    return child.text.strip()
+
+
+def normalize_datetime_string(value: str) -> str:
+    parsed = parse_datetime(value)
+    return parsed.isoformat() if parsed else ""
+
+
+def parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def strip_html(value: str) -> str:
+    return re.sub(r"<[^>]+>", " ", value)
+
+
+def clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def source_name_from_url(url: str) -> str:
+    match = re.search(r"https?://(?:www\.)?([^/]+)", url)
+    return match.group(1) if match else url
 
 
 def safe_slug(value: str) -> str:

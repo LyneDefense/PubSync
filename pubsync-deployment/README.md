@@ -43,12 +43,23 @@ WECHAT_APP_ID=wx...
 WECHAT_APP_SECRET=...
 CORS_ORIGINS=https://enceladus.online,http://enceladus.online
 
-# AI workflow. Leave OPENAI_API_KEY empty to keep using mock news and template articles.
-OPENAI_API_KEY=sk-...
+# AI workflow. If the selected provider key is empty, PubSync falls back to mock news and template articles.
+LLM_PROVIDER=minimax
+IMAGE_PROVIDER=minimax
+MINIMAX_API_KEY=...
+MINIMAX_TEXT_MODEL=MiniMax-M1
+MINIMAX_IMAGE_MODEL=image-01
+
+# Optional OpenAI provider config.
+OPENAI_API_KEY=
 OPENAI_TEXT_MODEL=gpt-4.1
 OPENAI_IMAGE_MODEL=gpt-image-1
+
 GENERATE_ARTICLE_IMAGES=true
 MAX_ARTICLE_IMAGES=3
+NEWS_SOURCE_URLS=https://techcrunch.com/category/artificial-intelligence/feed/,https://venturebeat.com/category/ai/feed/,https://www.theverge.com/rss/ai-artificial-intelligence/index.xml,https://hnrss.org/newest?q=AI,https://hnrss.org/newest?q=OpenAI
+NEWS_LOOKBACK_HOURS=72
+MAX_NEWS_CANDIDATES=40
 PUBLIC_API_BASE_URL=https://enceladus.online/PubSync/api
 AUTO_SEND_WECHAT_DRAFT=false
 ```
@@ -71,20 +82,20 @@ curl http://127.0.0.1:18000/health
 
 ## AI Workflow
 
-When `OPENAI_API_KEY` is configured, the daily job does this:
+When the selected provider key is configured, the daily job does this:
 
 ```text
-1. Use the text model with web search to discover recent AI news.
-2. Store deduplicated candidates in PostgreSQL.
-3. Select important items by model-assigned importance score.
-4. Generate section images for the top selected items.
+1. Fetch recent candidate news from NEWS_SOURCE_URLS.
+2. Ask the selected text model to deduplicate, score, classify, and summarize candidates.
+3. Store selected candidates in PostgreSQL.
+4. Generate section images for the top selected items through IMAGE_PROVIDER.
 5. Generate a WeChat-style article with HTML formatting.
 6. Generate a cover image.
 7. Save the article locally.
 8. If AUTO_SEND_WECHAT_DRAFT=true, upload the cover and create a WeChat draft.
 ```
 
-If `OPENAI_API_KEY` is empty, PubSync keeps the current safe fallback:
+If the selected provider key is empty, PubSync keeps the current safe fallback:
 
 ```text
 mock news -> template article -> manual WeChat draft sending
