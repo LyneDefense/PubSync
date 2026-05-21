@@ -117,8 +117,8 @@ class WeChatArticleHTMLFormatter(HTMLParser):
             "margin:0 0 28px;padding:0 0 24px;border-bottom:1px solid rgba(148,163,184,0.45);"
         ),
         "h2": (
-            "margin:30px 0 18px;padding:2px 0 2px 14px;border-left:4px solid #14b8a6;"
-            "background:transparent;color:inherit;font-size:18px;line-height:1.45;font-weight:700;"
+            "margin:34px 0 18px;padding:0 0 10px;border-bottom:2px solid #14b8a6;"
+            "background:transparent;color:inherit;font-size:19px;line-height:1.45;font-weight:700;"
         ),
         "h3": (
             "margin:20px 0 10px;color:inherit;font-size:16px;line-height:1.5;font-weight:700;"
@@ -130,7 +130,7 @@ class WeChatArticleHTMLFormatter(HTMLParser):
         "ul": "margin:8px 0 16px;padding-left:20px;color:inherit;",
         "li": "margin:0 0 8px;color:inherit;font-size:15px;line-height:1.75;",
         "blockquote": (
-            "margin:18px 0;padding:14px 16px;border-left:4px solid #14b8a6;"
+            "margin:18px 0 18px 2px;padding:2px 0 2px 14px;border-left:3px solid rgba(20,184,166,0.75);"
             "background:transparent;color:inherit;font-size:15px;line-height:1.75;"
         ),
         "a": "color:#0f766e;text-decoration:none;border-bottom:1px solid #99f6e4;",
