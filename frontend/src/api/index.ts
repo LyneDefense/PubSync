@@ -1,4 +1,4 @@
-import type { Article, ArticleUpdate, Dashboard, LoginResponse, NewsItem } from './types'
+import type { Article, ArticleUpdate, Dashboard, LoginResponse, NewsItem, OperationTask } from './types'
 
 const API_BASE = `${import.meta.env.BASE_URL}api`
 const TOKEN_KEY = 'pubsync_token'
@@ -73,7 +73,11 @@ export function updateNewsSelection(id: number, selected: boolean) {
 }
 
 export function generateArticle() {
-  return request<Article>('/articles/generate', { method: 'POST' })
+  return request<OperationTask>('/articles/generate', { method: 'POST' })
+}
+
+export function getTask(id: string) {
+  return request<OperationTask>(`/tasks/${id}`)
 }
 
 export function getLatestArticle() {

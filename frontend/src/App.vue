@@ -9,6 +9,7 @@ import {
   getDashboard,
   getAuthToken,
   getLatestArticle,
+  getTask,
   listNews,
   login,
   sendArticleToWechat,
@@ -79,6 +80,10 @@ function setArticle(nextArticle: Article | null) {
   form.content_html = nextArticle?.content_html || ''
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
 async function loadAll() {
   const [nextDashboard, nextNews, nextArticle] = await Promise.all([
     getDashboard(),
@@ -136,9 +141,27 @@ async function handleDeletePlaceholderNews() {
 }
 
 async function handleGenerateArticle() {
-  await runAction('generate', '正在生成文章', async () => {
-    setArticle(await generateArticle())
+  await runAction('generate', '已提交后台生成任务', async () => {
+    const task = await generateArticle()
+    showMessage(task.message)
+
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await wait(5000)
+      const latestTask = await getTask(task.id)
+      showMessage(latestTask.message)
+
+      if (latestTask.status === 'succeeded') {
+        await refreshDashboardAndArticle()
+        return
+      }
+
+      if (latestTask.status === 'failed') {
+        throw new Error(latestTask.error_message || '文章生成失败')
+      }
+    }
+
     await refreshDashboardAndArticle()
+    throw new Error('文章还在后台生成，请稍后刷新页面查看最新文章')
   })
 }
 

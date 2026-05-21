@@ -1,4 +1,5 @@
 export type ArticleStatus = 'draft' | 'generated' | 'sent_to_wechat' | 'failed'
+export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
 export interface NewsItem {
   id: number
@@ -44,4 +45,15 @@ export interface ArticleUpdate {
 export interface LoginResponse {
   access_token: string
   token_type: string
+}
+
+export interface OperationTask {
+  id: string
+  task_type: string
+  status: TaskStatus
+  message: string
+  article_id: number | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
 }

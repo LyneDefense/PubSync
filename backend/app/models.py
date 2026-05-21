@@ -23,6 +23,13 @@ class SourceStatus(StrEnum):
     muted = "muted"
 
 
+class TaskStatus(StrEnum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 class NewsItem(Base):
     __tablename__ = "news_items"
 
@@ -93,3 +100,22 @@ class NewsSource(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class OperationTask(Base):
+    __tablename__ = "operation_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[TaskStatus] = mapped_column(
+        Enum(TaskStatus, name="task_status"),
+        default=TaskStatus.queued,
+        nullable=False,
+    )
+    message: Mapped[str] = mapped_column(String(300), nullable=False, default="已加入后台任务")
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    article: Mapped[Article | None] = relationship()

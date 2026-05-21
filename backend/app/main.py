@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,14 +12,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, NewsItem
+from app.database import SessionLocal, create_db_and_tables, get_db
+from app.models import AppSetting, Article, NewsItem, OperationTask, TaskStatus
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
     DashboardRead,
     NewsItemRead,
     NewsItemUpdate,
+    OperationTaskRead,
     SettingRead,
     SettingUpdate,
 )
@@ -42,6 +44,45 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+def run_article_generation_task(task_id: str) -> None:
+    db = SessionLocal()
+    try:
+        task = db.get(OperationTask, task_id)
+        if not task:
+            return
+
+        task.status = TaskStatus.running
+        task.message = "正在生成文章，可能需要数分钟"
+        task.error_message = None
+        db.commit()
+
+        article = generate_article_from_selected_news(db)
+        task.status = TaskStatus.succeeded
+        task.message = "文章生成完成"
+        task.article_id = article.id
+        task.error_message = None
+        db.commit()
+    except (ValueError, AIServiceError) as exc:
+        db.rollback()
+        task = db.get(OperationTask, task_id)
+        if task:
+            task.status = TaskStatus.failed
+            task.message = "文章生成失败"
+            task.error_message = str(exc)
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        task = db.get(OperationTask, task_id)
+        if task:
+            task.status = TaskStatus.failed
+            task.message = "文章生成失败"
+            task.error_message = f"{type(exc).__name__}: {exc}"
+            db.commit()
+        raise
+    finally:
+        db.close()
 
 
 def scheduled_news_fetch() -> None:
@@ -156,14 +197,27 @@ def update_news_endpoint(news_id: int, payload: NewsItemUpdate, db: Session = De
     return news
 
 
-@app.post("/articles/generate", response_model=ArticleRead)
-def generate_article_endpoint(db: Session = Depends(get_db)) -> Article:
-    try:
-        return generate_article_from_selected_news(db)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except AIServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+@app.post("/articles/generate", response_model=OperationTaskRead)
+def generate_article_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
+    task = OperationTask(
+        id=str(uuid4()),
+        task_type="article_generation",
+        status=TaskStatus.queued,
+        message="已加入后台生成任务",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    background_tasks.add_task(run_article_generation_task, task.id)
+    return task
+
+
+@app.get("/tasks/{task_id}", response_model=OperationTaskRead)
+def get_task_endpoint(task_id: str, db: Session = Depends(get_db)) -> OperationTask:
+    task = db.get(OperationTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 @app.get("/articles/latest", response_model=ArticleRead | None)

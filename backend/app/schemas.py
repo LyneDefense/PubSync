@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ArticleStatus, SourceStatus
+from app.models import ArticleStatus, SourceStatus, TaskStatus
 
 
 class NewsItemRead(BaseModel):
@@ -34,6 +34,19 @@ class ArticleRead(BaseModel):
     cover_image_url: str
     status: ArticleStatus
     wechat_draft_id: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OperationTaskRead(BaseModel):
+    id: str
+    task_type: str
+    status: TaskStatus
+    message: str
+    article_id: int | None
     error_message: str | None
     created_at: datetime
     updated_at: datetime
