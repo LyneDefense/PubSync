@@ -84,10 +84,16 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
 要求：
 - 不能改变新闻事实，不能编造来源、融资金额、发布日期、产品能力或人物观点。
 - 可以做编辑化提炼、背景解释、影响分析，但事实和判断要区分。
-- 文章要适合公众号阅读，结构清晰，段落不要太长。
+- 标题必须输出“AI科技早报 | xxx”格式，xxx 是你生成的标题内容；不要使用其他前缀。
+- 文章要适合公众号阅读，结构清晰，段落不要太长，避免堆叠多个大标题。
+- 开头先写 1 段 80-140 字导语，说明今天最重要的主线。
+- 正文每条新闻都要写得充分一些，不能只复述摘要；每条至少包含“发生了什么”“为什么重要”“编辑观察”三个层次。
+- 每条新闻建议 220-360 个中文字，既要有事实，也要有背景解释和影响分析。
 - 每条新闻都保留来源链接。
-- 正文 HTML 可以使用 h2/h3/p/ul/li/blockquote/a/img 标签，不要使用 script、iframe、外链 CSS。
-- 如果新闻有 image_url，则在对应小节插入一张图片。
+- 正文 HTML 只能使用 section/h2/h3/p/ul/li/blockquote/a/img/strong 标签，不要使用 script、iframe、外链 CSS。
+- 排版要稳定：每条新闻使用一个 section；section 内顺序为 h2、元信息 p、可选图片、正文段落、blockquote 编辑观察、来源链接 p。
+- 不要把来源链接单独放成巨大段落。
+- 如果新闻有 image_url，则最多插入一张图片，图片前后都要有正文，不要连续堆图。
 - 输出 JSON。
 
 新闻事实：
@@ -97,7 +103,7 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
 {{
   "title": "不超过 64 字的公众号标题",
   "intro": "不超过 120 字的摘要导语",
-  "cover_prompt": "英文封面图提示词，科技媒体风格，不含真实人物肖像和真实 logo",
+  "cover_prompt": "英文封面图提示词，只能是抽象科技视觉、信息图或概念插画；禁止真实人物肖像、虚构人物肖像、真实 logo、仿新闻现场照片",
   "content_html": "公众号正文 HTML"
 }}
 """

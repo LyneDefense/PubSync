@@ -168,6 +168,13 @@ Expected:
 
 The console at `https://enceladus.online/PubSync/` requires the fixed admin username and password from `.env`.
 
+If old placeholder news is still visible after upgrading, use the console action `清理占位数据`, or call:
+
+```bash
+curl -X DELETE https://enceladus.online/PubSync/api/news/placeholders \
+  -H "Authorization: Bearer <token>"
+```
+
 ## Common Commands
 
 ```bash

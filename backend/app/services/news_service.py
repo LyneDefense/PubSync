@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -66,6 +66,26 @@ def list_news(db: Session) -> list[NewsItem]:
             )
         )
     )
+
+
+def delete_placeholder_news(db: Session) -> int:
+    mock_urls = [
+        "https://example.com/openai-multimodal-update",
+        "https://example.com/deepmind-gemini-research",
+        "https://example.com/anthropic-enterprise-safety",
+        "https://example.com/meta-open-model-tools",
+        "https://example.com/nvidia-inference-stack",
+        "https://example.com/huggingface-eval-leaderboard",
+        "https://example.com/ai-coding-assistant-market",
+        "https://example.com/ai-content-labeling-policy",
+    ]
+    result = db.execute(
+        delete(NewsItem).where(
+            NewsItem.url.in_(mock_urls) | NewsItem.url.like("https://example.com/%")
+        )
+    )
+    db.commit()
+    return int(result.rowcount or 0)
 
 
 def parse_datetime(value: object) -> datetime | None:

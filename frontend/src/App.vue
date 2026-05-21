@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import {
   clearAuthToken,
+  deletePlaceholderNews,
   fetchNews,
   generateArticle,
   getDashboard,
@@ -125,6 +126,15 @@ async function handleFetchNews() {
   })
 }
 
+async function handleDeletePlaceholderNews() {
+  await runAction('cleanup', '正在清理历史占位数据', async () => {
+    const result = await deletePlaceholderNews()
+    news.value = await listNews()
+    await refreshDashboardAndArticle()
+    showMessage(`已清理 ${result.deleted} 条历史占位数据`)
+  })
+}
+
 async function handleGenerateArticle() {
   await runAction('generate', '正在生成文章', async () => {
     setArticle(await generateArticle())
@@ -230,6 +240,9 @@ onMounted(() => {
         <div class="actions">
           <button type="button" :disabled="Boolean(pendingAction)" @click="handleFetchNews">
             {{ pendingAction === 'fetch' ? '抓取中' : '重新抓取' }}
+          </button>
+          <button type="button" :disabled="Boolean(pendingAction)" @click="handleDeletePlaceholderNews">
+            {{ pendingAction === 'cleanup' ? '清理中' : '清理占位数据' }}
           </button>
           <button type="button" :disabled="Boolean(pendingAction)" @click="handleGenerateArticle">
             {{ pendingAction === 'generate' ? '生成中' : '生成文章' }}

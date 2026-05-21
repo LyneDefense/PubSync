@@ -57,6 +57,10 @@ export function fetchNews() {
   return request<NewsItem[]>('/news/fetch', { method: 'POST' })
 }
 
+export function deletePlaceholderNews() {
+  return request<{ deleted: number }>('/news/placeholders', { method: 'DELETE' })
+}
+
 export function listNews() {
   return request<NewsItem[]>('/news')
 }

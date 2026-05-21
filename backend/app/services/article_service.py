@@ -57,7 +57,7 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
     max_images = max(0, settings.max_article_images)
     for index, item in enumerate(selected_news):
         image_url = None
-        if settings.generate_article_images and index < max_images:
+        if settings.generate_article_images and index < max_images and should_generate_image(item):
             try:
                 image_url = generate_image(
                     settings,
@@ -89,17 +89,52 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
     except AIServiceError:
         cover_image_url = None
     return (
-        str(article_data["title"])[:300],
+        normalize_article_title(str(article_data["title"]))[:300],
         str(article_data["intro"]),
-        str(article_data["content_html"]),
+        normalize_article_html(str(article_data["content_html"])),
         cover_image_url or DEFAULT_COVER,
     )
 
 
+def normalize_article_title(title: str) -> str:
+    title = title.strip()
+    prefix = "AI科技早报 | "
+    if title.startswith(prefix):
+        return title
+    if title.startswith("AI科技早报|"):
+        return f"{prefix}{title.split('|', 1)[1].strip()}"
+    if title.startswith("AI 早报："):
+        title = title.removeprefix("AI 早报：").strip()
+    return f"{prefix}{title}"
+
+
+def normalize_article_html(content_html: str) -> str:
+    return content_html.replace("<h1", "<h2").replace("</h1>", "</h2>")
+
+
+def should_generate_image(item: NewsItem) -> bool:
+    text = f"{item.title} {item.summary}"
+    sensitive_terms = [
+        "黄仁勋",
+        "马斯克",
+        "Sam Altman",
+        "Altman",
+        "Jensen Huang",
+        "Elon Musk",
+        "人物",
+        "CEO",
+        "创始人",
+    ]
+    return not any(term.lower() in text.lower() for term in sensitive_terms)
+
+
 def build_news_image_prompt(item: NewsItem) -> str:
     return (
-        "Editorial technology illustration, 16:9 composition, no real person, no real logo, "
+        "Abstract editorial technology infographic, 16:9 composition. "
+        "Strictly no human face, no human figure, no celebrity, no real person, no fictional person, "
+        "no real logo, no brand mark, no photorealistic news scene. "
         f"topic: {item.title}. Context: {item.summary}. "
+        "Use abstract chips, networks, charts, datacenter shapes, typography-free visual metaphors. "
         "Clean modern AI newsletter style, suitable for WeChat article section image."
     )
 
@@ -107,8 +142,9 @@ def build_news_image_prompt(item: NewsItem) -> str:
 def build_cover_prompt(news_items: list[NewsItem]) -> str:
     topics = "; ".join(item.title for item in news_items[:5])
     return (
-        "Modern Chinese AI newsletter cover image, 16:9 composition, abstract technology visuals, "
-        "no real person, no real company logo, polished editorial style. Topics: "
+        "Modern Chinese AI newsletter cover image, 16:9 composition, abstract technology infographic, "
+        "strictly no human face, no human figure, no celebrity, no real logo, no brand mark, "
+        "no photorealistic news scene, polished editorial style. Topics: "
         f"{topics}"
     )
 
