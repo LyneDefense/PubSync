@@ -1,15 +1,30 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
 from app.config import Settings
-from app.news_fetching.models import NewsRegion, NewsSourceConfig, RawNewsCandidate
+from app.news_fetching.models import (
+    NewsFetchReport,
+    NewsFetchResult,
+    NewsRegion,
+    NewsSourceConfig,
+    RawNewsCandidate,
+    SourceFetchReport,
+)
 from app.news_fetching.parser import parse_feed
 from app.news_fetching.sources import build_source_configs
 
 
+logger = logging.getLogger(__name__)
+
+
 def fetch_news_candidates(settings: Settings) -> list[RawNewsCandidate]:
+    return fetch_news(settings).candidates
+
+
+def fetch_news(settings: Settings) -> NewsFetchResult:
     sources = build_source_configs(
         international_urls=settings.international_news_source_urls,
         domestic_urls=settings.domestic_news_source_urls,
@@ -19,9 +34,10 @@ def fetch_news_candidates(settings: Settings) -> list[RawNewsCandidate]:
     return fetch_raw_news_candidates(settings, sources)
 
 
-def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig]) -> list[RawNewsCandidate]:
+def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig]) -> NewsFetchResult:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(24, settings.news_lookback_hours))
     all_candidates: list[RawNewsCandidate] = []
+    source_reports: list[SourceFetchReport] = []
     seen_urls: set[str] = set()
     region_limits = {
         NewsRegion.international: max(0, settings.international_news_candidates),
@@ -32,7 +48,7 @@ def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig
         for source in sources:
             if not source.enabled:
                 continue
-            source_candidates = fetch_source_candidates(client, source, cutoff)
+            source_candidates, report = fetch_source_candidates(client, source, cutoff)
             added_for_source = 0
             for candidate in source_candidates:
                 normalized_url = normalize_url(candidate.url)
@@ -53,29 +69,73 @@ def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig
                 added_for_source += 1
                 if added_for_source >= source.max_items:
                     break
+            report.accepted_count = added_for_source
+            source_reports.append(report)
+            log_source_report(report)
 
     selected = select_by_region(all_candidates, region_limits)
-    return assign_candidate_ids(selected[: max(1, settings.max_news_candidates)])
+    assigned = assign_candidate_ids(selected[: max(1, settings.max_news_candidates)])
+    report = NewsFetchReport(
+        sources=source_reports,
+        candidate_count=len(all_candidates),
+        selected_count=len(assigned),
+        domestic_count=sum(1 for candidate in assigned if candidate.region == NewsRegion.domestic),
+        international_count=sum(1 for candidate in assigned if candidate.region == NewsRegion.international),
+    )
+    return NewsFetchResult(candidates=assigned, report=report)
 
 
 def fetch_source_candidates(
     client: httpx.Client,
     source: NewsSourceConfig,
     cutoff: datetime,
-) -> list[RawNewsCandidate]:
+) -> tuple[list[RawNewsCandidate], SourceFetchReport]:
+    report = SourceFetchReport(source=source.name, url=source.url, region=source.region)
     try:
         response = client.get(source.url)
         response.raise_for_status()
-    except httpx.HTTPError:
-        return []
+    except httpx.HTTPError as exc:
+        report.error = f"{type(exc).__name__}: {exc}"
+        return [], report
 
     candidates = parse_feed(response.text, source)
+    report.fetched_count = len(candidates)
+    report.parsed_count = len(candidates)
     filtered = [
         candidate
         for candidate in candidates
         if not candidate.published_at or candidate.published_at >= cutoff
     ]
-    return sorted(filtered, key=candidate_sort_key, reverse=True)
+    report.filtered_count = len(filtered)
+    return sorted(filtered, key=candidate_sort_key, reverse=True), report
+
+
+def log_source_report(report: SourceFetchReport) -> None:
+    if report.error:
+        logger.warning(
+            "news source fetch failed source=%s region=%s url=%s error=%s",
+            report.source,
+            report.region.value,
+            report.url,
+            report.error,
+        )
+        return
+    if report.parsed_count == 0:
+        logger.warning(
+            "news source returned no parsable items source=%s region=%s url=%s",
+            report.source,
+            report.region.value,
+            report.url,
+        )
+        return
+    logger.info(
+        "news source fetched source=%s region=%s parsed=%s filtered=%s accepted=%s",
+        report.source,
+        report.region.value,
+        report.parsed_count,
+        report.filtered_count,
+        report.accepted_count,
+    )
 
 
 def candidate_sort_key(candidate: RawNewsCandidate) -> datetime:

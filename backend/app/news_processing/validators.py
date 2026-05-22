@@ -4,6 +4,20 @@ from app.news_fetching.models import RawNewsCandidate
 from app.news_processing.models import ProcessedNewsItem
 
 
+ALLOWED_CATEGORIES = {
+    "模型发布",
+    "研究进展",
+    "企业应用",
+    "开源项目",
+    "基础设施",
+    "开发者工具",
+    "产品更新",
+    "政策监管",
+    "资本市场",
+    "行业观察",
+}
+
+
 def validate_processed_items(raw_items: object, candidates: list[RawNewsCandidate]) -> list[ProcessedNewsItem]:
     if not isinstance(raw_items, list):
         return []
@@ -20,7 +34,7 @@ def validate_processed_items(raw_items: object, candidates: list[RawNewsCandidat
             continue
 
         score = normalize_score(raw_item.get("importance_score"))
-        if score < 70:
+        if score is None or score < 70:
             continue
 
         candidate = candidate_map[candidate_id]
@@ -32,7 +46,7 @@ def validate_processed_items(raw_items: object, candidates: list[RawNewsCandidat
                 candidate=candidate,
                 display_title=normalize_text(raw_item.get("display_title"), candidate.title)[:500],
                 summary=normalize_text(raw_item.get("summary"), candidate.summary or "暂无摘要"),
-                category=normalize_text(raw_item.get("category"), "AI 动态")[:80],
+                category=normalize_category(raw_item.get("category")),
                 importance_score=score,
                 importance_reason=normalize_text(raw_item.get("importance_reason"), ""),
                 key_facts=normalize_string_list(raw_item.get("key_facts"))[:5],
@@ -54,12 +68,19 @@ def normalize_duplicate_ids(value: Any, candidate_map: dict[str, RawNewsCandidat
     return duplicate_ids
 
 
-def normalize_score(value: object) -> int:
+def normalize_score(value: object) -> int | None:
     try:
         score = int(value)
     except (TypeError, ValueError):
-        return 70
+        return None
     return max(0, min(100, score))
+
+
+def normalize_category(value: object) -> str:
+    category = normalize_text(value, "")
+    if category in ALLOWED_CATEGORIES:
+        return category
+    return "行业观察"
 
 
 def normalize_text(value: object, default: str) -> str:

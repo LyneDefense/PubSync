@@ -62,6 +62,7 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
             "published_at": item.published_at.isoformat(),
             "summary": item.summary,
             "category": item.category,
+            "region": item.region,
             "importance_score": item.importance_score,
             "image_url": None,
         }
@@ -280,6 +281,7 @@ def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: 
             "title": item.title,
             "summary": item.summary,
             "category": item.category,
+            "region": item.region,
             "source": item.source,
         }
         for index, item in enumerate(selected_news)

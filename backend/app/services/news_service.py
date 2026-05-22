@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -5,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import AppSetting, NewsItem
-from app.news_fetching import fetch_news_candidates
+from app.news_fetching import fetch_news
 from app.news_processing import process_news_candidates
 from app.services.ai_service import AIServiceError, is_ai_enabled
 
@@ -22,7 +23,8 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
     now = datetime.now(timezone.utc)
     created_items: list[NewsItem] = []
 
-    candidates = fetch_news_candidates(settings)
+    fetch_result = fetch_news(settings)
+    candidates = fetch_result.candidates
     for item in process_news_candidates(settings, candidates):
         url = str(item.get("url", "")).strip()
         title = str(item.get("title", "")).strip()
@@ -33,9 +35,12 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
             continue
 
         importance_score = normalize_score(item.get("importance_score"))
+        if importance_score is None:
+            continue
         published_at = parse_datetime(item.get("published_at")) or now
         summary = normalize_text(item.get("summary"), default="暂无摘要")
         category = normalize_text(item.get("category"), default="AI 动态")[:80]
+        region = normalize_region(item.get("region"))
         source = normalize_text(item.get("source"), default="Unknown")[:200]
 
         news = NewsItem(
@@ -45,6 +50,7 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
             published_at=published_at,
             summary=summary,
             category=category,
+            region=region,
             importance_score=importance_score,
             selected=importance_score >= 80,
         )
@@ -52,6 +58,7 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
         created_items.append(news)
 
     db.merge(AppSetting(key="last_fetch_at", value=now.isoformat()))
+    db.merge(AppSetting(key="last_fetch_report", value=json.dumps(fetch_result.report.to_dict(), ensure_ascii=False)))
     db.commit()
 
     for news in created_items:
@@ -83,12 +90,19 @@ def parse_datetime(value: object) -> datetime | None:
     return parsed
 
 
-def normalize_score(value: object) -> int:
+def normalize_score(value: object) -> int | None:
     try:
         score = int(value)
     except (TypeError, ValueError):
-        return 70
+        return None
     return max(0, min(100, score))
+
+
+def normalize_region(value: object) -> str:
+    region = str(value or "").strip().lower()
+    if region in {"domestic", "international"}:
+        return region
+    return "international"
 
 
 def normalize_text(value: object, default: str) -> str:

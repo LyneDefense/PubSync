@@ -13,6 +13,7 @@ class NewsItemRead(BaseModel):
     published_at: datetime
     summary: str
     category: str
+    region: str
     importance_score: int
     selected: bool
     created_at: datetime

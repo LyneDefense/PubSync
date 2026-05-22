@@ -9,6 +9,7 @@ export interface NewsItem {
   published_at: string
   summary: string
   category: string
+  region: string
   importance_score: number
   selected: boolean
   created_at: string
