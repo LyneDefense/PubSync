@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     domestic_news_candidates: int = 40
     news_lookback_hours: int = 72
     max_news_candidates: int = 80
+    article_news_limit: int = 10
+    article_news_lookback_hours: int = 72
+    article_domestic_min: int = 1
+    article_domestic_target: int = 3
+    article_domestic_max: int = 4
+    article_international_min: int = 3
+    article_international_target: int = 6
+    article_international_max: int = 7
     public_api_base_url: str = ""
     static_dir: str = "static"
 

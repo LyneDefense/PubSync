@@ -37,6 +37,7 @@ def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]
 - 每条新闻建议 220-360 个中文字，既要有事实，也要有背景解释和影响分析。
 - 每条新闻都保留来源链接。
 - 新闻事实中的 region 只用于组织内容：international 表示国际动态，domestic 表示国内动态；不要直接输出 region、domestic、international 等内部字段。
+- 新闻事实已经按推荐顺序排列：通常国际动态在前、国内动态在后。正文应尊重这个顺序。
 - 如果同时包含国内和国际新闻，可以自然分成“国际动态”和“国内动态”的阅读节奏，但不要为了分组制造空洞小节。
 - 正文 HTML 只能使用 section/h2/h3/p/ul/li/blockquote/a/img/strong 标签，不要使用 script、iframe、table、外链 CSS、class 或 style。
 - 排版结构要适合微信公众号：每条新闻使用一个 section；section 内顺序为 h2、可选图片、正文段落、blockquote 编辑观察、来源链接 p。

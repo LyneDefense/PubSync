@@ -2,9 +2,10 @@ from datetime import datetime
 from html import escape
 from html.parser import HTMLParser
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from app.article_selection import select_article_news
 from app.config import get_settings
 from app.models import Article, ArticleNewsItem, ArticleStatus, NewsItem
 from app.services.ai_service import AIServiceError, generate_image, generate_wechat_article, is_ai_enabled, plan_article_images
@@ -14,18 +15,12 @@ DEFAULT_COVER = "https://images.unsplash.com/photo-1677442136019-21780ecad995?au
 
 
 def generate_article_from_selected_news(db: Session) -> Article:
-    selected_news = list(
-        db.scalars(
-            select(NewsItem)
-            .where(NewsItem.selected.is_(True))
-            .order_by(NewsItem.importance_score.desc(), NewsItem.published_at.desc())
-            .limit(10)
-        )
-    )
-    if not selected_news:
-        raise ValueError("请先选择至少一条新闻")
-
     settings = get_settings()
+    selection = select_article_news(db, settings)
+    selected_news = selection.news_items
+    if not selected_news:
+        raise ValueError(f"最近 {settings.article_news_lookback_hours} 小时内没有可生成文章的已选新闻")
+
     if is_ai_enabled(settings):
         title, intro, content_html, cover_image_url = generate_ai_article_content(settings, selected_news)
     else:
