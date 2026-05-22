@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from html import escape
 from html.parser import HTMLParser
@@ -8,10 +9,11 @@ from sqlalchemy.orm import Session
 from app.article_selection import select_article_news
 from app.config import get_settings
 from app.models import Article, ArticleNewsItem, ArticleStatus, NewsItem
-from app.services.ai_service import AIServiceError, generate_image, generate_wechat_article, is_ai_enabled, plan_article_images
+from app.services.ai_service import AIServiceError, decide_article_image, generate_image, generate_wechat_article, is_ai_enabled
 
 
 DEFAULT_COVER = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=1200&q=80"
+logger = logging.getLogger(__name__)
 
 
 def generate_article_from_selected_news(db: Session) -> Article:
@@ -65,7 +67,7 @@ def generate_ai_article_content(settings, selected_news: list[NewsItem]) -> tupl
     ]
 
     if settings.generate_article_images:
-        apply_planned_images(settings, selected_news, news_payload)
+        apply_article_images(settings, selected_news, news_payload)
 
     article_data = generate_wechat_article(settings, news_payload)
     content_html = ensure_article_images(
@@ -264,116 +266,103 @@ def should_skip_public_paragraph(text: str) -> bool:
     return sum(marker in compact for marker in internal_markers) >= 2
 
 
-def apply_planned_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
+def apply_article_images(settings, selected_news: list[NewsItem], news_payload: list[dict]) -> None:
     max_images = max(0, settings.max_article_images)
     min_images = max(0, min(settings.min_article_images, max_images))
     if max_images <= 0:
         return
 
-    planning_items = [
-        {
-            "index": index,
-            "title": item.title,
-            "summary": item.summary,
-            "category": item.category,
-            "region": item.region,
-            "source": item.source,
-        }
-        for index, item in enumerate(selected_news)
-    ]
+    generated_indexes: set[int] = set()
+
+    for index, news in enumerate(selected_news):
+        if len(generated_indexes) >= max_images:
+            break
+        decision = decide_news_image(settings, news, forced=False)
+        if not truthy(decision.get("should_generate")):
+            continue
+        if generate_news_image(settings, news, news_payload, index, decision, forced=False):
+            generated_indexes.add(index)
+
+    if len(generated_indexes) >= min_images:
+        return
+
+    for index, news in ranked_news_indexes(selected_news):
+        if len(generated_indexes) >= min_images or len(generated_indexes) >= max_images:
+            break
+        if index in generated_indexes:
+            continue
+        decision = decide_news_image(settings, news, forced=True)
+        if generate_news_image(settings, news, news_payload, index, decision, forced=True):
+            generated_indexes.add(index)
+
+    if len(generated_indexes) < min_images:
+        logger.warning("article image generation below minimum generated=%s minimum=%s", len(generated_indexes), min_images)
+
+
+def decide_news_image(settings, news: NewsItem, forced: bool) -> dict:
+    payload = news_image_decision_payload(news)
     try:
-        plan = plan_article_images(settings, planning_items, min_images=min_images, max_images=max_images)
-    except AIServiceError:
-        plan = {"items": []}
-
-    selected_plans = select_image_plans(plan.get("items", []), min_images=min_images, max_images=max_images)
-    generated_count = 0
-    for item_plan in selected_plans:
-        if generated_count >= max_images:
-            break
-        try:
-            index = int(item_plan.get("index"))
-        except (TypeError, ValueError):
-            continue
-        if index < 0 or index >= len(selected_news):
-            continue
-        prompt = make_safe_image_prompt(str(item_plan.get("prompt") or item_plan.get("fallback_prompt") or "").strip())
-        if not prompt or not is_safe_image_prompt(prompt):
-            continue
-        try:
-            image_url = generate_image(settings, prompt, f"news-{selected_news[index].id}")
-        except AIServiceError:
-            continue
-        news_payload[index]["image_url"] = image_url
-        generated_count += 1
+        return decide_article_image(settings, payload, forced=forced)
+    except AIServiceError as exc:
+        logger.warning("article image decision failed news_id=%s forced=%s error=%s", news.id, forced, exc)
+        if forced:
+            return {"should_generate": True, "fallback_prompt": build_forced_news_image_prompt(news)}
+        return {"should_generate": False, "fallback_prompt": build_forced_news_image_prompt(news)}
 
 
-def select_image_plans(raw_items: object, min_images: int, max_images: int) -> list[dict]:
-    if max_images <= 0 or not isinstance(raw_items, list):
-        return []
+def generate_news_image(
+    settings,
+    news: NewsItem,
+    news_payload: list[dict],
+    index: int,
+    decision: dict,
+    forced: bool,
+) -> bool:
+    raw_prompt = str(decision.get("prompt") or decision.get("fallback_prompt") or "").strip()
+    if forced and not raw_prompt:
+        raw_prompt = build_forced_news_image_prompt(news)
+    prompt = make_safe_image_prompt(raw_prompt)
+    if not prompt or not is_safe_image_prompt(prompt):
+        prompt = make_safe_image_prompt(build_forced_news_image_prompt(news))
+    if not is_safe_image_prompt(prompt):
+        logger.warning("article image prompt rejected news_id=%s forced=%s", news.id, forced)
+        return False
+    try:
+        image_url = generate_image(settings, prompt, f"news-{news.id}")
+    except AIServiceError as exc:
+        logger.warning("article image generation failed news_id=%s forced=%s error=%s", news.id, forced, exc)
+        return False
+    if not image_url:
+        return False
+    news_payload[index]["image_url"] = image_url
+    return True
 
-    valid_items = [item for item in raw_items if isinstance(item, dict)]
-    natural = [
-        normalize_image_plan(item, forced=False)
-        for item in valid_items
-        if item.get("should_generate") and normalize_risk_level(item.get("risk_level")) != "high"
-    ]
-    selected = dedupe_image_plans(natural)[:max_images]
 
-    if len(selected) >= min_images:
-        return selected
+def news_image_decision_payload(news: NewsItem) -> dict[str, object]:
+    return {
+        "title": news.title,
+        "summary": news.summary,
+        "category": news.category,
+        "region": news.region,
+        "source": news.source,
+        "importance_score": news.importance_score,
+    }
 
-    selected_indexes = {item["index"] for item in selected if "index" in item}
-    fallback_pool = sorted(
-        dedupe_image_plans(
-            [
-                normalize_image_plan(item, forced=True)
-                for item in valid_items
-                if item.get("index") not in selected_indexes
-            ]
-        ),
-        key=lambda item: risk_rank(item.get("risk_level")),
+
+def ranked_news_indexes(news_items: list[NewsItem]) -> list[tuple[int, NewsItem]]:
+    return sorted(
+        enumerate(news_items),
+        key=lambda pair: (pair[1].importance_score, pair[1].published_at),
+        reverse=True,
     )
-    for item in fallback_pool:
-        if len(selected) >= min_images or len(selected) >= max_images:
-            break
-        if item.get("index") in selected_indexes:
-            continue
-        selected.append(item)
-        selected_indexes.add(item["index"])
-    return selected
 
 
-def normalize_image_plan(item: dict, forced: bool) -> dict:
-    plan = dict(item)
-    if forced:
-        plan["prompt"] = plan.get("fallback_prompt") or plan.get("prompt") or ""
-    return plan
-
-
-def dedupe_image_plans(items: list[dict]) -> list[dict]:
-    deduped: list[dict] = []
-    seen: set[int] = set()
-    for item in items:
-        try:
-            index = int(item.get("index"))
-        except (TypeError, ValueError):
-            continue
-        if index in seen:
-            continue
-        item["index"] = index
-        seen.add(index)
-        deduped.append(item)
-    return deduped
-
-
-def normalize_risk_level(value: object) -> str:
-    risk = str(value or "medium").strip().lower()
-    return risk if risk in {"low", "medium", "high"} else "medium"
-
-
-def risk_rank(value: object) -> int:
-    return {"low": 0, "medium": 1, "high": 2}[normalize_risk_level(value)]
+def truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "1", "是", "需要"}
+    return bool(value)
 
 
 def ensure_article_images(content_html: str, news_payload: list[dict], min_images: int) -> str:
@@ -443,6 +432,18 @@ def make_safe_image_prompt(prompt: str) -> str:
         "no fictional person, no logo, no brand mark, no photorealistic news scene, no UI screenshot, no text."
     )
     return f"{prompt.rstrip()} {safety_suffix}"
+
+
+def build_forced_news_image_prompt(news: NewsItem) -> str:
+    summary = " ".join(news.summary.split())[:220]
+    return (
+        "Editorial abstract technology infographic for an AI newsletter article. "
+        f"Theme: {news.category}. "
+        f"Represent the news as data flows, model layers, chips, cloud infrastructure, and network signals. "
+        f"Use the article context without depicting named people, logos, screenshots, or real scenes. Context: {summary}. "
+        "No human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
+        "no photorealistic news scene, no UI screenshot, no text."
+    )
 
 
 def build_cover_prompt(news_items: list[NewsItem]) -> str:
