@@ -41,6 +41,7 @@ def build_candidate(title: str, url: str, published: str, summary: str, source: 
     if not clean_title or not clean_url:
         return None
     return RawNewsCandidate(
+        candidate_id="",
         title=clean_title,
         source=source.name,
         region=source.region,

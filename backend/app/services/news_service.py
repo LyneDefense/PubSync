@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import AppSetting, NewsItem
-from app.services.ai_service import AIServiceError, discover_ai_news, is_ai_enabled
+from app.news_fetching import fetch_news_candidates
+from app.news_processing import process_news_candidates
+from app.services.ai_service import AIServiceError, is_ai_enabled
 
 
 def fetch_latest_news(db: Session) -> list[NewsItem]:
@@ -20,7 +22,8 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
     now = datetime.now(timezone.utc)
     created_items: list[NewsItem] = []
 
-    for item in discover_ai_news(settings):
+    candidates = fetch_news_candidates(settings)
+    for item in process_news_candidates(settings, candidates):
         url = str(item.get("url", "")).strip()
         title = str(item.get("title", "")).strip()
         if not url or not title or "example.com" in url:

@@ -8,7 +8,6 @@ from uuid import uuid4
 import httpx
 
 from app.config import Settings
-from app.news_fetching import fetch_news_candidates
 
 
 class AIServiceError(RuntimeError):
@@ -22,48 +21,6 @@ def is_ai_enabled(settings: Settings) -> bool:
     if provider == "minimax":
         return bool(settings.minimax_api_key)
     return False
-
-
-def discover_ai_news(settings: Settings) -> list[dict[str, Any]]:
-    candidates = fetch_news_candidates(settings)
-    if not candidates:
-        raise AIServiceError("没有从新闻源抓取到候选新闻，请检查 NEWS_SOURCE_URLS")
-
-    prompt = f"""
-你是一个严谨的 AI 行业新闻编辑。请从候选新闻中筛选最近 24-72 小时内最重要的 AI 资讯。
-
-要求：
-- 只能使用候选新闻里提供的事实、标题、来源、链接和发布时间。
-- 不要编造候选集中不存在的新闻。
-- 排除低质量转载、重复新闻、广告稿和无法判断主题的内容。
-- 返回 8-12 条；如果候选不足，可少于 8 条。
-- 每条必须保留真实 URL，不能使用 example.com。
-
-候选新闻：
-{json.dumps(candidates, ensure_ascii=False, indent=2)}
-
-输出 JSON，格式为：
-{{
-  "items": [
-    {{
-      "title": "中文标题",
-      "source": "来源名称",
-      "url": "https://...",
-      "published_at": "ISO 8601 时间；未知可为空字符串",
-      "summary": "2-3 句中文摘要，包含事实和影响",
-      "category": "模型发布/研究进展/企业应用/开源项目/基础设施/开发者工具/产品更新/政策监管",
-      "importance_score": 0-100,
-      "key_facts": ["事实1", "事实2", "事实3"],
-      "image_prompt": "如果需要配图，用于生成科技媒体风格概念图的英文提示词"
-    }}
-  ]
-}}
-"""
-    data = create_json_response(settings=settings, prompt=prompt)
-    items = data.get("items", [])
-    if not isinstance(items, list):
-        raise AIServiceError("AI 新闻发现返回格式不正确：items 不是列表")
-    return [item for item in items if isinstance(item, dict)]
 
 
 def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]) -> dict[str, Any]:

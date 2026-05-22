@@ -9,15 +9,14 @@ from app.news_fetching.parser import parse_feed
 from app.news_fetching.sources import build_source_configs
 
 
-def fetch_news_candidates(settings: Settings) -> list[dict[str, str]]:
+def fetch_news_candidates(settings: Settings) -> list[RawNewsCandidate]:
     sources = build_source_configs(
         international_urls=settings.international_news_source_urls,
         domestic_urls=settings.domestic_news_source_urls,
         legacy_urls=settings.news_source_urls,
         per_source_limit=settings.news_per_source_limit,
     )
-    candidates = fetch_raw_news_candidates(settings, sources)
-    return [candidate.to_prompt_dict() for candidate in candidates]
+    return fetch_raw_news_candidates(settings, sources)
 
 
 def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig]) -> list[RawNewsCandidate]:
@@ -42,6 +41,7 @@ def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig
                 seen_urls.add(normalized_url)
                 all_candidates.append(
                     RawNewsCandidate(
+                        candidate_id="",
                         title=candidate.title,
                         source=candidate.source,
                         region=candidate.region,
@@ -55,7 +55,7 @@ def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig
                     break
 
     selected = select_by_region(all_candidates, region_limits)
-    return selected[: max(1, settings.max_news_candidates)]
+    return assign_candidate_ids(selected[: max(1, settings.max_news_candidates)])
 
 
 def fetch_source_candidates(
@@ -96,6 +96,21 @@ def select_by_region(
         limit = region_limits[region]
         selected.extend(region_candidates[:limit] if limit else region_candidates)
     return sorted(selected, key=candidate_sort_key, reverse=True)
+
+
+def assign_candidate_ids(candidates: list[RawNewsCandidate]) -> list[RawNewsCandidate]:
+    return [
+        RawNewsCandidate(
+            candidate_id=f"c_{index:03d}",
+            title=candidate.title,
+            source=candidate.source,
+            region=candidate.region,
+            url=candidate.url,
+            published_at=candidate.published_at,
+            summary=candidate.summary,
+        )
+        for index, candidate in enumerate(candidates, start=1)
+    ]
 
 
 def normalize_url(url: str) -> str:

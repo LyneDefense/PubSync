@@ -19,6 +19,7 @@ class NewsSourceConfig:
 
 @dataclass(frozen=True)
 class RawNewsCandidate:
+    candidate_id: str
     title: str
     url: str
     source: str
@@ -29,6 +30,7 @@ class RawNewsCandidate:
     def to_prompt_dict(self) -> dict[str, str]:
         return {
             "title": self.title,
+            "candidate_id": self.candidate_id,
             "source": self.source,
             "region": self.region.value,
             "url": self.url,
