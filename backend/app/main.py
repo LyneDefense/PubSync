@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from uuid import uuid4
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
@@ -12,8 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import SessionLocal, create_db_and_tables, get_db
-from app.models import AppSetting, Article, NewsItem, OperationTask, TaskStatus
+from app.database import create_db_and_tables, get_db
+from app.models import AppSetting, Article, NewsItem, OperationTask
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
@@ -24,10 +23,15 @@ from app.schemas import (
     SettingRead,
     SettingUpdate,
 )
-from app.services.ai_service import AIServiceError
-from app.services.article_service import generate_article_from_selected_news, update_article
+from app.services.article_service import update_article
 from app.services.auth_service import create_token, verify_credentials, verify_token
-from app.services.news_service import fetch_latest_news, list_news
+from app.services.news_service import list_news
+from app.services.task_service import (
+    create_operation_task,
+    run_article_generation_task,
+    run_news_fetch_task,
+    scheduled_daily_publish,
+)
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
 
 
@@ -46,105 +50,15 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
 
 
-def run_article_generation_task(task_id: str) -> None:
-    db = SessionLocal()
-    try:
-        task = db.get(OperationTask, task_id)
-        if not task:
-            return
-
-        task.status = TaskStatus.running
-        task.message = "正在生成文章，可能需要数分钟"
-        task.error_message = None
-        db.commit()
-
-        article = generate_article_from_selected_news(db)
-        task.status = TaskStatus.succeeded
-        task.message = "文章生成完成"
-        task.article_id = article.id
-        task.error_message = None
-        db.commit()
-    except (ValueError, AIServiceError) as exc:
-        db.rollback()
-        task = db.get(OperationTask, task_id)
-        if task:
-            task.status = TaskStatus.failed
-            task.message = "文章生成失败"
-            task.error_message = str(exc)
-            db.commit()
-    except Exception as exc:
-        db.rollback()
-        task = db.get(OperationTask, task_id)
-        if task:
-            task.status = TaskStatus.failed
-            task.message = "文章生成失败"
-            task.error_message = f"{type(exc).__name__}: {exc}"
-            db.commit()
-        raise
-    finally:
-        db.close()
-
-
-def run_news_fetch_task(task_id: str) -> None:
-    db = SessionLocal()
-    try:
-        task = db.get(OperationTask, task_id)
-        if not task:
-            return
-
-        task.status = TaskStatus.running
-        task.message = "正在抓取新闻并进行 AI 筛选"
-        task.error_message = None
-        db.commit()
-
-        created_items = fetch_latest_news(db)
-        task.status = TaskStatus.succeeded
-        task.message = f"新闻抓取完成，新增 {len(created_items)} 条"
-        task.error_message = None
-        db.commit()
-    except AIServiceError as exc:
-        db.rollback()
-        task = db.get(OperationTask, task_id)
-        if task:
-            task.status = TaskStatus.failed
-            task.message = "新闻抓取失败"
-            task.error_message = str(exc)
-            db.commit()
-    except Exception as exc:
-        db.rollback()
-        task = db.get(OperationTask, task_id)
-        if task:
-            task.status = TaskStatus.failed
-            task.message = "新闻抓取失败"
-            task.error_message = f"{type(exc).__name__}: {exc}"
-            db.commit()
-        raise
-    finally:
-        db.close()
-
-
-def scheduled_news_fetch() -> None:
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        fetch_latest_news(db)
-        article = generate_article_from_selected_news(db)
-        if settings.auto_send_wechat_draft:
-            send_article_to_wechat_draft(db, article)
-    finally:
-        db.close()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     scheduler.add_job(
-        scheduled_news_fetch,
+        scheduled_daily_publish,
         "cron",
         hour=settings.publish_time_hour,
         minute=settings.publish_time_minute,
-        id="daily_news_fetch",
+        id="daily_publish",
         replace_existing=True,
     )
     scheduler.start()
@@ -206,15 +120,7 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
 
 @app.post("/news/fetch", response_model=OperationTaskRead)
 def fetch_news_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
-    task = OperationTask(
-        id=str(uuid4()),
-        task_type="news_fetch",
-        status=TaskStatus.queued,
-        message="已加入后台抓取任务",
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
+    task = create_operation_task(db, "news_fetch")
     background_tasks.add_task(run_news_fetch_task, task.id)
     return task
 
@@ -238,15 +144,7 @@ def update_news_endpoint(news_id: int, payload: NewsItemUpdate, db: Session = De
 
 @app.post("/articles/generate", response_model=OperationTaskRead)
 def generate_article_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
-    task = OperationTask(
-        id=str(uuid4()),
-        task_type="article_generation",
-        status=TaskStatus.queued,
-        message="已加入后台生成任务",
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
+    task = create_operation_task(db, "article_generation")
     background_tasks.add_task(run_article_generation_task, task.id)
     return task
 
