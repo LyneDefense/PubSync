@@ -64,9 +64,14 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 GENERATE_ARTICLE_IMAGES=true
 MAX_ARTICLE_IMAGES=3
 MIN_ARTICLE_IMAGES=1
-NEWS_SOURCE_URLS=https://techcrunch.com/category/artificial-intelligence/feed/,https://venturebeat.com/category/ai/feed/,https://www.theverge.com/rss/ai-artificial-intelligence/index.xml,https://hnrss.org/newest?q=AI,https://hnrss.org/newest?q=OpenAI
+NEWS_SOURCE_URLS=
+INTERNATIONAL_NEWS_SOURCE_URLS=
+DOMESTIC_NEWS_SOURCE_URLS=
+NEWS_PER_SOURCE_LIMIT=8
+INTERNATIONAL_NEWS_CANDIDATES=40
+DOMESTIC_NEWS_CANDIDATES=40
 NEWS_LOOKBACK_HOURS=72
-MAX_NEWS_CANDIDATES=40
+MAX_NEWS_CANDIDATES=80
 PUBLIC_API_BASE_URL=https://enceladus.online/PubSync/api
 AUTO_SEND_WECHAT_DRAFT=false
 ```
@@ -92,7 +97,7 @@ curl http://127.0.0.1:18000/health
 When the selected provider key is configured, the daily job does this:
 
 ```text
-1. Fetch recent candidate news from NEWS_SOURCE_URLS.
+1. Fetch recent domestic and international candidate news from RSS/Atom sources.
 2. Ask the selected text model to deduplicate, score, classify, and summarize candidates.
 3. Store selected candidates in PostgreSQL.
 4. Generate section images for the top selected items through IMAGE_PROVIDER.

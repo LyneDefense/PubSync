@@ -1,9 +1,6 @@
 import base64
 import json
 import re
-import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,15 +8,7 @@ from uuid import uuid4
 import httpx
 
 from app.config import Settings
-
-
-DEFAULT_NEWS_SOURCE_URLS = [
-    "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://venturebeat.com/category/ai/feed/",
-    "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
-    "https://hnrss.org/newest?q=AI",
-    "https://hnrss.org/newest?q=OpenAI",
-]
+from app.news_fetching import fetch_news_candidates
 
 
 class AIServiceError(RuntimeError):
@@ -179,74 +168,6 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
     if settings.public_api_base_url:
         return f"{settings.public_api_base_url.rstrip('/')}{public_path}"
     return public_path
-
-
-def fetch_news_candidates(settings: Settings) -> list[dict[str, Any]]:
-    urls = parse_source_urls(settings.news_source_urls) or DEFAULT_NEWS_SOURCE_URLS
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(24, settings.news_lookback_hours))
-    candidates: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
-
-    with httpx.Client(timeout=20, follow_redirects=True) as client:
-        for url in urls:
-            try:
-                response = client.get(url)
-                response.raise_for_status()
-            except httpx.HTTPError:
-                continue
-            for item in parse_feed(response.text, source_url=url):
-                item_url = str(item.get("url", "")).strip()
-                if not item_url or item_url in seen_urls:
-                    continue
-                published_at = parse_datetime(item.get("published_at"))
-                if published_at and published_at < cutoff:
-                    continue
-                seen_urls.add(item_url)
-                candidates.append(item)
-                if len(candidates) >= settings.max_news_candidates:
-                    return candidates
-    return candidates
-
-
-def parse_feed(xml_text: str, source_url: str) -> list[dict[str, Any]]:
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
-
-    items: list[dict[str, Any]] = []
-    for node in root.findall(".//item"):
-        title = text_of(node, "title")
-        url = text_of(node, "link")
-        published = text_of(node, "pubDate") or text_of(node, "published")
-        summary = text_of(node, "description")
-        if title and url:
-            items.append(build_candidate(title, url, published, summary, source_url))
-
-    ns = {"atom": "http://www.w3.org/2005/Atom"}
-    for node in root.findall(".//atom:entry", ns):
-        title = text_of(node, "atom:title", ns)
-        url = ""
-        for link in node.findall("atom:link", ns):
-            href = link.attrib.get("href")
-            if href:
-                url = href
-                break
-        published = text_of(node, "atom:published", ns) or text_of(node, "atom:updated", ns)
-        summary = text_of(node, "atom:summary", ns)
-        if title and url:
-            items.append(build_candidate(title, url, published, summary, source_url))
-    return items
-
-
-def build_candidate(title: str, url: str, published: str, summary: str, source_url: str) -> dict[str, Any]:
-    return {
-        "title": clean_text(title)[:500],
-        "source": source_name_from_url(source_url),
-        "url": url.strip(),
-        "published_at": normalize_datetime_string(published),
-        "summary": clean_text(strip_html(summary))[:1000],
-    }
 
 
 def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
@@ -463,50 +384,6 @@ def extract_json_object(text: str) -> str:
     if start >= 0 and end > start:
         return stripped[start : end + 1]
     return stripped
-
-
-def parse_source_urls(value: str) -> list[str]:
-    return [url.strip() for url in value.split(",") if url.strip()]
-
-
-def text_of(node: ET.Element, path: str, ns: dict[str, str] | None = None) -> str:
-    child = node.find(path, ns or {})
-    if child is None or child.text is None:
-        return ""
-    return child.text.strip()
-
-
-def normalize_datetime_string(value: str) -> str:
-    parsed = parse_datetime(value)
-    return parsed.isoformat() if parsed else ""
-
-
-def parse_datetime(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        try:
-            parsed = parsedate_to_datetime(value)
-        except (TypeError, ValueError):
-            return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def strip_html(value: str) -> str:
-    return re.sub(r"<[^>]+>", " ", value)
-
-
-def clean_text(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
-
-
-def source_name_from_url(url: str) -> str:
-    match = re.search(r"https?://(?:www\.)?([^/]+)", url)
-    return match.group(1) if match else url
 
 
 def safe_slug(value: str) -> str:

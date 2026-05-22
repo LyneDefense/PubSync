@@ -29,8 +29,13 @@ class Settings(BaseSettings):
     max_article_images: int = 3
     min_article_images: int = 1
     news_source_urls: str = ""
+    international_news_source_urls: str = ""
+    domestic_news_source_urls: str = ""
+    news_per_source_limit: int = 8
+    international_news_candidates: int = 40
+    domestic_news_candidates: int = 40
     news_lookback_hours: int = 72
-    max_news_candidates: int = 40
+    max_news_candidates: int = 80
     public_api_base_url: str = ""
     static_dir: str = "static"
 
