@@ -17,7 +17,26 @@ DEFAULT_GROUP_SOURCES = {
         ("36Kr", "https://36kr.com/feed"),
         ("InfoQ CN", "https://www.infoq.cn/feed"),
     ],
+    "pet-health": [
+        ("Pet Health Network", "https://www.pethealthnetwork.com/rss.xml"),
+        ("Preventive Vet Dogs", "https://www.preventivevet.com/dogs/rss.xml"),
+        ("Preventive Vet Cats", "https://www.preventivevet.com/cats/rss.xml"),
+        ("Veterinary Practice News", "https://www.veterinarypracticenews.com/feed/"),
+    ],
+    "pet-knowledge": [
+        ("AKC Expert Advice", "https://www.akc.org/expert-advice/feed/"),
+        ("Catster", "https://www.catster.com/feed/"),
+        ("Fear Free Happy Homes", "https://www.fearfreehappyhomes.com/feed/"),
+    ],
+    "pet-industry": [
+        ("DVM360", "https://www.dvm360.com/rss"),
+        ("Veterinary Practice News", "https://www.veterinarypracticenews.com/feed/"),
+    ],
 }
+
+
+def default_source_urls(group_key: str) -> str:
+    return ",".join(f"{name}|{url}" for name, url in DEFAULT_GROUP_SOURCES.get(group_key, []))
 
 
 def build_source_configs(content_groups: list[ContentGroup], per_source_limit: int) -> list[NewsSourceConfig]:

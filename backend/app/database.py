@@ -13,6 +13,39 @@ class Base(DeclarativeBase):
 engine = create_engine(get_settings().database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
+AI_GLOBAL_SOURCE_URLS = ",".join(
+    [
+        "TechCrunch AI|https://techcrunch.com/category/artificial-intelligence/feed/",
+        "VentureBeat AI|https://venturebeat.com/category/ai/feed/",
+        "The Verge AI|https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+        "InfoQ AI|https://feed.infoq.com/ai-ml-data-eng",
+        "Hacker News AI|https://hnrss.org/newest?q=AI",
+        "Hacker News OpenAI|https://hnrss.org/newest?q=OpenAI",
+    ]
+)
+AI_CHINA_SOURCE_URLS = ",".join(["36Kr|https://36kr.com/feed", "InfoQ CN|https://www.infoq.cn/feed"])
+PET_HEALTH_SOURCE_URLS = ",".join(
+    [
+        "Pet Health Network|https://www.pethealthnetwork.com/rss.xml",
+        "Preventive Vet Dogs|https://www.preventivevet.com/dogs/rss.xml",
+        "Preventive Vet Cats|https://www.preventivevet.com/cats/rss.xml",
+        "Veterinary Practice News|https://www.veterinarypracticenews.com/feed/",
+    ]
+)
+PET_KNOWLEDGE_SOURCE_URLS = ",".join(
+    [
+        "AKC Expert Advice|https://www.akc.org/expert-advice/feed/",
+        "Catster|https://www.catster.com/feed/",
+        "Fear Free Happy Homes|https://www.fearfreehappyhomes.com/feed/",
+    ]
+)
+PET_INDUSTRY_SOURCE_URLS = ",".join(
+    [
+        "DVM360|https://www.dvm360.com/rss",
+        "Veterinary Practice News|https://www.veterinarypracticenews.com/feed/",
+    ]
+)
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
@@ -231,24 +264,54 @@ def ensure_runtime_schema() -> None:
             CONSTRAINT uq_content_groups_tenant_key UNIQUE (tenant_id, group_key)
         )
         """,
-        """
+        f"""
         INSERT INTO content_groups (
             tenant_id, group_key, name, source_urls, candidate_limit,
             article_min, article_target, article_max, position, enabled, created_at, updated_at
         )
         VALUES
-            (1, 'global', '国际动态', '', 40, 3, 6, 7, 0, true, NOW(), NOW()),
-            (1, 'china', '国内动态', '', 40, 1, 3, 4, 1, true, NOW(), NOW())
+            (1, 'global', '国际动态', '{AI_GLOBAL_SOURCE_URLS}', 40, 3, 6, 7, 0, true, NOW(), NOW()),
+            (1, 'china', '国内动态', '{AI_CHINA_SOURCE_URLS}', 40, 1, 3, 4, 1, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
         """,
-        """
+        f"""
+        UPDATE content_groups
+        SET source_urls = CASE group_key
+            WHEN 'global' THEN '{AI_GLOBAL_SOURCE_URLS}'
+            WHEN 'china' THEN '{AI_CHINA_SOURCE_URLS}'
+            ELSE source_urls
+        END
+        WHERE tenant_id = 1
+          AND group_key IN ('global', 'china')
+          AND source_urls = ''
+        """,
+        f"""
         INSERT INTO content_groups (
             tenant_id, group_key, name, source_urls, candidate_limit,
             article_min, article_target, article_max, position, enabled, created_at, updated_at
         )
         VALUES
-            (2, 'main', '精选内容', '', 60, 0, 8, 8, 0, true, NOW(), NOW())
+            (2, 'pet-health', '宠物健康', '{PET_HEALTH_SOURCE_URLS}', 30, 0, 3, 4, 0, true, NOW(), NOW()),
+            (2, 'pet-knowledge', '养宠知识', '{PET_KNOWLEDGE_SOURCE_URLS}', 30, 0, 3, 4, 1, true, NOW(), NOW()),
+            (2, 'pet-industry', '行业资讯', '{PET_INDUSTRY_SOURCE_URLS}', 20, 0, 2, 3, 2, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
+        """,
+        f"""
+        UPDATE content_groups
+        SET source_urls = CASE group_key
+            WHEN 'pet-health' THEN '{PET_HEALTH_SOURCE_URLS}'
+            WHEN 'pet-knowledge' THEN '{PET_KNOWLEDGE_SOURCE_URLS}'
+            WHEN 'pet-industry' THEN '{PET_INDUSTRY_SOURCE_URLS}'
+            ELSE source_urls
+        END
+        WHERE tenant_id = 2
+          AND group_key IN ('pet-health', 'pet-knowledge', 'pet-industry')
+          AND source_urls = ''
+        """,
+        """
+        UPDATE content_groups
+        SET enabled = false
+        WHERE tenant_id = 2 AND group_key = 'main' AND source_urls = ''
         """,
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS group_key VARCHAR(80) NOT NULL DEFAULT 'global'",

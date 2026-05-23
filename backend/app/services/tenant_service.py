@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import ContentGroup, ContentProfile, LayoutSettings, PublishingSettings, Tenant, TenantStatus, WeChatAccount
+from app.news_fetching.sources import default_source_urls
 from app.schemas import (
     ContentGroupUpdate,
     ContentProfileUpdate,
@@ -92,7 +93,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="global",
                 name="国际动态",
-                source_urls="",
+                source_urls=default_source_urls("global"),
                 candidate_limit=40,
                 article_min=3,
                 article_target=6,
@@ -103,7 +104,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="china",
                 name="国内动态",
-                source_urls="",
+                source_urls=default_source_urls("china"),
                 candidate_limit=40,
                 article_min=1,
                 article_target=3,
@@ -115,15 +116,37 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
         defaults = [
             ContentGroup(
                 tenant_id=tenant.id,
-                group_key="main",
-                name="精选内容",
-                source_urls="",
-                candidate_limit=60,
+                group_key="pet-health",
+                name="宠物健康",
+                source_urls=default_source_urls("pet-health"),
+                candidate_limit=30,
                 article_min=0,
-                article_target=8,
-                article_max=8,
+                article_target=3,
+                article_max=4,
                 position=0,
-            )
+            ),
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key="pet-knowledge",
+                name="养宠知识",
+                source_urls=default_source_urls("pet-knowledge"),
+                candidate_limit=30,
+                article_min=0,
+                article_target=3,
+                article_max=4,
+                position=1,
+            ),
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key="pet-industry",
+                name="行业资讯",
+                source_urls=default_source_urls("pet-industry"),
+                candidate_limit=20,
+                article_min=0,
+                article_target=2,
+                article_max=3,
+                position=2,
+            ),
         ]
     db.add_all(defaults)
 
