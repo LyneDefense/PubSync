@@ -172,7 +172,9 @@ const pagedNews = computed(() => {
   const start = (newsPage.value - 1) * pageSize
   return activeNews.value.slice(start, start + pageSize)
 })
-const hasTaskEvents = computed(() => taskEvents.value.length > 0)
+const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate')
+const runningTaskName = computed(() => (pendingAction.value === 'fetch' ? '新闻抓取' : '文章生成'))
+const hasTaskEvents = computed(() => taskEvents.value.length > 0 || isTaskRunning.value)
 const articleStateLabel = computed(() => {
   const status = article.value?.status
   return status ? statusText[status] || status : '未生成'
@@ -685,6 +687,16 @@ onUnmounted(() => {
             <span>{{ event.step_name }}</span>
             <strong>{{ event.message }}</strong>
             <time>{{ formatDate(event.created_at) }}</time>
+          </li>
+          <li v-if="isTaskRunning" class="event-live-tail" aria-live="polite">
+            <span>{{ runningTaskName }}</span>
+            <strong class="live-tail" aria-label="流程仍在执行">
+              <i aria-hidden="true"></i>
+              <i aria-hidden="true"></i>
+              <i aria-hidden="true"></i>
+              <b aria-hidden="true"></b>
+            </strong>
+            <time>同步中</time>
           </li>
         </ol>
       </section>
