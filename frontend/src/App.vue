@@ -99,6 +99,22 @@ const wechatForm = reactive({
   auto_send_draft: false
 })
 
+const layoutForm = reactive({
+  template_name: 'clean',
+  primary_color: '#0f766e',
+  accent_color: '#64748b',
+  text_color: 'inherit',
+  heading_color: 'inherit',
+  body_font_size: 15,
+  heading_font_size: 19,
+  line_height: '1.85',
+  section_spacing: 28,
+  image_radius: 8,
+  show_group_heading: true,
+  show_source: true,
+  show_editor_note: true
+})
+
 const hasArticle = computed(() => Boolean(article.value))
 const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早报')
 const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
@@ -123,6 +139,22 @@ const articleStateLabel = computed(() => {
   const status = article.value?.status
   return status ? statusText[status] || status : '未生成'
 })
+const layoutPreviewStyle = computed(() => ({
+  color: layoutForm.text_color === 'inherit' ? '#e7eefc' : layoutForm.text_color,
+  fontSize: `${layoutForm.body_font_size}px`,
+  lineHeight: layoutForm.line_height
+}))
+const layoutPreviewHeadingStyle = computed(() => ({
+  color: layoutForm.heading_color === 'inherit' ? '#e7eefc' : layoutForm.heading_color,
+  fontSize: `${layoutForm.heading_font_size}px`,
+  borderBottomColor: layoutForm.accent_color
+}))
+const layoutPreviewImageStyle = computed(() => ({
+  borderRadius: `${layoutForm.image_radius}px`
+}))
+const layoutPreviewSectionStyle = computed(() => ({
+  marginBottom: `${layoutForm.section_spacing}px`
+}))
 
 function showMessage(text: string, error = false) {
   message.value = text
@@ -256,6 +288,19 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   wechatForm.app_secret = ''
   wechatForm.app_secret_configured = config.wechat.app_secret_configured
   wechatForm.auto_send_draft = config.wechat.auto_send_draft
+  layoutForm.template_name = config.layout.template_name
+  layoutForm.primary_color = config.layout.primary_color
+  layoutForm.accent_color = config.layout.accent_color
+  layoutForm.text_color = config.layout.text_color
+  layoutForm.heading_color = config.layout.heading_color
+  layoutForm.body_font_size = config.layout.body_font_size
+  layoutForm.heading_font_size = config.layout.heading_font_size
+  layoutForm.line_height = config.layout.line_height
+  layoutForm.section_spacing = config.layout.section_spacing
+  layoutForm.image_radius = config.layout.image_radius
+  layoutForm.show_group_heading = config.layout.show_group_heading
+  layoutForm.show_source = config.layout.show_source
+  layoutForm.show_editor_note = config.layout.show_editor_note
 }
 
 async function loadTenantOptions() {
@@ -390,7 +435,8 @@ async function handleSaveConfig() {
         app_id: wechatForm.app_id,
         ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {}),
         auto_send_draft: wechatForm.auto_send_draft
-      }
+      },
+      layout: { ...layoutForm }
     }
     const nextConfig = await updateWorkspaceConfig(payload)
     setWorkspaceConfig(nextConfig)
@@ -722,6 +768,77 @@ onUnmounted(() => {
             <input v-model="wechatForm.auto_send_draft" type="checkbox" />
             定时任务完成后自动发送到公众号草稿箱
           </label>
+          <div class="layout-editor">
+            <div class="layout-controls">
+              <div class="config-grid">
+                <label>
+                  版式模板
+                  <select v-model="layoutForm.template_name">
+                    <option value="clean">清爽资讯</option>
+                    <option value="warm">温和科普</option>
+                    <option value="compact">紧凑早报</option>
+                  </select>
+                </label>
+                <label>
+                  主色
+                  <input v-model="layoutForm.primary_color" type="color" />
+                </label>
+                <label>
+                  强调线颜色
+                  <input v-model="layoutForm.accent_color" type="color" />
+                </label>
+                <label>
+                  正文字号
+                  <input v-model.number="layoutForm.body_font_size" type="number" min="12" max="20" />
+                </label>
+                <label>
+                  标题字号
+                  <input v-model.number="layoutForm.heading_font_size" type="number" min="14" max="26" />
+                </label>
+                <label>
+                  行高
+                  <input v-model="layoutForm.line_height" type="number" min="1.4" max="2.2" step="0.05" />
+                </label>
+                <label>
+                  段落间距
+                  <input v-model.number="layoutForm.section_spacing" type="number" min="12" max="48" />
+                </label>
+                <label>
+                  图片圆角
+                  <input v-model.number="layoutForm.image_radius" type="number" min="0" max="24" />
+                </label>
+              </div>
+              <label class="toggle-row">
+                <input v-model="layoutForm.show_group_heading" type="checkbox" />
+                显示分组标题
+              </label>
+              <label class="toggle-row">
+                <input v-model="layoutForm.show_editor_note" type="checkbox" />
+                显示编辑观察
+              </label>
+              <label class="toggle-row">
+                <input v-model="layoutForm.show_source" type="checkbox" />
+                显示来源
+              </label>
+            </div>
+            <div class="layout-preview" :style="layoutPreviewStyle" aria-label="排版预览">
+              <p class="layout-preview-kicker">公众号预览</p>
+              <section v-if="layoutForm.show_group_heading" :style="layoutPreviewSectionStyle">
+                <h3 :style="layoutPreviewHeadingStyle">{{ usesRegionalGrouping ? internationalLabel : '精选内容' }}</h3>
+              </section>
+              <section :style="layoutPreviewSectionStyle">
+                <h2 :style="layoutPreviewHeadingStyle">01｜一条适合当前工作空间的内容标题</h2>
+                <p>这里展示正文段落的字号、行高和整体阅读密度。实际生成文章时，后端会用同一套参数渲染公众号 HTML。</p>
+                <div class="layout-preview-image" :style="layoutPreviewImageStyle"></div>
+                <blockquote v-if="layoutForm.show_editor_note" :style="{ borderLeftColor: layoutForm.accent_color }">
+                  编辑观察：这里展示强调块的颜色和间距。
+                </blockquote>
+                <p v-if="layoutForm.show_source">
+                  来源：<a :style="{ color: layoutForm.primary_color, borderBottomColor: layoutForm.primary_color }">示例来源</a>
+                </p>
+              </section>
+            </div>
+          </div>
           <label>
             内容领域
             <textarea v-model="profileForm.content_domain" rows="3" readonly></textarea>

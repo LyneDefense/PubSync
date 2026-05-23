@@ -82,6 +82,28 @@ class WeChatAccount(Base):
     tenant: Mapped[Tenant] = relationship()
 
 
+class LayoutSettings(Base):
+    __tablename__ = "layout_settings"
+
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    template_name: Mapped[str] = mapped_column(String(80), nullable=False, default="clean")
+    primary_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#0f766e")
+    accent_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#64748b")
+    text_color: Mapped[str] = mapped_column(String(20), nullable=False, default="inherit")
+    heading_color: Mapped[str] = mapped_column(String(20), nullable=False, default="inherit")
+    body_font_size: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    heading_font_size: Mapped[int] = mapped_column(Integer, nullable=False, default=19)
+    line_height: Mapped[str] = mapped_column(String(20), nullable=False, default="1.85")
+    section_spacing: Mapped[int] = mapped_column(Integer, nullable=False, default=28)
+    image_radius: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    show_group_heading: Mapped[bool] = mapped_column(default=True)
+    show_source: Mapped[bool] = mapped_column(default=True)
+    show_editor_note: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
 class NewsItem(Base):
     __tablename__ = "news_items"
     __table_args__ = (UniqueConstraint("tenant_id", "url", name="uq_news_items_tenant_url"),)

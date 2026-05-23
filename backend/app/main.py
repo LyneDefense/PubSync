@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant, WeChatAccount
+from app.models import AppSetting, Article, ContentProfile, LayoutSettings, NewsItem, OperationTask, OperationTaskEvent, Tenant, WeChatAccount
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
@@ -43,8 +43,10 @@ from app.services.tenant_service import (
     get_default_tenant,
     get_profile,
     get_tenant,
+    get_layout_settings,
     get_wechat_account,
     list_tenants,
+    update_layout_settings,
     update_profile,
     update_wechat_account,
 )
@@ -166,6 +168,7 @@ def get_workspace_config_endpoint(
     return WorkspaceConfigRead(
         profile=get_profile(db, tenant),
         wechat=read_wechat_account(get_wechat_account(db, tenant)),
+        layout=get_layout_settings(db, tenant),
     )
 
 
@@ -177,11 +180,14 @@ def update_workspace_config_endpoint(
 ) -> WorkspaceConfigRead:
     profile = get_profile(db, tenant)
     account = get_wechat_account(db, tenant)
+    layout = get_layout_settings(db, tenant)
     if payload.profile:
         profile = update_profile(db, tenant, payload.profile)
     if payload.wechat:
         account = update_wechat_account(db, tenant, payload.wechat)
-    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account))
+    if payload.layout:
+        layout = update_layout_settings(db, tenant, payload.layout)
+    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account), layout=layout)
 
 
 @app.get("/dashboard", response_model=DashboardRead)

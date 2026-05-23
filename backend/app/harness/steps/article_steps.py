@@ -95,7 +95,11 @@ class LayoutArticleStep(HarnessStep):
             return "公众号排版已由基础模板完成", {"页面字符数": len(context.content_html)}
         if context.composed_article is None:
             raise RuntimeError("缺少文章正文结构，无法排版")
-        context.content_html = self.article_tool.render_article(context.composed_article, context.profile)
+        context.content_html = self.article_tool.render_article(
+            context.composed_article,
+            context.profile,
+            context.layout_settings,
+        )
         return "公众号排版完成", {"页面字符数": len(context.content_html)}
 
 

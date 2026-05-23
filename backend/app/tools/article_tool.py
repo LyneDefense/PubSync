@@ -8,7 +8,7 @@ from app.article_layout import render_basic_article_html, render_wechat_article_
 from app.article_selection import select_article_news
 from app.article_selection.models import ArticleSelectionResult
 from app.config import Settings
-from app.models import ContentProfile, NewsItem
+from app.models import ContentProfile, LayoutSettings, NewsItem
 from app.services.ai_service import is_ai_enabled
 from app.tools.image_tool import DEFAULT_COVER
 
@@ -52,8 +52,13 @@ class ArticleTool:
         content_html = render_basic_article_html(intro, selected_news)
         return title, intro, content_html, DEFAULT_COVER
 
-    def render_article(self, composed_article: ComposedArticle, profile: ContentProfile | None = None) -> str:
-        return render_wechat_article_html(composed_article, profile)
+    def render_article(
+        self,
+        composed_article: ComposedArticle,
+        profile: ContentProfile | None = None,
+        layout_settings: LayoutSettings | None = None,
+    ) -> str:
+        return render_wechat_article_html(composed_article, profile, layout_settings)
 
     def ai_enabled(self, settings: Settings) -> bool:
         return is_ai_enabled(settings)

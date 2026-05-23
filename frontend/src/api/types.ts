@@ -53,14 +53,49 @@ export interface WeChatAccountUpdate {
   auto_send_draft?: boolean
 }
 
+export interface LayoutSettings {
+  tenant_id: number
+  template_name: string
+  primary_color: string
+  accent_color: string
+  text_color: string
+  heading_color: string
+  body_font_size: number
+  heading_font_size: number
+  line_height: string
+  section_spacing: number
+  image_radius: number
+  show_group_heading: boolean
+  show_source: boolean
+  show_editor_note: boolean
+}
+
+export interface LayoutSettingsUpdate {
+  template_name?: string
+  primary_color?: string
+  accent_color?: string
+  text_color?: string
+  heading_color?: string
+  body_font_size?: number
+  heading_font_size?: number
+  line_height?: string
+  section_spacing?: number
+  image_radius?: number
+  show_group_heading?: boolean
+  show_source?: boolean
+  show_editor_note?: boolean
+}
+
 export interface WorkspaceConfig {
   profile: ContentProfile
   wechat: WeChatAccount
+  layout: LayoutSettings
 }
 
 export interface WorkspaceConfigUpdate {
   profile?: ContentProfileUpdate
   wechat?: WeChatAccountUpdate
+  layout?: LayoutSettingsUpdate
 }
 
 export interface NewsItem {

@@ -519,6 +519,69 @@ p {
   accent-color: var(--accent);
 }
 
+.layout-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 18px;
+  align-items: start;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.layout-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.layout-preview {
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 18px;
+}
+
+.layout-preview-kicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.layout-preview h2,
+.layout-preview h3 {
+  margin: 0 0 14px;
+  padding: 0 0 10px;
+  border-bottom: 2px solid;
+  line-height: 1.45;
+}
+
+.layout-preview p {
+  margin-bottom: 14px;
+  text-align: justify;
+}
+
+.layout-preview-image {
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  margin: 16px 0;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  background:
+    linear-gradient(135deg, rgba(45, 212, 191, 0.28), rgba(96, 165, 250, 0.14)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.layout-preview blockquote {
+  margin: 16px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid;
+}
+
+.layout-preview a {
+  border-bottom: 1px solid;
+}
+
 form {
   display: grid;
   gap: 14px;
@@ -601,6 +664,10 @@ dd {
   .toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .layout-editor {
+    grid-template-columns: 1fr;
   }
 }
 

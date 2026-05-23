@@ -60,14 +60,51 @@ class WeChatAccountUpdate(BaseModel):
     auto_send_draft: bool | None = None
 
 
+class LayoutSettingsRead(BaseModel):
+    tenant_id: int
+    template_name: str
+    primary_color: str
+    accent_color: str
+    text_color: str
+    heading_color: str
+    body_font_size: int
+    heading_font_size: int
+    line_height: str
+    section_spacing: int
+    image_radius: int
+    show_group_heading: bool
+    show_source: bool
+    show_editor_note: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LayoutSettingsUpdate(BaseModel):
+    template_name: str | None = Field(default=None, min_length=1, max_length=80)
+    primary_color: str | None = Field(default=None, min_length=3, max_length=20)
+    accent_color: str | None = Field(default=None, min_length=3, max_length=20)
+    text_color: str | None = Field(default=None, min_length=3, max_length=20)
+    heading_color: str | None = Field(default=None, min_length=3, max_length=20)
+    body_font_size: int | None = Field(default=None, ge=12, le=20)
+    heading_font_size: int | None = Field(default=None, ge=14, le=26)
+    line_height: str | None = Field(default=None, min_length=1, max_length=20)
+    section_spacing: int | None = Field(default=None, ge=12, le=48)
+    image_radius: int | None = Field(default=None, ge=0, le=24)
+    show_group_heading: bool | None = None
+    show_source: bool | None = None
+    show_editor_note: bool | None = None
+
+
 class WorkspaceConfigRead(BaseModel):
     profile: ContentProfileRead
     wechat: WeChatAccountRead
+    layout: LayoutSettingsRead
 
 
 class WorkspaceConfigUpdate(BaseModel):
     profile: ContentProfileUpdate | None = None
     wechat: WeChatAccountUpdate | None = None
+    layout: LayoutSettingsUpdate | None = None
 
 
 class NewsItemRead(BaseModel):

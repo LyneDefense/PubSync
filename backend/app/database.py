@@ -78,6 +78,30 @@ def ensure_runtime_schema() -> None:
         VALUES (2, '', '', false, NOW())
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        """
+        INSERT INTO layout_settings (
+            tenant_id, template_name, primary_color, accent_color, text_color, heading_color,
+            body_font_size, heading_font_size, line_height, section_spacing, image_radius,
+            show_group_heading, show_source, show_editor_note, updated_at
+        )
+        VALUES (
+            1, 'clean', '#0f766e', '#64748b', 'inherit', 'inherit',
+            15, 19, '1.85', 28, 8, true, true, true, NOW()
+        )
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
+        """
+        INSERT INTO layout_settings (
+            tenant_id, template_name, primary_color, accent_color, text_color, heading_color,
+            body_font_size, heading_font_size, line_height, section_spacing, image_radius,
+            show_group_heading, show_source, show_editor_note, updated_at
+        )
+        VALUES (
+            2, 'warm', '#b45309', '#d97706', 'inherit', 'inherit',
+            15, 18, '1.9', 24, 10, false, true, true, NOW()
+        )
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(200)",
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_status VARCHAR(30) NOT NULL DEFAULT 'unique'",

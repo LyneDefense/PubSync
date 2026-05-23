@@ -1,6 +1,8 @@
 from html import escape
 from html.parser import HTMLParser
 
+from app.models import LayoutSettings
+
 
 class WeChatArticleHTMLFormatter(HTMLParser):
     allowed_tags = {"section", "h2", "h3", "p", "ul", "li", "blockquote", "a", "img", "strong", "br"}
@@ -24,8 +26,9 @@ class WeChatArticleHTMLFormatter(HTMLParser):
         "strong": "color:inherit;font-weight:700;",
     }
 
-    def __init__(self) -> None:
+    def __init__(self, layout_settings: LayoutSettings | None = None) -> None:
         super().__init__(convert_charrefs=True)
+        self.styles = build_styles(layout_settings)
         self.parts: list[str] = []
         self.open_tags: list[str] = []
         self.skipped_tags: list[str] = []
@@ -126,13 +129,15 @@ class WeChatArticleHTMLFormatter(HTMLParser):
         return None
 
 
-def format_wechat_article_html(content_html: str) -> str:
-    parser = WeChatArticleHTMLFormatter()
+def format_wechat_article_html(content_html: str, layout_settings: LayoutSettings | None = None) -> str:
+    parser = WeChatArticleHTMLFormatter(layout_settings)
     parser.feed(content_html.replace("<h1", "<h2").replace("</h1>", "</h2>"))
     parser.close_remaining_tags()
     formatted = "".join(parser.parts).strip()
     return (
-        '<section style="margin:0;padding:0;color:inherit;font-size:16px;line-height:1.75;'
+        f'<section style="margin:0;padding:0;color:{css_value(layout_settings.text_color if layout_settings else "inherit")};'
+        f'font-size:{font_size(layout_settings.body_font_size if layout_settings else 16)}px;'
+        f'line-height:{line_height(layout_settings.line_height if layout_settings else "1.75")};'
         'letter-spacing:0;background:transparent;">'
         f"{formatted}"
         "</section>"
@@ -145,3 +150,62 @@ def should_skip_public_paragraph(text: str) -> bool:
         return False
     internal_markers = ("发布于", "分类：", "重要性：", "重要性", "importance")
     return sum(marker in compact for marker in internal_markers) >= 2
+
+
+def build_styles(layout: LayoutSettings | None) -> dict[str, str]:
+    primary = css_value(layout.primary_color if layout else "#0f766e")
+    accent = css_value(layout.accent_color if layout else "#64748b")
+    text = css_value(layout.text_color if layout else "inherit")
+    heading = css_value(layout.heading_color if layout else "inherit")
+    body_size = font_size(layout.body_font_size if layout else 15)
+    heading_size = font_size(layout.heading_font_size if layout else 19)
+    line = line_height(layout.line_height if layout else "1.85")
+    spacing = number(layout.section_spacing if layout else 28, 12, 48)
+    radius = number(layout.image_radius if layout else 8, 0, 24)
+    return {
+        "section": f"margin:0 0 {spacing}px;padding:0 0 8px;",
+        "h2": (
+            f"margin:{spacing + 6}px 0 18px;padding:0 0 10px;border-bottom:2px solid {accent};"
+            f"background:transparent;color:{heading};font-size:{heading_size}px;line-height:1.45;font-weight:700;"
+        ),
+        "h3": f"margin:{spacing}px 0 14px;color:{heading};font-size:{max(14, heading_size - 1)}px;line-height:1.5;font-weight:700;",
+        "p": f"margin:0 0 14px;color:{text};font-size:{body_size}px;line-height:{line};letter-spacing:0;text-align:justify;",
+        "ul": f"margin:8px 0 16px;padding-left:20px;color:{text};",
+        "li": f"margin:0 0 8px;color:{text};font-size:{body_size}px;line-height:{line};",
+        "blockquote": (
+            f"margin:18px 0 18px 2px;padding:2px 0 2px 14px;border-left:3px solid {accent};"
+            f"background:transparent;color:{text};font-size:{body_size}px;line-height:{line};"
+        ),
+        "a": f"color:{primary};text-decoration:none;border-bottom:1px solid {primary};",
+        "img": f"display:block;width:100%;height:auto;margin:18px 0;border-radius:{radius}px;",
+        "strong": "color:inherit;font-weight:700;",
+    }
+
+
+def css_value(value: str) -> str:
+    value = (value or "inherit").strip()
+    if value == "inherit":
+        return value
+    if value.startswith("#") and len(value) in {4, 7}:
+        return value
+    return "inherit"
+
+
+def font_size(value: int) -> int:
+    return number(value, 12, 26)
+
+
+def line_height(value: str) -> str:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return "1.85"
+    return str(max(1.4, min(2.2, parsed)))
+
+
+def number(value: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return minimum
+    return max(minimum, min(maximum, parsed))

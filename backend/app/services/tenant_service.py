@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ContentProfile, Tenant, TenantStatus, WeChatAccount
-from app.schemas import ContentProfileUpdate, WeChatAccountUpdate
+from app.models import ContentProfile, LayoutSettings, Tenant, TenantStatus, WeChatAccount
+from app.schemas import ContentProfileUpdate, LayoutSettingsUpdate, WeChatAccountUpdate
 
 
 DEFAULT_TENANT_ID = 1
@@ -53,6 +53,18 @@ def ensure_tenant_defaults(db: Session, tenant: Tenant) -> None:
         )
     if not db.get(WeChatAccount, tenant.id):
         db.add(WeChatAccount(tenant_id=tenant.id))
+    if not db.get(LayoutSettings, tenant.id):
+        db.add(
+            LayoutSettings(
+                tenant_id=tenant.id,
+                template_name="clean" if tenant.id == DEFAULT_TENANT_ID else "warm",
+                primary_color="#0f766e" if tenant.id == DEFAULT_TENANT_ID else "#b45309",
+                accent_color="#64748b" if tenant.id == DEFAULT_TENANT_ID else "#d97706",
+                section_spacing=28 if tenant.id == DEFAULT_TENANT_ID else 24,
+                image_radius=8 if tenant.id == DEFAULT_TENANT_ID else 10,
+                show_group_heading=tenant.id == DEFAULT_TENANT_ID,
+            )
+        )
     db.commit()
 
 
@@ -70,6 +82,14 @@ def get_wechat_account(db: Session, tenant: Tenant) -> WeChatAccount:
     if not account:
         raise RuntimeError("工作空间公众号配置初始化失败")
     return account
+
+
+def get_layout_settings(db: Session, tenant: Tenant) -> LayoutSettings:
+    ensure_tenant_defaults(db, tenant)
+    layout = db.get(LayoutSettings, tenant.id)
+    if not layout:
+        raise RuntimeError("工作空间排版配置初始化失败")
+    return layout
 
 
 def update_profile(db: Session, tenant: Tenant, payload: ContentProfileUpdate) -> ContentProfile:
@@ -97,3 +117,13 @@ def update_wechat_account(db: Session, tenant: Tenant, payload: WeChatAccountUpd
     db.commit()
     db.refresh(account)
     return account
+
+
+def update_layout_settings(db: Session, tenant: Tenant, payload: LayoutSettingsUpdate) -> LayoutSettings:
+    layout = get_layout_settings(db, tenant)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(layout, key, value)
+    db.commit()
+    db.refresh(layout)
+    return layout

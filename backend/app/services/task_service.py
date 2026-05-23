@@ -8,7 +8,7 @@ from app.database import SessionLocal
 from app.harness import PubSyncHarness
 from app.models import OperationTask, TaskStatus
 from app.services.ai_service import AIServiceError
-from app.services.tenant_service import get_default_tenant, get_profile, get_tenant, get_wechat_account
+from app.services.tenant_service import get_default_tenant, get_layout_settings, get_profile, get_tenant, get_wechat_account
 from app.services.wechat_service import WeChatAPIError
 
 
@@ -135,6 +135,7 @@ def build_harness(db: Session, task_id: str, task_type: str, tenant_id: int) -> 
         tenant=tenant,
         profile=get_profile(db, tenant),
         wechat_account=get_wechat_account(db, tenant),
+        layout_settings=get_layout_settings(db, tenant),
     )
 
 
