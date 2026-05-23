@@ -9,13 +9,14 @@ import {
   getAuthToken,
   getLatestArticle,
   getTask,
+  getTaskEvents,
   listNews,
   login,
   sendArticleToWechat,
   updateArticle,
   updateNewsSelection
 } from './api'
-import type { Article, ArticleUpdate, Dashboard, NewsItem, OperationTask } from './api/types'
+import type { Article, ArticleUpdate, Dashboard, NewsItem, OperationTask, OperationTaskEvent } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate'
 
@@ -32,6 +33,7 @@ const article = ref<Article | null>(null)
 const message = ref('')
 const isError = ref(false)
 const pendingAction = ref<string | null>(null)
+const taskEvents = ref<OperationTaskEvent[]>([])
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
@@ -63,6 +65,7 @@ const articleStatus = computed(() => {
   const status = dashboard.value?.latest_article?.status
   return status ? statusText[status] || status : '未生成'
 })
+const hasTaskEvents = computed(() => taskEvents.value.length > 0)
 
 function showMessage(text: string, error = false) {
   message.value = text
@@ -126,10 +129,12 @@ async function runTaskAction(
   try {
     const task = await startTask()
     showMessage(task.message)
+    taskEvents.value = await getTaskEvents(task.id)
 
     for (let attempt = 0; attempt < 180; attempt += 1) {
       await wait(5000)
-      const latestTask = await getTask(task.id)
+      const [latestTask, latestEvents] = await Promise.all([getTask(task.id), getTaskEvents(task.id)])
+      taskEvents.value = latestEvents
       showMessage(latestTask.message)
 
       if (latestTask.status === 'succeeded') {
@@ -392,6 +397,22 @@ onUnmounted(() => {
       </section>
 
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
+
+      <section v-if="hasTaskEvents" class="panel task-events" aria-label="任务执行日志">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">流程日志</p>
+            <h2>流程执行进度</h2>
+          </div>
+        </div>
+        <ol>
+          <li v-for="event in taskEvents" :key="event.id" :class="`event-${event.status}`">
+            <span>{{ event.step_name }}</span>
+            <strong>{{ event.message }}</strong>
+            <time>{{ formatDate(event.created_at) }}</time>
+          </li>
+        </ol>
+      </section>
 
       <section id="news" class="panel">
         <div class="section-header">

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, NewsItem, OperationTask
+from app.models import AppSetting, Article, NewsItem, OperationTask, OperationTaskEvent
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
@@ -21,6 +21,7 @@ from app.schemas import (
     NewsItemRead,
     NewsItemUpdate,
     OperationTaskRead,
+    OperationTaskEventRead,
     SettingRead,
     SettingUpdate,
 )
@@ -162,6 +163,20 @@ def get_task_endpoint(task_id: str, db: Session = Depends(get_db)) -> OperationT
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@app.get("/tasks/{task_id}/events", response_model=list[OperationTaskEventRead])
+def list_task_events_endpoint(task_id: str, db: Session = Depends(get_db)) -> list[OperationTaskEvent]:
+    task = db.get(OperationTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return list(
+        db.scalars(
+            select(OperationTaskEvent)
+            .where(OperationTaskEvent.task_id == task_id)
+            .order_by(OperationTaskEvent.created_at.asc(), OperationTaskEvent.id.asc())
+        )
+    )
 
 
 @app.get("/articles/latest", response_model=ArticleRead | None)

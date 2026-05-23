@@ -58,3 +58,13 @@ export interface OperationTask {
   created_at: string
   updated_at: string
 }
+
+export interface OperationTaskEvent {
+  id: number
+  task_id: string
+  step_name: string
+  status: string
+  message: string
+  payload_json: string | null
+  created_at: string
+}

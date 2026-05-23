@@ -55,6 +55,18 @@ class OperationTaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OperationTaskEventRead(BaseModel):
+    id: int
+    task_id: str
+    step_name: str
+    status: str
+    message: str
+    payload_json: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ArticleUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     intro: str | None = Field(default=None, min_length=1)

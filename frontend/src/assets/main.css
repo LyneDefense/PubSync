@@ -244,6 +244,54 @@ p {
   color: var(--danger);
 }
 
+.task-events ol {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-events li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-left: 4px solid #9ca3af;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.task-events li.event-running {
+  border-left-color: #2563eb;
+}
+
+.task-events li.event-succeeded {
+  border-left-color: #15803d;
+}
+
+.task-events li.event-failed {
+  border-left-color: var(--danger);
+}
+
+.task-events span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.task-events strong {
+  overflow-wrap: anywhere;
+}
+
+.task-events time {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .panel {
   padding: 22px;
 }
@@ -498,5 +546,10 @@ dd {
   .settings-panel div {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .task-events li {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }

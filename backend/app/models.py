@@ -120,3 +120,17 @@ class OperationTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     article: Mapped[Article | None] = relationship()
+
+
+class OperationTaskEvent(Base):
+    __tablename__ = "operation_task_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("operation_tasks.id"), nullable=False, index=True)
+    step_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    task: Mapped[OperationTask] = relationship()

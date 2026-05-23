@@ -5,11 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
+from app.harness import PubSyncHarness
 from app.models import OperationTask, TaskStatus
 from app.services.ai_service import AIServiceError
-from app.services.article_service import generate_article_from_selected_news
-from app.services.news_service import fetch_latest_news
-from app.services.wechat_service import send_article_to_wechat_draft
+from app.services.wechat_service import WeChatAPIError
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +42,7 @@ def run_news_fetch_task(task_id: str) -> None:
             return
 
         mark_task_running(db, task, "正在抓取新闻并进行大模型筛选")
-        created_items = fetch_latest_news(db)
+        created_items = PubSyncHarness(db, get_settings(), task_id, "news_fetch").run_news_fetch()
         mark_task_succeeded(db, task, f"新闻抓取完成，新增 {len(created_items)} 条")
         logger.info("任务成功：任务ID=%s，类型=新闻抓取，新增=%s", task_id, len(created_items))
     except AIServiceError as exc:
@@ -66,7 +65,7 @@ def run_article_generation_task(task_id: str) -> None:
             return
 
         mark_task_running(db, task, "正在生成文章，可能需要数分钟")
-        article = generate_article_from_selected_news(db)
+        article = PubSyncHarness(db, get_settings(), task_id, "article_generation").run_article_generation()
         mark_task_succeeded(db, task, "文章生成完成", article_id=article.id)
         logger.info("任务成功：任务ID=%s，类型=文章生成，文章ID=%s", task_id, article.id)
     except (ValueError, AIServiceError) as exc:
@@ -90,16 +89,16 @@ def run_daily_publish_task(task_id: str) -> None:
 
         settings = get_settings()
         mark_task_running(db, task, "正在执行定时抓取、生成和发布流程")
-        fetch_latest_news(db)
-        article = generate_article_from_selected_news(db)
+        article = PubSyncHarness(db, settings, task_id, "daily_publish").run_daily_publish(
+            should_publish=settings.auto_send_wechat_draft
+        )
         if settings.auto_send_wechat_draft:
-            send_article_to_wechat_draft(db, article)
             mark_task_succeeded(db, task, "定时任务完成，文章已发送到公众号草稿箱", article_id=article.id)
             logger.info("任务成功：任务ID=%s，类型=每日发布，文章ID=%s，已发送公众号草稿=是", task_id, article.id)
         else:
             mark_task_succeeded(db, task, "定时任务完成，文章已生成", article_id=article.id)
             logger.info("任务成功：任务ID=%s，类型=每日发布，文章ID=%s，已发送公众号草稿=否", task_id, article.id)
-    except (ValueError, AIServiceError) as exc:
+    except (ValueError, AIServiceError, WeChatAPIError) as exc:
         logger.warning("任务失败：任务ID=%s，类型=每日发布，错误=%s", task_id, exc)
         mark_task_failed_by_id(db, task_id, "定时任务失败", str(exc))
     except Exception as exc:
