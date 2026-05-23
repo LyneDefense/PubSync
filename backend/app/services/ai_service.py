@@ -23,50 +23,6 @@ def is_ai_enabled(settings: Settings) -> bool:
     return False
 
 
-def generate_wechat_article(settings: Settings, news_items: list[dict[str, Any]]) -> dict[str, Any]:
-    prompt = f"""
-你是微信公众号 AI 科技早报主编。请基于下面的新闻事实生成一篇中文公众号草稿。
-
-要求：
-- 不能改变新闻事实，不能编造来源、融资金额、发布日期、产品能力或人物观点。
-- 可以做编辑化提炼、背景解释、影响分析，但事实和判断要区分。
-- 标题必须输出“AI科技早报 | xxx”格式，xxx 是你生成的标题内容；不要使用其他前缀。
-- 文章要适合公众号阅读，结构清晰，段落不要太长，避免堆叠多个大标题。
-- 开头先写 1 段 80-140 字导语，说明今天最重要的主线。
-- 正文每条新闻都要写得充分一些，不能只复述摘要；每条至少包含“发生了什么”“为什么重要”“编辑观察”三个层次。
-- 每条新闻建议 220-360 个中文字，既要有事实，也要有背景解释和影响分析。
-- 每条新闻都保留来源链接。
-- 新闻事实中的 region 只用于组织内容：international 表示国际动态，domestic 表示国内动态；不要直接输出 region、domestic、international 等内部字段。
-- 新闻事实已经按推荐顺序排列：通常国际动态在前、国内动态在后。正文应尊重这个顺序。
-- 如果同时包含国内和国际新闻，可以自然分成“国际动态”和“国内动态”的阅读节奏，但不要为了分组制造空洞小节。
-- 正文 HTML 只能使用 section/h2/h3/p/ul/li/blockquote/a/img/strong 标签，不要使用 script、iframe、table、外链 CSS、class 或 style。
-- 排版结构要适合微信公众号：每条新闻使用一个 section；section 内顺序为 h2、可选图片、正文段落、blockquote 编辑观察、来源链接 p。
-- h2 使用“01｜新闻标题”这种编号格式，不要重复写过长标题。
-- 不要在正文中展示发布时间、分类、重要性分数、内部评分、候选池排序等后台筛选信息。
-- 正文段落保持短段落，每段 80-140 个中文字；不要把三四个观点塞进一个超长段落。
-- 每条新闻用 2-3 个正文 p，加 1 个 blockquote“编辑观察”，形成可扫读节奏。
-- 来源链接放在最后一行，格式为“来源：<a href='真实URL'>来源名称</a>”，不要单独展示长 URL。
-- 如果新闻有 image_url，则最多插入一张图片，图片前后都要有正文，不要连续堆图。
-- 输出 JSON。
-
-新闻事实：
-{json.dumps(news_items, ensure_ascii=False, indent=2)}
-
-输出格式：
-{{
-  "title": "不超过 64 字的公众号标题",
-  "intro": "不超过 120 字的摘要导语",
-  "cover_prompt": "英文封面图提示词，只能是抽象科技视觉、信息图或概念插画；禁止真实人物肖像、虚构人物肖像、真实 logo、仿新闻现场照片",
-  "content_html": "公众号正文 HTML"
-}}
-"""
-    data = create_json_response(settings=settings, prompt=prompt)
-    for key in ("title", "intro", "content_html"):
-        if not data.get(key):
-            raise AIServiceError(f"AI 文章生成返回缺少 {key}")
-    return data
-
-
 def decide_article_image(settings: Settings, news_item: dict[str, Any], forced: bool = False) -> dict[str, Any]:
     mode_instruction = (
         "这次是强制补图：必须返回 should_generate=true，并给出一个安全、抽象、可生成的 prompt。"
