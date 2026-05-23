@@ -15,12 +15,13 @@ def process_news_candidates(
     settings: Settings,
     candidates: list[RawNewsCandidate],
     profile: Any | None = None,
+    content_groups: list | None = None,
 ) -> list[dict[str, object]]:
     if not candidates:
         raise AIServiceError("没有从新闻源抓取到候选新闻，请检查新闻源配置")
 
     logger.info("新闻后处理开始：候选数=%s", len(candidates))
-    data = create_json_response(settings=settings, prompt=build_news_processing_prompt(candidates, profile))
+    data = create_json_response(settings=settings, prompt=build_news_processing_prompt(candidates, profile, content_groups or []))
     items = validate_processed_items(data.get("items"), candidates)
     if not items:
         raise AIServiceError("AI 新闻后处理没有返回可用新闻，请检查候选源质量或模型输出")

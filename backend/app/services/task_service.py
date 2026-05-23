@@ -12,6 +12,7 @@ from app.models import AppSetting, OperationTask, PublishingSettings, TaskStatus
 from app.services.ai_service import AIServiceError
 from app.services.tenant_service import (
     build_effective_settings,
+    get_content_groups,
     get_layout_settings,
     get_profile,
     get_publishing_settings,
@@ -165,6 +166,7 @@ def build_harness(db: Session, task_id: str, task_type: str, tenant_id: int) -> 
         wechat_account=get_wechat_account(db, tenant),
         layout_settings=get_layout_settings(db, tenant),
         publishing_settings=publishing,
+        content_groups=get_content_groups(db, tenant, enabled_only=True),
     )
 
 

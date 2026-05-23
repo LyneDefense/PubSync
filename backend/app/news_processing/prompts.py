@@ -4,25 +4,28 @@ from typing import Any
 from app.news_fetching.models import RawNewsCandidate
 
 
-def build_news_processing_prompt(candidates: list[RawNewsCandidate], profile: Any | None = None) -> str:
+def build_news_processing_prompt(
+    candidates: list[RawNewsCandidate],
+    profile: Any | None = None,
+    content_groups: list | None = None,
+) -> str:
     prompt_candidates = [candidate.to_prompt_dict() for candidate in candidates]
     content_domain = getattr(profile, "content_domain", "AI、科技、模型、算力、企业应用")
     editor_persona = getattr(profile, "editor_persona", "你是一个严谨的 AI 行业新闻编辑")
     audience = getattr(profile, "audience", "科技从业者、产品经理、投资人与 AI 关注者")
     grouping_mode = getattr(profile, "grouping_mode", "regional")
-    group_a_label = getattr(profile, "international_label", "分组A")
-    group_b_label = getattr(profile, "domestic_label", "分组B")
+    groups = [group for group in (content_groups or []) if getattr(group, "enabled", True)]
+    group_description = "，".join(f"{group.group_key}={group.name}" for group in groups) or "main=精选内容"
     grouping_instruction = (
-        f"- 当前工作空间启用了两个内容分组：region=international 表示“{group_a_label}”，region=domestic 表示“{group_b_label}”。"
-        "请分别关注两个分组；如果某一分组候选质量不足，可以少选，不要用低质量新闻凑数。"
+        f"- 当前工作空间启用了内容分组：{group_description}。请分别关注各分组；如果某一分组候选质量不足，可以少选，不要用低质量新闻凑数。"
         if grouping_mode != "none"
-        else "- 当前工作空间不按分组组织内容。region 只是内部字段，不要为了凑分组选择低质量新闻。"
+        else "- 当前工作空间不按分组组织内容。group_key 只是内部字段，不要为了凑分组选择低质量新闻。"
     )
     return f"""
 {editor_persona}。下面是代码从 RSS/Atom 源抓到的候选新闻。
 
 你的职责是后处理，不是抓取新闻：
-- 只能基于候选新闻中的 title、summary、source、region、url、published_at 进行判断。
+- 只能基于候选新闻中的 title、summary、source、group_key、group_name、url、published_at 进行判断。
 - 当前内容领域：{content_domain}。
 - 目标读者：{audience}。
 - 不要编造候选集中不存在的新闻、URL、融资金额、发布日期、产品能力或人物观点。

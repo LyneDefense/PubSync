@@ -40,6 +40,7 @@ from app.services.task_service import (
     scheduled_workspace_publish,
 )
 from app.services.tenant_service import (
+    get_content_groups,
     get_default_tenant,
     get_layout_settings,
     get_profile,
@@ -48,6 +49,7 @@ from app.services.tenant_service import (
     get_wechat_account,
     list_tenants,
     update_layout_settings,
+    update_content_groups,
     update_profile,
     update_publishing_settings,
     update_wechat_account,
@@ -170,6 +172,7 @@ def get_workspace_config_endpoint(
         wechat=read_wechat_account(get_wechat_account(db, tenant)),
         layout=get_layout_settings(db, tenant),
         publishing=get_publishing_settings(db, tenant),
+        content_groups=get_content_groups(db, tenant),
     )
 
 
@@ -183,6 +186,7 @@ def update_workspace_config_endpoint(
     account = get_wechat_account(db, tenant)
     layout = get_layout_settings(db, tenant)
     publishing = get_publishing_settings(db, tenant)
+    content_groups = get_content_groups(db, tenant)
     if payload.profile:
         profile = update_profile(db, tenant, payload.profile)
     if payload.wechat:
@@ -191,7 +195,15 @@ def update_workspace_config_endpoint(
         layout = update_layout_settings(db, tenant, payload.layout)
     if payload.publishing:
         publishing = update_publishing_settings(db, tenant, payload.publishing)
-    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account), layout=layout, publishing=publishing)
+    if payload.content_groups is not None:
+        content_groups = update_content_groups(db, tenant, payload.content_groups)
+    return WorkspaceConfigRead(
+        profile=profile,
+        wechat=read_wechat_account(account),
+        layout=layout,
+        publishing=publishing,
+        content_groups=content_groups,
+    )
 
 
 @app.get("/dashboard", response_model=DashboardRead)

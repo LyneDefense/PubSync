@@ -14,16 +14,18 @@ class LLMTool:
         settings: Settings,
         candidates: list[RawNewsCandidate],
         profile: Any | None = None,
+        content_groups: list | None = None,
     ) -> list[dict[str, object]]:
-        return process_news_candidates(settings, candidates, profile)
+        return process_news_candidates(settings, candidates, profile, content_groups or [])
 
     def compose_article(
         self,
         settings: Settings,
         news_items: list[dict[str, Any]],
         profile: Any | None = None,
+        content_groups: list | None = None,
     ) -> ComposedArticle:
-        return compose_article(settings, news_items, profile)
+        return compose_article(settings, news_items, profile, content_groups or [])
 
     def decide_article_image(
         self,

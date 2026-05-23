@@ -38,7 +38,8 @@ def persist_processed_news(
         published_at = parse_datetime(item.get("published_at")) or now
         summary = normalize_text(item.get("summary"), default="暂无摘要")
         category = normalize_text(item.get("category"), default="AI 动态")[:80]
-        region = normalize_region(item.get("region"))
+        group_key = normalize_group_key(item.get("group_key"))
+        region = normalize_region(item.get("region"), group_key)
         source = normalize_text(item.get("source"), default="Unknown")[:200]
 
         news = NewsItem(
@@ -50,6 +51,7 @@ def persist_processed_news(
             summary=summary,
             category=category,
             region=region,
+            group_key=group_key,
             importance_score=importance_score,
             selected=importance_score >= 80,
             dedup_key=str(item.get("_dedup_key") or "")[:200] or None,
@@ -122,10 +124,17 @@ def normalize_score(value: object) -> int | None:
     return max(0, min(100, score))
 
 
-def normalize_region(value: object) -> str:
+def normalize_group_key(value: object) -> str:
+    group_key = str(value or "").strip().lower()
+    return group_key[:80] or "main"
+
+
+def normalize_region(value: object, group_key: str = "main") -> str:
     region = str(value or "").strip().lower()
     if region in {"domestic", "international"}:
         return region
+    if group_key == "china":
+        return "domestic"
     return "international"
 
 

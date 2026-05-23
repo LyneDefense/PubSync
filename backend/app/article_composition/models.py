@@ -4,7 +4,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ArticleSection:
     news_index: int
-    region: str
+    group_key: str
+    group_name: str
     heading: str
     paragraphs: list[str]
     editor_note: str

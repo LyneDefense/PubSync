@@ -19,8 +19,6 @@ export interface ContentProfile {
   audience: string
   article_style: string
   grouping_mode: 'regional' | 'none'
-  international_label: string
-  domestic_label: string
   categories_json: string
   image_style: string
 }
@@ -34,8 +32,6 @@ export interface ContentProfileUpdate {
   audience?: string
   article_style?: string
   grouping_mode?: 'regional' | 'none'
-  international_label?: string
-  domestic_label?: string
   categories_json?: string
   image_style?: string
 }
@@ -50,6 +46,22 @@ export interface WeChatAccountUpdate {
   app_id?: string
   app_secret?: string
 }
+
+export interface ContentGroup {
+  id: number
+  tenant_id: number
+  group_key: string
+  name: string
+  source_urls: string
+  candidate_limit: number
+  article_min: number
+  article_target: number
+  article_max: number
+  position: number
+  enabled: boolean
+}
+
+export type ContentGroupUpdate = Partial<Omit<ContentGroup, 'id' | 'tenant_id'>>
 
 export interface LayoutSettings {
   tenant_id: number
@@ -94,11 +106,7 @@ export interface PublishingSettings {
   max_article_images: number
   min_article_images: number
   news_source_urls: string
-  international_news_source_urls: string
-  domestic_news_source_urls: string
   news_per_source_limit: number
-  international_news_candidates: number
-  domestic_news_candidates: number
   news_lookback_hours: number
   max_news_candidates: number
   dedup_lookback_days: number
@@ -107,12 +115,6 @@ export interface PublishingSettings {
   dedup_enable_llm_review: boolean
   article_news_limit: number
   article_news_lookback_hours: number
-  article_domestic_min: number
-  article_domestic_target: number
-  article_domestic_max: number
-  article_international_min: number
-  article_international_target: number
-  article_international_max: number
 }
 
 export type PublishingSettingsUpdate = Partial<Omit<PublishingSettings, 'tenant_id'>>
@@ -122,6 +124,7 @@ export interface WorkspaceConfig {
   wechat: WeChatAccount
   layout: LayoutSettings
   publishing: PublishingSettings
+  content_groups: ContentGroup[]
 }
 
 export interface WorkspaceConfigUpdate {
@@ -129,6 +132,7 @@ export interface WorkspaceConfigUpdate {
   wechat?: WeChatAccountUpdate
   layout?: LayoutSettingsUpdate
   publishing?: PublishingSettingsUpdate
+  content_groups?: ContentGroupUpdate[]
 }
 
 export interface NewsItem {
@@ -141,6 +145,7 @@ export interface NewsItem {
   summary: string
   category: string
   region: string
+  group_key: string
   importance_score: number
   selected: boolean
   created_at: string

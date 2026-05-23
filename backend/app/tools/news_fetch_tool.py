@@ -4,5 +4,5 @@ from app.news_fetching.models import NewsFetchResult
 
 
 class NewsFetchTool:
-    def fetch(self, settings: Settings) -> NewsFetchResult:
-        return fetch_news(settings)
+    def fetch(self, settings: Settings, content_groups: list) -> NewsFetchResult:
+        return fetch_news(settings, content_groups)

@@ -24,6 +24,7 @@ import {
 import type {
   Article,
   ArticleUpdate,
+  ContentGroup,
   ContentProfile,
   NewsItem,
   OperationTask,
@@ -33,7 +34,7 @@ import type {
 } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate'
-type NewsTab = 'international' | 'domestic'
+type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
 
 const statusText: Record<string, string> = {
@@ -47,6 +48,7 @@ const news = ref<NewsItem[]>([])
 const article = ref<Article | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
+const contentGroups = ref<ContentGroup[]>([])
 const selectedTenantId = ref(getTenantId())
 const message = ref('')
 const isError = ref(false)
@@ -55,7 +57,7 @@ const taskEvents = ref<OperationTaskEvent[]>([])
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
-const activeNewsTab = ref<NewsTab>('international')
+const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const newsPage = ref(1)
 const pageSize = 5
@@ -86,8 +88,6 @@ const profileForm = reactive({
   editor_persona: '',
   audience: '',
   article_style: '',
-  international_label: '',
-  domestic_label: '',
   categories_json: '[]',
   image_style: ''
 })
@@ -123,11 +123,7 @@ const publishingForm = reactive({
   max_article_images: 3,
   min_article_images: 1,
   news_source_urls: '',
-  international_news_source_urls: '',
-  domestic_news_source_urls: '',
   news_per_source_limit: 8,
-  international_news_candidates: 40,
-  domestic_news_candidates: 40,
   news_lookback_hours: 72,
   max_news_candidates: 80,
   dedup_lookback_days: 7,
@@ -135,28 +131,32 @@ const publishingForm = reactive({
   dedup_review_similarity: '0.42',
   dedup_enable_llm_review: true,
   article_news_limit: 10,
-  article_news_lookback_hours: 72,
-  article_domestic_min: 1,
-  article_domestic_target: 3,
-  article_domestic_max: 4,
-  article_international_min: 3,
-  article_international_target: 6,
-  article_international_max: 7
+  article_news_lookback_hours: 72
 })
+
+const contentGroupForms = ref<ContentGroup[]>([])
 
 const hasArticle = computed(() => Boolean(article.value))
 const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早报')
 const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
-const internationalLabel = computed(() => profile.value?.international_label || '国际动态')
-const domesticLabel = computed(() => profile.value?.domestic_label || '国内动态')
 const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
-const domesticNews = computed(() => news.value.filter((item) => item.region === 'domestic'))
-const internationalNews = computed(() => news.value.filter((item) => item.region !== 'domestic'))
-const activeNews = computed(() => {
+const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
+const visibleNewsTabs = computed(() => {
   if (!usesRegionalGrouping.value) {
+    return [{ group_key: 'all', name: '全部', count: news.value.length }]
+  }
+  const tabs = enabledContentGroups.value.map((group) => ({
+    group_key: group.group_key,
+    name: group.name,
+    count: news.value.filter((item) => item.group_key === group.group_key).length
+  }))
+  return tabs.length ? tabs : [{ group_key: 'all', name: '全部', count: news.value.length }]
+})
+const activeNews = computed(() => {
+  if (!usesRegionalGrouping.value || activeNewsTab.value === 'all') {
     return news.value
   }
-  return activeNewsTab.value === 'domestic' ? domesticNews.value : internationalNews.value
+  return news.value.filter((item) => item.group_key === activeNewsTab.value)
 })
 const newsTotalPages = computed(() => Math.max(1, Math.ceil(activeNews.value.length / pageSize)))
 const pagedNews = computed(() => {
@@ -309,10 +309,11 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   profileForm.editor_persona = config.profile.editor_persona
   profileForm.audience = config.profile.audience
   profileForm.article_style = config.profile.article_style
-  profileForm.international_label = config.profile.international_label
-  profileForm.domestic_label = config.profile.domestic_label
   profileForm.categories_json = config.profile.categories_json
   profileForm.image_style = config.profile.image_style
+  contentGroups.value = [...config.content_groups].sort((a, b) => a.position - b.position)
+  contentGroupForms.value = contentGroups.value.map((group) => ({ ...group }))
+  activeNewsTab.value = visibleNewsTabs.value[0]?.group_key || 'all'
   wechatForm.app_id = config.wechat.app_id
   wechatForm.app_secret = ''
   wechatForm.app_secret_configured = config.wechat.app_secret_configured
@@ -365,6 +366,8 @@ function handleLogout() {
   news.value = []
   tenants.value = []
   profile.value = null
+  contentGroups.value = []
+  contentGroupForms.value = []
   taskEvents.value = []
   setArticle(null)
   showMessage('')
@@ -457,15 +460,30 @@ async function handleSaveConfig() {
         workspace_title: profileForm.workspace_title,
         title_prefix: profileForm.title_prefix,
         grouping_mode: profileForm.grouping_mode,
-        international_label: profileForm.international_label,
-        domestic_label: profileForm.domestic_label
+        content_domain: profileForm.content_domain,
+        editor_persona: profileForm.editor_persona,
+        audience: profileForm.audience,
+        article_style: profileForm.article_style,
+        categories_json: profileForm.categories_json,
+        image_style: profileForm.image_style
       },
       wechat: {
         app_id: wechatForm.app_id,
         ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {})
       },
       layout: { ...layoutForm },
-      publishing: { ...publishingForm }
+      publishing: { ...publishingForm },
+      content_groups: contentGroupForms.value.map((group, index) => ({
+        group_key: group.group_key,
+        name: group.name,
+        source_urls: group.source_urls,
+        candidate_limit: group.candidate_limit,
+        article_min: group.article_min,
+        article_target: group.article_target,
+        article_max: group.article_max,
+        position: index,
+        enabled: group.enabled
+      }))
     }
     const nextConfig = await updateWorkspaceConfig(payload)
     setWorkspaceConfig(nextConfig)
@@ -481,6 +499,35 @@ function setNewsTab(tab: NewsTab) {
   newsPage.value = 1
 }
 
+function addContentGroup() {
+  if (contentGroupForms.value.length >= 6) {
+    showMessage('最多配置 6 个内容分组', true)
+    return
+  }
+  const nextIndex = contentGroupForms.value.length + 1
+  contentGroupForms.value.push({
+    id: 0,
+    tenant_id: Number(selectedTenantId.value || 0),
+    group_key: `group-${nextIndex}`,
+    name: `内容分组 ${nextIndex}`,
+    source_urls: '',
+    candidate_limit: 40,
+    article_min: 0,
+    article_target: 5,
+    article_max: 8,
+    position: nextIndex - 1,
+    enabled: true
+  })
+}
+
+function removeContentGroup(index: number) {
+  if (contentGroupForms.value.length <= 1) {
+    showMessage('至少保留 1 个内容分组', true)
+    return
+  }
+  contentGroupForms.value.splice(index, 1)
+}
+
 function changeNewsPage(delta: number) {
   newsPage.value = Math.min(newsTotalPages.value, Math.max(1, newsPage.value + delta))
 }
@@ -494,8 +541,8 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-function regionLabel(region: string) {
-  return region === 'domestic' ? domesticLabel.value : internationalLabel.value
+function groupLabel(groupKey: string) {
+  return contentGroups.value.find((group) => group.group_key === groupKey)?.name || groupKey || '未分组'
 }
 
 onMounted(() => {
@@ -628,26 +675,18 @@ onUnmounted(() => {
             <p class="eyebrow">候选池</p>
             <h2>{{ workspaceTitle }}候选新闻</h2>
           </div>
-          <div v-if="usesRegionalGrouping" class="tabs" role="tablist" aria-label="新闻区域">
+          <div class="tabs" role="tablist" aria-label="新闻分组">
             <button
+              v-for="tab in visibleNewsTabs"
+              :key="tab.group_key"
               type="button"
               role="tab"
-              :aria-selected="activeNewsTab === 'international'"
-              :class="{ active: activeNewsTab === 'international' }"
-              @click="setNewsTab('international')"
+              :aria-selected="activeNewsTab === tab.group_key"
+              :class="{ active: activeNewsTab === tab.group_key }"
+              @click="setNewsTab(tab.group_key)"
             >
-              {{ internationalLabel }}
-              <span>{{ internationalNews.length }}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="activeNewsTab === 'domestic'"
-              :class="{ active: activeNewsTab === 'domestic' }"
-              @click="setNewsTab('domestic')"
-            >
-              {{ domesticLabel }}
-              <span>{{ domesticNews.length }}</span>
+              {{ tab.name }}
+              <span>{{ tab.count }}</span>
             </button>
           </div>
         </div>
@@ -662,8 +701,8 @@ onUnmounted(() => {
             <div>
               <h3>{{ item.title }}</h3>
               <div class="meta">
-                <span v-if="usesRegionalGrouping" class="region-pill" :class="{ domestic: item.region === 'domestic' }">
-                  {{ regionLabel(item.region) }}
+                <span v-if="usesRegionalGrouping" class="region-pill">
+                  {{ groupLabel(item.group_key) }}
                 </span>
                 {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
               </div>
@@ -770,17 +809,9 @@ onUnmounted(() => {
             <label>
               内容分组
               <select v-model="profileForm.grouping_mode">
-                <option value="regional">按两个内容分组</option>
+                <option value="regional">按内容分组</option>
                 <option value="none">不分组</option>
               </select>
-            </label>
-            <label>
-              分组A名称
-              <input v-model="profileForm.international_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
-            </label>
-            <label>
-              分组B名称
-              <input v-model="profileForm.domestic_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
             </label>
             <label>
               微信 AppID
@@ -838,42 +869,57 @@ onUnmounted(() => {
               <input v-model.number="publishingForm.news_lookback_hours" type="number" min="1" max="168" />
             </label>
             <label>
-              分组A候选数量
-              <input v-model.number="publishingForm.international_news_candidates" type="number" min="0" max="200" />
-            </label>
-            <label>
-              分组B候选数量
-              <input v-model.number="publishingForm.domestic_news_candidates" type="number" min="0" max="200" />
-            </label>
-            <label>
               总候选上限
               <input v-model.number="publishingForm.max_news_candidates" type="number" min="1" max="300" />
             </label>
           </div>
-          <label>
-            通用新闻源
-            <textarea
-              v-model="publishingForm.news_source_urls"
-              rows="3"
-              placeholder="用英文逗号分隔，例如：PetfoodIndustry|https://www.petfoodindustry.com/rss,AVMA|https://www.avma.org/news/rss"
-            ></textarea>
-          </label>
-          <label>
-            分组A新闻源
-            <textarea
-              v-model="publishingForm.international_news_source_urls"
-              rows="3"
-              placeholder="格式：名称|RSS地址,名称|RSS地址"
-            ></textarea>
-          </label>
-          <label>
-            分组B新闻源
-            <textarea
-              v-model="publishingForm.domestic_news_source_urls"
-              rows="3"
-              placeholder="格式：名称|RSS地址,名称|RSS地址"
-            ></textarea>
-          </label>
+          <div class="group-editor">
+            <article v-for="(group, index) in contentGroupForms" :key="`${group.group_key}-${index}`" class="group-card">
+              <div class="group-card-header">
+                <strong>{{ group.name || `内容分组 ${index + 1}` }}</strong>
+                <button type="button" @click="removeContentGroup(index)">移除</button>
+              </div>
+              <div class="config-grid">
+                <label>
+                  分组 Key
+                  <input v-model="group.group_key" type="text" required />
+                </label>
+                <label>
+                  分组名称
+                  <input v-model="group.name" type="text" required />
+                </label>
+                <label>
+                  候选数量
+                  <input v-model.number="group.candidate_limit" type="number" min="0" max="300" />
+                </label>
+                <label class="toggle-row">
+                  <input v-model="group.enabled" type="checkbox" />
+                  启用分组
+                </label>
+                <label>
+                  文章最少
+                  <input v-model.number="group.article_min" type="number" min="0" max="50" />
+                </label>
+                <label>
+                  文章目标
+                  <input v-model.number="group.article_target" type="number" min="0" max="50" />
+                </label>
+                <label>
+                  文章最多
+                  <input v-model.number="group.article_max" type="number" min="0" max="50" />
+                </label>
+              </div>
+              <label>
+                新闻源
+                <textarea
+                  v-model="group.source_urls"
+                  rows="3"
+                  placeholder="格式：名称|RSS地址,名称|RSS地址"
+                ></textarea>
+              </label>
+            </article>
+            <button type="button" class="secondary" @click="addContentGroup">新增内容分组</button>
+          </div>
 
           <div class="config-subsection">
             <p class="eyebrow">生成策略</p>
@@ -915,32 +961,6 @@ onUnmounted(() => {
             <label>
               大模型复核阈值
               <input v-model="publishingForm.dedup_review_similarity" type="number" min="0" max="1" step="0.01" />
-            </label>
-          </div>
-          <div v-if="usesRegionalGrouping" class="config-grid">
-            <label>
-              分组B最少
-              <input v-model.number="publishingForm.article_domestic_min" type="number" min="0" max="50" />
-            </label>
-            <label>
-              分组B目标
-              <input v-model.number="publishingForm.article_domestic_target" type="number" min="0" max="50" />
-            </label>
-            <label>
-              分组B最多
-              <input v-model.number="publishingForm.article_domestic_max" type="number" min="0" max="50" />
-            </label>
-            <label>
-              分组A最少
-              <input v-model.number="publishingForm.article_international_min" type="number" min="0" max="50" />
-            </label>
-            <label>
-              分组A目标
-              <input v-model.number="publishingForm.article_international_target" type="number" min="0" max="50" />
-            </label>
-            <label>
-              分组A最多
-              <input v-model.number="publishingForm.article_international_max" type="number" min="0" max="50" />
             </label>
           </div>
           <div class="config-subsection">
@@ -1003,7 +1023,7 @@ onUnmounted(() => {
             <div class="layout-preview" :style="layoutPreviewStyle" aria-label="排版预览">
               <p class="layout-preview-kicker">公众号预览</p>
               <section v-if="layoutForm.show_group_heading" :style="layoutPreviewSectionStyle">
-                <h3 :style="layoutPreviewHeadingStyle">{{ usesRegionalGrouping ? internationalLabel : '精选内容' }}</h3>
+                <h3 :style="layoutPreviewHeadingStyle">{{ usesRegionalGrouping ? contentGroupForms[0]?.name || '内容分组' : '精选内容' }}</h3>
               </section>
               <section :style="layoutPreviewSectionStyle">
                 <h2 :style="layoutPreviewHeadingStyle">01｜一条适合当前工作空间的内容标题</h2>

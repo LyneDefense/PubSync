@@ -4,13 +4,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.article_selection.models import ArticleSelectionResult, RegionSelectionRule
+from app.article_selection.models import ArticleSelectionResult, GroupSelectionRule
 from app.config import Settings
-from app.models import ContentProfile, NewsItem
+from app.models import ContentGroup, ContentProfile, NewsItem
 
 
-DOMESTIC = "domestic"
-INTERNATIONAL = "international"
 logger = logging.getLogger(__name__)
 
 
@@ -19,71 +17,50 @@ def select_article_news(
     settings: Settings,
     tenant_id: int,
     profile: ContentProfile | None = None,
+    content_groups: list[ContentGroup] | None = None,
 ) -> ArticleSelectionResult:
     article_limit = max(1, settings.article_news_limit)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, settings.article_news_lookback_hours))
-    if profile and profile.grouping_mode == "none":
+    groups = [group for group in (content_groups or []) if group.enabled]
+    if not groups or (profile and profile.grouping_mode == "none"):
         return select_article_news_without_groups(db, tenant_id, cutoff, article_limit)
-    group_a_label = profile.international_label if profile else "分组A"
-    group_b_label = profile.domestic_label if profile else "分组B"
-    logger.info(
-        "文章新闻选择开始：数量上限=%s，回看小时=%s",
+
+    rules = fit_targets_to_limit(
+        [build_rule(group, article_limit) for group in groups],
         article_limit,
-        settings.article_news_lookback_hours,
     )
-    domestic_rule = RegionSelectionRule(
-        region=DOMESTIC,
-        minimum=settings.article_domestic_min,
-        target=settings.article_domestic_target,
-        maximum=settings.article_domestic_max,
-    ).normalized(article_limit)
-    international_rule = RegionSelectionRule(
-        region=INTERNATIONAL,
-        minimum=settings.article_international_min,
-        target=settings.article_international_target,
-        maximum=settings.article_international_max,
-    ).normalized(article_limit)
-    domestic_rule, international_rule = fit_targets_to_limit(domestic_rule, international_rule, article_limit)
+    pools = {rule.group_key: fetch_group_pool(db, tenant_id, rule.group_key, cutoff, rule.maximum) for rule in rules}
+    selected_by_group = {rule.group_key: pools[rule.group_key][: rule.target] for rule in rules}
 
-    domestic_pool = fetch_region_pool(db, tenant_id, domestic_rule.region, cutoff, domestic_rule.maximum)
-    international_pool = fetch_region_pool(db, tenant_id, international_rule.region, cutoff, international_rule.maximum)
     logger.info(
-        "文章新闻候选池准备完成：%s=%s，%s=%s",
-        group_a_label,
-        len(international_pool),
-        group_b_label,
-        len(domestic_pool),
+        "文章新闻候选池准备完成：%s",
+        "，".join(f"{rule.group_name}={len(pools[rule.group_key])}" for rule in rules),
     )
-
-    selected_domestic = domestic_pool[: domestic_rule.target]
-    selected_international = international_pool[: international_rule.target]
-
-    selected_domestic, selected_international = fill_selection(
-        selected_domestic=selected_domestic,
-        selected_international=selected_international,
-        domestic_pool=domestic_pool,
-        international_pool=international_pool,
-        domestic_rule=domestic_rule,
-        international_rule=international_rule,
-        article_limit=article_limit,
-    )
-
-    news_items = [*selected_international, *selected_domestic]
+    fill_selection(selected_by_group, pools, rules, article_limit)
+    ordered_items = flatten_selection(selected_by_group, rules)[:article_limit]
+    group_counts = {rule.group_name: len(selected_by_group[rule.group_key]) for rule in rules}
     logger.info(
-        "文章新闻选择完成：总数=%s，%s=%s，%s=%s，可用候选=%s",
-        len(news_items[:article_limit]),
-        group_a_label,
-        len(selected_international),
-        group_b_label,
-        len(selected_domestic),
-        len(domestic_pool) + len(international_pool),
+        "文章新闻选择完成：总数=%s，分组=%s，可用候选=%s",
+        len(ordered_items),
+        group_counts,
+        sum(len(pool) for pool in pools.values()),
     )
     return ArticleSelectionResult(
-        news_items=news_items[:article_limit],
-        domestic_count=len(selected_domestic),
-        international_count=len(selected_international),
-        total_available=len(domestic_pool) + len(international_pool),
+        news_items=ordered_items,
+        group_counts=group_counts,
+        total_available=sum(len(pool) for pool in pools.values()),
     )
+
+
+def build_rule(group: ContentGroup, article_limit: int) -> GroupSelectionRule:
+    return GroupSelectionRule(
+        group_key=group.group_key,
+        group_name=group.name,
+        minimum=group.article_min,
+        target=group.article_target,
+        maximum=group.article_max,
+        position=group.position,
+    ).normalized(article_limit)
 
 
 def select_article_news_without_groups(
@@ -94,74 +71,77 @@ def select_article_news_without_groups(
 ) -> ArticleSelectionResult:
     pool = list(
         db.scalars(
-            select(NewsItem)
-            .where(
-                NewsItem.selected.is_(True),
-                NewsItem.tenant_id == tenant_id,
-                NewsItem.published_at >= cutoff,
-                or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),
-            )
+            base_news_query(tenant_id, cutoff)
             .order_by(NewsItem.importance_score.desc(), NewsItem.published_at.desc())
             .limit(article_limit)
         )
     )
-    domestic_count = sum(1 for item in pool if item.region == DOMESTIC)
-    international_count = len(pool) - domestic_count
     logger.info("文章新闻选择完成：不分组，总数=%s，可用候选=%s", len(pool), len(pool))
-    return ArticleSelectionResult(
-        news_items=pool,
-        domestic_count=domestic_count,
-        international_count=international_count,
-        total_available=len(pool),
+    return ArticleSelectionResult(news_items=pool, group_counts={"精选内容": len(pool)}, total_available=len(pool))
+
+
+def fit_targets_to_limit(rules: list[GroupSelectionRule], article_limit: int) -> list[GroupSelectionRule]:
+    ordered = sorted(rules, key=lambda rule: rule.position)
+    minimum_total = sum(rule.minimum for rule in ordered)
+    if minimum_total > article_limit:
+        return trim_minimums(ordered, article_limit)
+    target_total = sum(rule.target for rule in ordered)
+    if target_total <= article_limit:
+        return ordered
+    overflow = target_total - article_limit
+    fitted: list[GroupSelectionRule] = []
+    for rule in reversed(ordered):
+        reducible = max(0, rule.target - rule.minimum)
+        reduction = min(reducible, overflow)
+        overflow -= reduction
+        fitted.append(
+            GroupSelectionRule(
+                group_key=rule.group_key,
+                group_name=rule.group_name,
+                minimum=rule.minimum,
+                target=rule.target - reduction,
+                maximum=rule.maximum,
+                position=rule.position,
+            )
+        )
+    return sorted(reversed(fitted), key=lambda rule: rule.position)
+
+
+def trim_minimums(rules: list[GroupSelectionRule], article_limit: int) -> list[GroupSelectionRule]:
+    remaining = article_limit
+    fitted: list[GroupSelectionRule] = []
+    for rule in rules:
+        target = min(rule.minimum, remaining)
+        remaining -= target
+        fitted.append(
+            GroupSelectionRule(
+                group_key=rule.group_key,
+                group_name=rule.group_name,
+                minimum=target,
+                target=target,
+                maximum=max(target, rule.maximum),
+                position=rule.position,
+            )
+        )
+    return fitted
+
+
+def base_news_query(tenant_id: int, cutoff: datetime):
+    return select(NewsItem).where(
+        NewsItem.selected.is_(True),
+        NewsItem.tenant_id == tenant_id,
+        NewsItem.published_at >= cutoff,
+        or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),
     )
 
 
-def fit_targets_to_limit(
-    domestic_rule: RegionSelectionRule,
-    international_rule: RegionSelectionRule,
-    article_limit: int,
-) -> tuple[RegionSelectionRule, RegionSelectionRule]:
-    if domestic_rule.target + international_rule.target <= article_limit:
-        return domestic_rule, international_rule
-
-    domestic_target = min(domestic_rule.target, article_limit)
-    international_target = min(international_rule.target, max(0, article_limit - domestic_target))
-    if (
-        international_target < international_rule.minimum
-        and article_limit >= domestic_rule.minimum + international_rule.minimum
-    ):
-        international_target = international_rule.minimum
-        domestic_target = min(domestic_rule.target, article_limit - international_target)
-
-    return (
-        RegionSelectionRule(
-            region=domestic_rule.region,
-            minimum=domestic_rule.minimum,
-            target=domestic_target,
-            maximum=domestic_rule.maximum,
-        ),
-        RegionSelectionRule(
-            region=international_rule.region,
-            minimum=international_rule.minimum,
-            target=international_target,
-            maximum=international_rule.maximum,
-        ),
-    )
-
-
-def fetch_region_pool(db: Session, tenant_id: int, region: str, cutoff: datetime, limit: int) -> list[NewsItem]:
+def fetch_group_pool(db: Session, tenant_id: int, group_key: str, cutoff: datetime, limit: int) -> list[NewsItem]:
     if limit <= 0:
         return []
     return list(
         db.scalars(
-            select(NewsItem)
-            .where(
-                NewsItem.selected.is_(True),
-                NewsItem.tenant_id == tenant_id,
-                NewsItem.region == region,
-                NewsItem.published_at >= cutoff,
-                or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),
-            )
+            base_news_query(tenant_id, cutoff)
+            .where(NewsItem.group_key == group_key)
             .order_by(NewsItem.importance_score.desc(), NewsItem.published_at.desc())
             .limit(limit)
         )
@@ -169,29 +149,35 @@ def fetch_region_pool(db: Session, tenant_id: int, region: str, cutoff: datetime
 
 
 def fill_selection(
-    selected_domestic: list[NewsItem],
-    selected_international: list[NewsItem],
-    domestic_pool: list[NewsItem],
-    international_pool: list[NewsItem],
-    domestic_rule: RegionSelectionRule,
-    international_rule: RegionSelectionRule,
+    selected_by_group: dict[str, list[NewsItem]],
+    pools: dict[str, list[NewsItem]],
+    rules: list[GroupSelectionRule],
     article_limit: int,
-) -> tuple[list[NewsItem], list[NewsItem]]:
-    selected_ids = {item.id for item in [*selected_domestic, *selected_international]}
-    domestic_remaining = [item for item in domestic_pool if item.id not in selected_ids]
-    international_remaining = [item for item in international_pool if item.id not in selected_ids]
-
-    while len(selected_domestic) + len(selected_international) < article_limit:
-        added = False
-        if len(selected_domestic) < domestic_rule.maximum and domestic_remaining:
-            selected_domestic.append(domestic_remaining.pop(0))
-            added = True
-        if len(selected_domestic) + len(selected_international) >= article_limit:
+) -> None:
+    selected_ids = {item.id for items in selected_by_group.values() for item in items}
+    while sum(len(items) for items in selected_by_group.values()) < article_limit:
+        best_rule: GroupSelectionRule | None = None
+        best_item: NewsItem | None = None
+        for rule in rules:
+            if len(selected_by_group[rule.group_key]) >= rule.maximum:
+                continue
+            for item in pools[rule.group_key]:
+                if item.id not in selected_ids:
+                    if best_item is None or (item.importance_score, item.published_at) > (
+                        best_item.importance_score,
+                        best_item.published_at,
+                    ):
+                        best_item = item
+                        best_rule = rule
+                    break
+        if best_rule is None or best_item is None:
             break
-        if len(selected_international) < international_rule.maximum and international_remaining:
-            selected_international.append(international_remaining.pop(0))
-            added = True
-        if not added:
-            break
+        selected_by_group[best_rule.group_key].append(best_item)
+        selected_ids.add(best_item.id)
 
-    return selected_domestic, selected_international
+
+def flatten_selection(selected_by_group: dict[str, list[NewsItem]], rules: list[GroupSelectionRule]) -> list[NewsItem]:
+    news_items: list[NewsItem] = []
+    for rule in rules:
+        news_items.extend(selected_by_group[rule.group_key])
+    return news_items

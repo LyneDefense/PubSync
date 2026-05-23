@@ -17,7 +17,7 @@ from app.harness.steps import (
     PublishWechatDraftStep,
     SelectArticleNewsStep,
 )
-from app.models import Article, ContentProfile, LayoutSettings, NewsItem, PublishingSettings, Tenant, WeChatAccount
+from app.models import Article, ContentGroup, ContentProfile, LayoutSettings, NewsItem, PublishingSettings, Tenant, WeChatAccount
 from app.services.ai_service import AIServiceError, is_ai_enabled
 
 class PubSyncHarness:
@@ -32,6 +32,7 @@ class PubSyncHarness:
         wechat_account: WeChatAccount,
         layout_settings: LayoutSettings,
         publishing_settings: PublishingSettings,
+        content_groups: list[ContentGroup],
     ) -> None:
         self.context = HarnessContext(
             task_id=task_id,
@@ -43,6 +44,7 @@ class PubSyncHarness:
             wechat_account=wechat_account,
             layout_settings=layout_settings,
             publishing_settings=publishing_settings,
+            content_groups=content_groups,
         )
 
     def run_news_fetch(self) -> list[NewsItem]:

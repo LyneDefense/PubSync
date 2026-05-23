@@ -1,12 +1,21 @@
-from sqlalchemy import select
+import re
+
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import ContentProfile, LayoutSettings, PublishingSettings, Tenant, TenantStatus, WeChatAccount
-from app.schemas import ContentProfileUpdate, LayoutSettingsUpdate, PublishingSettingsUpdate, WeChatAccountUpdate
+from app.models import ContentGroup, ContentProfile, LayoutSettings, PublishingSettings, Tenant, TenantStatus, WeChatAccount
+from app.schemas import (
+    ContentGroupUpdate,
+    ContentProfileUpdate,
+    LayoutSettingsUpdate,
+    PublishingSettingsUpdate,
+    WeChatAccountUpdate,
+)
 
 
 DEFAULT_TENANT_ID = 1
+MAX_CONTENT_GROUPS = 6
 
 
 def get_default_tenant(db: Session) -> Tenant:
@@ -68,7 +77,55 @@ def ensure_tenant_defaults(db: Session, tenant: Tenant) -> None:
         )
     if not db.get(PublishingSettings, tenant.id):
         db.add(PublishingSettings(tenant_id=tenant.id))
+    db.flush()
+    ensure_content_group_defaults(db, tenant)
     db.commit()
+
+
+def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
+    existing = list_content_groups(db, tenant.id, enabled_only=False)
+    if existing:
+        return
+    if tenant.id == DEFAULT_TENANT_ID:
+        defaults = [
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key="global",
+                name="国际动态",
+                source_urls="",
+                candidate_limit=40,
+                article_min=3,
+                article_target=6,
+                article_max=7,
+                position=0,
+            ),
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key="china",
+                name="国内动态",
+                source_urls="",
+                candidate_limit=40,
+                article_min=1,
+                article_target=3,
+                article_max=4,
+                position=1,
+            ),
+        ]
+    else:
+        defaults = [
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key="main",
+                name="精选内容",
+                source_urls="",
+                candidate_limit=60,
+                article_min=0,
+                article_target=8,
+                article_max=8,
+                position=0,
+            )
+        ]
+    db.add_all(defaults)
 
 
 def get_profile(db: Session, tenant: Tenant) -> ContentProfile:
@@ -101,6 +158,18 @@ def get_publishing_settings(db: Session, tenant: Tenant) -> PublishingSettings:
     if not publishing:
         raise RuntimeError("工作空间发布配置初始化失败")
     return publishing
+
+
+def list_content_groups(db: Session, tenant_id: int, enabled_only: bool = False) -> list[ContentGroup]:
+    stmt = select(ContentGroup).where(ContentGroup.tenant_id == tenant_id).order_by(ContentGroup.position.asc(), ContentGroup.id.asc())
+    if enabled_only:
+        stmt = stmt.where(ContentGroup.enabled.is_(True))
+    return list(db.scalars(stmt))
+
+
+def get_content_groups(db: Session, tenant: Tenant, enabled_only: bool = False) -> list[ContentGroup]:
+    ensure_tenant_defaults(db, tenant)
+    return list_content_groups(db, tenant.id, enabled_only=enabled_only)
 
 
 def update_profile(db: Session, tenant: Tenant, payload: ContentProfileUpdate) -> ContentProfile:
@@ -151,6 +220,84 @@ def update_publishing_settings(db: Session, tenant: Tenant, payload: PublishingS
     db.commit()
     db.refresh(publishing)
     return publishing
+
+
+def update_content_groups(db: Session, tenant: Tenant, payload: list[ContentGroupUpdate]) -> list[ContentGroup]:
+    normalized = normalize_group_payload(payload)
+    db.execute(delete(ContentGroup).where(ContentGroup.tenant_id == tenant.id))
+    for position, item in enumerate(normalized):
+        db.add(
+            ContentGroup(
+                tenant_id=tenant.id,
+                group_key=item["group_key"],
+                name=item["name"],
+                source_urls=item["source_urls"],
+                candidate_limit=item["candidate_limit"],
+                article_min=item["article_min"],
+                article_target=item["article_target"],
+                article_max=item["article_max"],
+                position=position,
+                enabled=item["enabled"],
+            )
+        )
+    db.commit()
+    return list_content_groups(db, tenant.id, enabled_only=False)
+
+
+def normalize_group_payload(payload: list[ContentGroupUpdate]) -> list[dict[str, object]]:
+    groups: list[dict[str, object]] = []
+    used_keys: set[str] = set()
+    for index, item in enumerate(payload[:MAX_CONTENT_GROUPS]):
+        data = item.model_dump(exclude_unset=True)
+        raw_name = str(data.get("name") or "").strip()
+        if not raw_name:
+            continue
+        group_key = normalize_group_key(data.get("group_key") or raw_name or f"group-{index + 1}")
+        while group_key in used_keys:
+            group_key = f"{group_key}-{index + 1}"
+        used_keys.add(group_key)
+        article_max = clamp_int(data.get("article_max"), 0, 50, 8)
+        article_target = min(clamp_int(data.get("article_target"), 0, 50, min(5, article_max)), article_max)
+        article_min = min(clamp_int(data.get("article_min"), 0, 50, 0), article_target)
+        groups.append(
+            {
+                "group_key": group_key,
+                "name": raw_name[:120],
+                "source_urls": str(data.get("source_urls") or "").strip(),
+                "candidate_limit": clamp_int(data.get("candidate_limit"), 0, 300, 40),
+                "article_min": article_min,
+                "article_target": article_target,
+                "article_max": article_max,
+                "enabled": bool(data.get("enabled", True)),
+            }
+        )
+    if not groups:
+        groups.append(
+            {
+                "group_key": "main",
+                "name": "精选内容",
+                "source_urls": "",
+                "candidate_limit": 60,
+                "article_min": 0,
+                "article_target": 8,
+                "article_max": 8,
+                "enabled": True,
+            }
+        )
+    return groups
+
+
+def normalize_group_key(value: object) -> str:
+    key = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-_")
+    return key[:80] or "main"
+
+
+def clamp_int(value: object, minimum: int, maximum: int, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
 
 
 def normalize_publishing_value(key: str, value: object) -> object:

@@ -14,7 +14,13 @@ class SelectArticleNewsStep(HarnessStep):
         self.article_tool = article_tool or ArticleTool()
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
-        selection = self.article_tool.select_news(context.db, context.settings, context.tenant.id, context.profile)
+        selection = self.article_tool.select_news(
+            context.db,
+            context.settings,
+            context.tenant.id,
+            context.profile,
+            context.content_groups,
+        )
         context.selection = selection
         context.selected_news = selection.news_items
         if not context.selected_news:
@@ -23,8 +29,7 @@ class SelectArticleNewsStep(HarnessStep):
             "文章选题完成",
             {
                 "总数": len(context.selected_news),
-                context.profile.international_label: selection.international_count,
-                context.profile.domestic_label: selection.domestic_count,
+                "分组数量": selection.group_counts,
                 "可用候选": selection.total_available,
             },
         )
@@ -38,7 +43,7 @@ class PrepareArticlePayloadStep(HarnessStep):
         self.article_tool = article_tool or ArticleTool()
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
-        context.news_payload = self.article_tool.build_news_payload(context.selected_news)
+        context.news_payload = self.article_tool.build_news_payload(context.selected_news, context.content_groups)
         return "文章素材准备完成", {"素材数": len(context.news_payload)}
 
 
@@ -71,7 +76,12 @@ class ComposeArticleStep(HarnessStep):
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
         if self.article_tool.ai_enabled(context.settings):
-            context.composed_article = self.llm_tool.compose_article(context.settings, context.news_payload, context.profile)
+            context.composed_article = self.llm_tool.compose_article(
+                context.settings,
+                context.news_payload,
+                context.profile,
+                context.content_groups,
+            )
             context.title = normalize_article_title(context.composed_article.title, context.profile.title_prefix)[:300]
             context.intro = context.composed_article.intro
             return "正文生成完成", {"段落数": len(context.composed_article.sections), "标题": context.title}

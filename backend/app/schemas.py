@@ -24,8 +24,6 @@ class ContentProfileRead(BaseModel):
     audience: str
     article_style: str
     grouping_mode: str
-    international_label: str
-    domestic_label: str
     categories_json: str
     image_style: str
 
@@ -41,10 +39,36 @@ class ContentProfileUpdate(BaseModel):
     audience: str | None = Field(default=None, min_length=1)
     article_style: str | None = Field(default=None, min_length=1)
     grouping_mode: str | None = Field(default=None, pattern="^(regional|none)$")
-    international_label: str | None = Field(default=None, min_length=1, max_length=80)
-    domestic_label: str | None = Field(default=None, min_length=1, max_length=80)
     categories_json: str | None = Field(default=None, min_length=1)
     image_style: str | None = Field(default=None, min_length=1)
+
+
+class ContentGroupRead(BaseModel):
+    id: int
+    tenant_id: int
+    group_key: str
+    name: str
+    source_urls: str
+    candidate_limit: int
+    article_min: int
+    article_target: int
+    article_max: int
+    position: int
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContentGroupUpdate(BaseModel):
+    group_key: str | None = Field(default=None, min_length=1, max_length=80)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    source_urls: str | None = ""
+    candidate_limit: int | None = Field(default=None, ge=0, le=300)
+    article_min: int | None = Field(default=None, ge=0, le=50)
+    article_target: int | None = Field(default=None, ge=0, le=50)
+    article_max: int | None = Field(default=None, ge=0, le=50)
+    position: int | None = Field(default=None, ge=0, le=50)
+    enabled: bool | None = None
 
 
 class WeChatAccountRead(BaseModel):
@@ -103,11 +127,7 @@ class PublishingSettingsRead(BaseModel):
     max_article_images: int
     min_article_images: int
     news_source_urls: str
-    international_news_source_urls: str
-    domestic_news_source_urls: str
     news_per_source_limit: int
-    international_news_candidates: int
-    domestic_news_candidates: int
     news_lookback_hours: int
     max_news_candidates: int
     dedup_lookback_days: int
@@ -116,12 +136,6 @@ class PublishingSettingsRead(BaseModel):
     dedup_enable_llm_review: bool
     article_news_limit: int
     article_news_lookback_hours: int
-    article_domestic_min: int
-    article_domestic_target: int
-    article_domestic_max: int
-    article_international_min: int
-    article_international_target: int
-    article_international_max: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -135,11 +149,7 @@ class PublishingSettingsUpdate(BaseModel):
     max_article_images: int | None = Field(default=None, ge=0, le=10)
     min_article_images: int | None = Field(default=None, ge=0, le=10)
     news_source_urls: str | None = None
-    international_news_source_urls: str | None = None
-    domestic_news_source_urls: str | None = None
     news_per_source_limit: int | None = Field(default=None, ge=1, le=50)
-    international_news_candidates: int | None = Field(default=None, ge=0, le=200)
-    domestic_news_candidates: int | None = Field(default=None, ge=0, le=200)
     news_lookback_hours: int | None = Field(default=None, ge=1, le=168)
     max_news_candidates: int | None = Field(default=None, ge=1, le=300)
     dedup_lookback_days: int | None = Field(default=None, ge=1, le=30)
@@ -148,12 +158,6 @@ class PublishingSettingsUpdate(BaseModel):
     dedup_enable_llm_review: bool | None = None
     article_news_limit: int | None = Field(default=None, ge=1, le=50)
     article_news_lookback_hours: int | None = Field(default=None, ge=1, le=168)
-    article_domestic_min: int | None = Field(default=None, ge=0, le=50)
-    article_domestic_target: int | None = Field(default=None, ge=0, le=50)
-    article_domestic_max: int | None = Field(default=None, ge=0, le=50)
-    article_international_min: int | None = Field(default=None, ge=0, le=50)
-    article_international_target: int | None = Field(default=None, ge=0, le=50)
-    article_international_max: int | None = Field(default=None, ge=0, le=50)
 
 
 class WorkspaceConfigRead(BaseModel):
@@ -161,6 +165,7 @@ class WorkspaceConfigRead(BaseModel):
     wechat: WeChatAccountRead
     layout: LayoutSettingsRead
     publishing: PublishingSettingsRead
+    content_groups: list[ContentGroupRead]
 
 
 class WorkspaceConfigUpdate(BaseModel):
@@ -168,6 +173,7 @@ class WorkspaceConfigUpdate(BaseModel):
     wechat: WeChatAccountUpdate | None = None
     layout: LayoutSettingsUpdate | None = None
     publishing: PublishingSettingsUpdate | None = None
+    content_groups: list[ContentGroupUpdate] | None = None
 
 
 class NewsItemRead(BaseModel):
@@ -180,6 +186,7 @@ class NewsItemRead(BaseModel):
     summary: str
     category: str
     region: str
+    group_key: str
     importance_score: int
     selected: bool
     dedup_status: str

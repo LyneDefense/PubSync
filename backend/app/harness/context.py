@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.article_composition.models import ComposedArticle
 from app.article_selection.models import ArticleSelectionResult
 from app.config import Settings
-from app.models import Article, ContentProfile, LayoutSettings, NewsItem, PublishingSettings, Tenant, WeChatAccount
+from app.models import Article, ContentGroup, ContentProfile, LayoutSettings, NewsItem, PublishingSettings, Tenant, WeChatAccount
 from app.news_deduplication.models import DeduplicationReport
 from app.news_fetching.models import NewsFetchResult, RawNewsCandidate
 
@@ -22,6 +22,7 @@ class HarnessContext:
     wechat_account: WeChatAccount
     layout_settings: LayoutSettings
     publishing_settings: PublishingSettings
+    content_groups: list[ContentGroup] = field(default_factory=list)
     should_publish: bool = False
     fetch_result: NewsFetchResult | None = None
     raw_candidates: list[RawNewsCandidate] = field(default_factory=list)

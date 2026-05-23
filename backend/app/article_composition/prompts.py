@@ -2,7 +2,11 @@ import json
 from typing import Any
 
 
-def build_article_composition_prompt(news_items: list[dict[str, Any]], profile: Any | None = None) -> str:
+def build_article_composition_prompt(
+    news_items: list[dict[str, Any]],
+    profile: Any | None = None,
+    content_groups: list | None = None,
+) -> str:
     publication_name = getattr(profile, "publication_name", "AI 科技早报")
     title_prefix = getattr(profile, "title_prefix", "AI科技早报 | ")
     content_domain = getattr(profile, "content_domain", "AI、科技、模型、算力、企业应用")
@@ -11,10 +15,10 @@ def build_article_composition_prompt(news_items: list[dict[str, Any]], profile: 
     article_style = getattr(profile, "article_style", "信息密度高，事实准确，带行业观察")
     image_style = getattr(profile, "image_style", "抽象科技视觉、信息图、芯片、网络、云与模型架构")
     grouping_mode = getattr(profile, "grouping_mode", "regional")
-    group_a_label = getattr(profile, "international_label", "分组A")
-    group_b_label = getattr(profile, "domestic_label", "分组B")
+    groups = [group for group in (content_groups or []) if getattr(group, "enabled", True)]
+    group_description = "，".join(f"{group.group_key}={group.name}" for group in groups) or "main=精选内容"
     grouping_instruction = (
-        f"排版层会自动渲染分组标题：region=international 会显示为“{group_a_label}”，region=domestic 会显示为“{group_b_label}”。你不要在 heading 或正文里重复输出分组标题。"
+        f"排版层会自动按 group_key 渲染分组标题，可用分组为：{group_description}。你不要在 heading 或正文里重复输出分组标题。"
         if grouping_mode == "regional"
         else "当前栏目不按分组组织内容，sections 只需要尊重新闻推荐顺序，不要输出分组标题。"
     )
@@ -30,7 +34,7 @@ def build_article_composition_prompt(news_items: list[dict[str, Any]], profile: 
 - 文章风格：{article_style}。
 - 标题必须输出“{title_prefix}xxx”格式，xxx 是你生成的标题内容；不要使用其他前缀。
 - 开头先写 1 段 80-140 字导语，说明今天最重要的主线。
-- 新闻事实中的 region 只用于组织内容；不要直接输出 region、domestic、international 等内部字段。
+- 新闻事实中的 group_key 只用于组织内容；不要直接输出 group_key 等内部字段。
 - 新闻事实已经按推荐顺序排列，sections 应尊重这个顺序。
 - {grouping_instruction}
 - 每条新闻都要写得充分一些，不能只复述摘要；每条至少包含“发生了什么”“为什么重要”“编辑观察”三个层次。

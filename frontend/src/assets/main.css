@@ -459,12 +459,6 @@ p {
   margin-right: 6px;
 }
 
-.region-pill.domestic {
-  border-color: rgba(245, 158, 11, 0.36);
-  color: #fde68a;
-  background: rgba(245, 158, 11, 0.12);
-}
-
 .score {
   min-width: 58px;
   text-align: center;
@@ -520,6 +514,31 @@ p {
   margin: 6px 0 0;
   font-size: 18px;
   line-height: 1.35;
+}
+
+.group-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.group-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.group-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.group-card-header strong {
+  font-size: 16px;
 }
 
 .toggle-row {

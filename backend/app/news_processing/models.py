@@ -18,7 +18,9 @@ class ProcessedNewsItem:
         return {
             "title": self.display_title,
             "source": self.candidate.source,
-            "region": self.candidate.region.value,
+            "group_key": self.candidate.group_key,
+            "group_name": self.candidate.group_name,
+            "region": legacy_region(self.candidate.group_key),
             "url": self.candidate.url,
             "published_at": self.candidate.published_at.isoformat() if self.candidate.published_at else "",
             "summary": self.summary,
@@ -28,3 +30,7 @@ class ProcessedNewsItem:
             "key_facts": self.key_facts,
             "duplicate_candidate_ids": self.duplicate_candidate_ids,
         }
+
+
+def legacy_region(group_key: str) -> str:
+    return "domestic" if group_key == "china" else "international"

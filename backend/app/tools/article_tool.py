@@ -20,10 +20,12 @@ class ArticleTool:
         settings: Settings,
         tenant_id: int,
         profile: ContentProfile | None = None,
+        content_groups: list | None = None,
     ) -> ArticleSelectionResult:
-        return select_article_news(db, settings, tenant_id, profile)
+        return select_article_news(db, settings, tenant_id, profile, content_groups or [])
 
-    def build_news_payload(self, selected_news: list[NewsItem]) -> list[dict[str, Any]]:
+    def build_news_payload(self, selected_news: list[NewsItem], content_groups: list | None = None) -> list[dict[str, Any]]:
+        group_names = {group.group_key: group.name for group in (content_groups or [])}
         return [
             {
                 "index": index,
@@ -33,6 +35,8 @@ class ArticleTool:
                 "published_at": item.published_at.isoformat(),
                 "summary": item.summary,
                 "category": item.category,
+                "group_key": item.group_key,
+                "group_name": group_names.get(item.group_key, item.group_key),
                 "region": item.region,
                 "importance_score": item.importance_score,
                 "image_url": None,

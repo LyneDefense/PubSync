@@ -194,6 +194,7 @@ def item_to_candidate(item: NewsItem) -> dict[str, Any]:
         "url": item.url,
         "published_at": item.published_at.isoformat(),
         "region": item.region,
+        "group_key": item.group_key,
     }
 
 
@@ -213,6 +214,7 @@ def dedup_prompt_payload(item: dict[str, Any]) -> dict[str, Any]:
         "url": item.get("url"),
         "published_at": item.get("published_at"),
         "region": item.get("region"),
+        "group_key": item.get("group_key"),
     }
 
 
@@ -225,7 +227,7 @@ def build_dedup_key(item: dict[str, Any]) -> str:
 def dedup_text(item: dict[str, Any]) -> str:
     return " ".join(
         str(item.get(key) or "")
-        for key in ("title", "summary", "category", "source", "region")
+        for key in ("title", "summary", "category", "source", "group_key")
     )
 
 

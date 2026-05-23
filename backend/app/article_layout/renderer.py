@@ -37,15 +37,15 @@ def grouped_sections(
 ) -> list[tuple[str, list[ArticleSection]]]:
     if profile and profile.grouping_mode == "none":
         return [("", sections)]
-    international_label = profile.international_label if profile else "国际动态"
-    domestic_label = profile.domestic_label if profile else "国内动态"
-    international = [section for section in sections if section.region != "domestic"]
-    domestic = [section for section in sections if section.region == "domestic"]
-    if international and domestic:
-        return [(international_label, international), (domestic_label, domestic)]
-    if domestic:
-        return [(domestic_label, domestic)]
-    return [(international_label, international)]
+    grouped: list[tuple[str, list[ArticleSection]]] = []
+    groups_by_key: dict[str, list[ArticleSection]] = {}
+    labels_by_key: dict[str, str] = {}
+    for section in sections:
+        groups_by_key.setdefault(section.group_key, []).append(section)
+        labels_by_key.setdefault(section.group_key, section.group_name)
+    for group_key, group_sections in groups_by_key.items():
+        grouped.append((labels_by_key.get(group_key, group_key), group_sections))
+    return grouped
 
 
 def render_section(section: ArticleSection, layout_settings: LayoutSettings | None = None) -> list[str]:

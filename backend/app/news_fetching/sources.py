@@ -1,53 +1,67 @@
 from urllib.parse import urlsplit
 
-from app.news_fetching.models import NewsRegion, NewsSourceConfig
+from app.models import ContentGroup
+from app.news_fetching.models import NewsSourceConfig
 
 
-DEFAULT_INTERNATIONAL_SOURCES = [
-    NewsSourceConfig("TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/", NewsRegion.international),
-    NewsSourceConfig("VentureBeat AI", "https://venturebeat.com/category/ai/feed/", NewsRegion.international),
-    NewsSourceConfig("The Verge AI", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", NewsRegion.international),
-    NewsSourceConfig("InfoQ AI", "https://feed.infoq.com/ai-ml-data-eng", NewsRegion.international),
-    NewsSourceConfig("Hacker News AI", "https://hnrss.org/newest?q=AI", NewsRegion.international),
-    NewsSourceConfig("Hacker News OpenAI", "https://hnrss.org/newest?q=OpenAI", NewsRegion.international),
-]
+DEFAULT_GROUP_SOURCES = {
+    "global": [
+        ("TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/"),
+        ("VentureBeat AI", "https://venturebeat.com/category/ai/feed/"),
+        ("The Verge AI", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"),
+        ("InfoQ AI", "https://feed.infoq.com/ai-ml-data-eng"),
+        ("Hacker News AI", "https://hnrss.org/newest?q=AI"),
+        ("Hacker News OpenAI", "https://hnrss.org/newest?q=OpenAI"),
+    ],
+    "china": [
+        ("36Kr", "https://36kr.com/feed"),
+        ("InfoQ CN", "https://www.infoq.cn/feed"),
+    ],
+}
 
 
-DEFAULT_DOMESTIC_SOURCES = [
-    NewsSourceConfig("36Kr", "https://36kr.com/feed", NewsRegion.domestic),
-    NewsSourceConfig("InfoQ CN", "https://www.infoq.cn/feed", NewsRegion.domestic),
-]
-
-
-def build_source_configs(
-    international_urls: str,
-    domestic_urls: str,
-    legacy_urls: str,
-    per_source_limit: int,
-) -> list[NewsSourceConfig]:
+def build_source_configs(content_groups: list[ContentGroup], per_source_limit: int) -> list[NewsSourceConfig]:
     max_items = max(1, per_source_limit)
-    has_configured_sources = bool(international_urls.strip() or domestic_urls.strip() or legacy_urls.strip())
-    international = parse_configured_sources(international_urls or legacy_urls, NewsRegion.international, max_items=max_items)
-    domestic = parse_configured_sources(domestic_urls, NewsRegion.domestic, max_items=max_items)
-    if not has_configured_sources:
-        international = with_limit(DEFAULT_INTERNATIONAL_SOURCES, max_items)
-        domestic = with_limit(DEFAULT_DOMESTIC_SOURCES, max_items)
-    return [*international, *domestic]
-
-
-def parse_configured_sources(value: str, region: NewsRegion, max_items: int) -> list[NewsSourceConfig]:
+    enabled_groups = [group for group in content_groups if group.enabled]
+    has_configured_sources = any(group.source_urls.strip() for group in enabled_groups)
     sources: list[NewsSourceConfig] = []
-    for index, item in enumerate(url.strip() for url in value.split(",") if url.strip()):
+    for group in enabled_groups:
+        configured = parse_configured_sources(group, max_items)
+        if configured:
+            sources.extend(configured)
+        elif not has_configured_sources:
+            sources.extend(default_sources_for_group(group, max_items))
+    return sources
+
+
+def parse_configured_sources(group: ContentGroup, max_items: int) -> list[NewsSourceConfig]:
+    sources: list[NewsSourceConfig] = []
+    for index, item in enumerate(url.strip() for url in group.source_urls.split(",") if url.strip()):
         if "|" in item:
             name, url = (part.strip() for part in item.split("|", 1))
         else:
-            name = f"{region.value}-{index + 1}"
+            name = f"{group.name}-{index + 1}"
             url = item
-        name = clean_source_name(name) or f"{region.value}-{index + 1}"
+        name = clean_source_name(name) or f"{group.name}-{index + 1}"
         if not is_valid_source_url(url):
             continue
-        sources.append(NewsSourceConfig(name=name, url=url, region=region, max_items=max_items))
+        sources.append(source_config(group, name, url, max_items))
     return sources
+
+
+def default_sources_for_group(group: ContentGroup, max_items: int) -> list[NewsSourceConfig]:
+    return [source_config(group, name, url, max_items) for name, url in DEFAULT_GROUP_SOURCES.get(group.group_key, [])]
+
+
+def source_config(group: ContentGroup, name: str, url: str, max_items: int) -> NewsSourceConfig:
+    return NewsSourceConfig(
+        name=name,
+        url=url,
+        group_key=group.group_key,
+        group_name=group.name,
+        max_items=max_items,
+        enabled=group.enabled,
+    )
 
 
 def clean_source_name(name: str) -> str:
@@ -59,16 +73,3 @@ def is_valid_source_url(url: str) -> bool:
         return False
     parsed = urlsplit(url)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def with_limit(sources: list[NewsSourceConfig], max_items: int) -> list[NewsSourceConfig]:
-    return [
-        NewsSourceConfig(
-            name=source.name,
-            url=source.url,
-            region=source.region,
-            max_items=max_items,
-            enabled=source.enabled,
-        )
-        for source in sources
-    ]

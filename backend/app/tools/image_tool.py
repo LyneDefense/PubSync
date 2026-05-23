@@ -128,7 +128,7 @@ def news_image_decision_payload(news: NewsItem) -> dict[str, object]:
         "title": news.title,
         "summary": news.summary,
         "category": news.category,
-        "region": news.region,
+        "group_key": news.group_key,
         "source": news.source,
         "importance_score": news.importance_score,
     }

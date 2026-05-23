@@ -15,15 +15,19 @@ class FetchNewsStep(HarnessStep):
         self.fetch_tool = fetch_tool or NewsFetchTool()
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
-        fetch_result = self.fetch_tool.fetch(context.settings)
+        fetch_result = self.fetch_tool.fetch(context.settings, context.content_groups)
         context.fetch_result = fetch_result
         context.raw_candidates = fetch_result.candidates
+        group_names = {group.group_key: group.name for group in context.content_groups}
+        group_counts = {
+            group_names.get(group_key, group_key): count
+            for group_key, count in fetch_result.report.group_counts.items()
+        }
         return (
             "新闻候选准备完成",
             {
                 "候选总数": len(fetch_result.candidates),
-                context.profile.international_label: fetch_result.report.international_count,
-                context.profile.domestic_label: fetch_result.report.domestic_count,
+                "分组数量": group_counts,
             },
         )
 
@@ -38,7 +42,12 @@ class ProcessNewsStep(HarnessStep):
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
         if not context.raw_candidates:
             raise AIServiceError("没有可处理的候选新闻")
-        context.processed_items = self.llm_tool.process_news(context.settings, context.raw_candidates, context.profile)
+        context.processed_items = self.llm_tool.process_news(
+            context.settings,
+            context.raw_candidates,
+            context.profile,
+            context.content_groups,
+        )
         return "新闻后处理完成", {"可用条数": len(context.processed_items)}
 
 
