@@ -336,15 +336,24 @@ onUnmounted(() => {
 
   <div v-else class="app-shell">
     <aside class="sidebar">
-      <div>
-        <p class="eyebrow">PubSync</p>
-        <h1>AI 早报工作台</h1>
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">PS</div>
+        <div>
+          <p class="eyebrow">PubSync</p>
+          <h1>AI 早报</h1>
+        </div>
       </div>
       <nav aria-label="主导航">
         <a href="#news">新闻候选</a>
         <a href="#article">文章草稿</a>
       </nav>
-      <button type="button" @click="handleLogout">退出登录</button>
+      <div class="sidebar-footer">
+        <div>
+          <span>工作台</span>
+          <strong>已登录</strong>
+        </div>
+        <button type="button" @click="handleLogout">退出</button>
+      </div>
     </aside>
 
     <main class="workspace">
