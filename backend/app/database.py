@@ -204,6 +204,9 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_frequency VARCHAR(20) NOT NULL DEFAULT 'daily'",
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_weekday INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_month_day INTEGER NOT NULL DEFAULT 1",
         """
         INSERT INTO publishing_settings (
             tenant_id, daily_publish_enabled, publish_frequency, publish_weekday, publish_month_day,
@@ -248,9 +251,6 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_frequency VARCHAR(20) NOT NULL DEFAULT 'daily'",
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_weekday INTEGER NOT NULL DEFAULT 1",
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_month_day INTEGER NOT NULL DEFAULT 1",
         """
         CREATE TABLE IF NOT EXISTS content_groups (
             id SERIAL PRIMARY KEY,
