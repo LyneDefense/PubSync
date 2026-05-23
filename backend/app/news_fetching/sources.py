@@ -26,15 +26,12 @@ def build_source_configs(
     per_source_limit: int,
 ) -> list[NewsSourceConfig]:
     max_items = max(1, per_source_limit)
-    international = parse_configured_sources(
-        international_urls or legacy_urls,
-        NewsRegion.international,
-        max_items=max_items,
-    ) or with_limit(DEFAULT_INTERNATIONAL_SOURCES, max_items)
-    domestic = parse_configured_sources(domestic_urls, NewsRegion.domestic, max_items=max_items) or with_limit(
-        DEFAULT_DOMESTIC_SOURCES,
-        max_items,
-    )
+    has_configured_sources = bool(international_urls.strip() or domestic_urls.strip() or legacy_urls.strip())
+    international = parse_configured_sources(international_urls or legacy_urls, NewsRegion.international, max_items=max_items)
+    domestic = parse_configured_sources(domestic_urls, NewsRegion.domestic, max_items=max_items)
+    if not has_configured_sources:
+        international = with_limit(DEFAULT_INTERNATIONAL_SOURCES, max_items)
+        domestic = with_limit(DEFAULT_DOMESTIC_SOURCES, max_items)
     return [*international, *domestic]
 
 
@@ -46,10 +43,15 @@ def parse_configured_sources(value: str, region: NewsRegion, max_items: int) -> 
         else:
             name = f"{region.value}-{index + 1}"
             url = item
+        name = clean_source_name(name) or f"{region.value}-{index + 1}"
         if not is_valid_source_url(url):
             continue
         sources.append(NewsSourceConfig(name=name, url=url, region=region, max_items=max_items))
     return sources
+
+
+def clean_source_name(name: str) -> str:
+    return " ".join(name.split())
 
 
 def is_valid_source_url(url: str) -> bool:

@@ -495,7 +495,7 @@ function formatDate(value: string) {
 }
 
 function regionLabel(region: string) {
-  return region === 'domestic' ? '国内' : '国际'
+  return region === 'domestic' ? domesticLabel.value : internationalLabel.value
 }
 
 onMounted(() => {
@@ -770,16 +770,16 @@ onUnmounted(() => {
             <label>
               内容分组
               <select v-model="profileForm.grouping_mode">
-                <option value="regional">按国内/国际分组</option>
+                <option value="regional">按两个内容分组</option>
                 <option value="none">不分组</option>
               </select>
             </label>
             <label>
-              国际分组名
+              分组A名称
               <input v-model="profileForm.international_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
             </label>
             <label>
-              国内分组名
+              分组B名称
               <input v-model="profileForm.domestic_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
             </label>
             <label>
@@ -838,11 +838,11 @@ onUnmounted(() => {
               <input v-model.number="publishingForm.news_lookback_hours" type="number" min="1" max="168" />
             </label>
             <label>
-              国际候选数量
+              分组A候选数量
               <input v-model.number="publishingForm.international_news_candidates" type="number" min="0" max="200" />
             </label>
             <label>
-              国内候选数量
+              分组B候选数量
               <input v-model.number="publishingForm.domestic_news_candidates" type="number" min="0" max="200" />
             </label>
             <label>
@@ -859,7 +859,7 @@ onUnmounted(() => {
             ></textarea>
           </label>
           <label>
-            国际新闻源
+            分组A新闻源
             <textarea
               v-model="publishingForm.international_news_source_urls"
               rows="3"
@@ -867,7 +867,7 @@ onUnmounted(() => {
             ></textarea>
           </label>
           <label>
-            国内新闻源
+            分组B新闻源
             <textarea
               v-model="publishingForm.domestic_news_source_urls"
               rows="3"
@@ -919,27 +919,27 @@ onUnmounted(() => {
           </div>
           <div v-if="usesRegionalGrouping" class="config-grid">
             <label>
-              国内最少
+              分组B最少
               <input v-model.number="publishingForm.article_domestic_min" type="number" min="0" max="50" />
             </label>
             <label>
-              国内目标
+              分组B目标
               <input v-model.number="publishingForm.article_domestic_target" type="number" min="0" max="50" />
             </label>
             <label>
-              国内最多
+              分组B最多
               <input v-model.number="publishingForm.article_domestic_max" type="number" min="0" max="50" />
             </label>
             <label>
-              国际最少
+              分组A最少
               <input v-model.number="publishingForm.article_international_min" type="number" min="0" max="50" />
             </label>
             <label>
-              国际目标
+              分组A目标
               <input v-model.number="publishingForm.article_international_target" type="number" min="0" max="50" />
             </label>
             <label>
-              国际最多
+              分组A最多
               <input v-model.number="publishingForm.article_international_max" type="number" min="0" max="50" />
             </label>
           </div>

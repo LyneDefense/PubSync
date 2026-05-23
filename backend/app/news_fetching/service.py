@@ -44,7 +44,11 @@ def fetch_raw_news_candidates(settings: Settings, sources: list[NewsSourceConfig
         NewsRegion.domestic: max(0, settings.domestic_news_candidates),
     }
 
-    with httpx.Client(timeout=20, follow_redirects=True) as client:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; PubSync/0.1; +https://github.com/LyneDefense/PubSync)",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+    }
+    with httpx.Client(timeout=20, follow_redirects=True, headers=headers) as client:
         for source in sources:
             if not source.enabled:
                 continue

@@ -24,6 +24,8 @@ def select_article_news(
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, settings.article_news_lookback_hours))
     if profile and profile.grouping_mode == "none":
         return select_article_news_without_groups(db, tenant_id, cutoff, article_limit)
+    group_a_label = profile.international_label if profile else "分组A"
+    group_b_label = profile.domestic_label if profile else "分组B"
     logger.info(
         "文章新闻选择开始：数量上限=%s，回看小时=%s",
         article_limit,
@@ -46,8 +48,10 @@ def select_article_news(
     domestic_pool = fetch_region_pool(db, tenant_id, domestic_rule.region, cutoff, domestic_rule.maximum)
     international_pool = fetch_region_pool(db, tenant_id, international_rule.region, cutoff, international_rule.maximum)
     logger.info(
-        "文章新闻候选池准备完成：国际=%s，国内=%s",
+        "文章新闻候选池准备完成：%s=%s，%s=%s",
+        group_a_label,
         len(international_pool),
+        group_b_label,
         len(domestic_pool),
     )
 
@@ -66,9 +70,11 @@ def select_article_news(
 
     news_items = [*selected_international, *selected_domestic]
     logger.info(
-        "文章新闻选择完成：总数=%s，国际=%s，国内=%s，可用候选=%s",
+        "文章新闻选择完成：总数=%s，%s=%s，%s=%s，可用候选=%s",
         len(news_items[:article_limit]),
+        group_a_label,
         len(selected_international),
+        group_b_label,
         len(selected_domestic),
         len(domestic_pool) + len(international_pool),
     )

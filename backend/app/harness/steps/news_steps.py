@@ -22,8 +22,8 @@ class FetchNewsStep(HarnessStep):
             "新闻候选准备完成",
             {
                 "候选总数": len(fetch_result.candidates),
-                "国际": fetch_result.report.international_count,
-                "国内": fetch_result.report.domestic_count,
+                context.profile.international_label: fetch_result.report.international_count,
+                context.profile.domestic_label: fetch_result.report.domestic_count,
             },
         )
 

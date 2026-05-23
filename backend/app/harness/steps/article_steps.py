@@ -8,7 +8,7 @@ from app.tools.storage_tool import persist_article
 
 class SelectArticleNewsStep(HarnessStep):
     name = "文章选题"
-    start_message = "开始按国内和国际分区选择文章新闻"
+    start_message = "开始按工作空间分组规则选择文章新闻"
 
     def __init__(self, article_tool: ArticleTool | None = None) -> None:
         self.article_tool = article_tool or ArticleTool()
@@ -23,8 +23,8 @@ class SelectArticleNewsStep(HarnessStep):
             "文章选题完成",
             {
                 "总数": len(context.selected_news),
-                "国际": selection.international_count,
-                "国内": selection.domestic_count,
+                context.profile.international_label: selection.international_count,
+                context.profile.domestic_label: selection.domestic_count,
                 "可用候选": selection.total_available,
             },
         )

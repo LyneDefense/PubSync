@@ -9,6 +9,15 @@ def build_news_processing_prompt(candidates: list[RawNewsCandidate], profile: An
     content_domain = getattr(profile, "content_domain", "AI、科技、模型、算力、企业应用")
     editor_persona = getattr(profile, "editor_persona", "你是一个严谨的 AI 行业新闻编辑")
     audience = getattr(profile, "audience", "科技从业者、产品经理、投资人与 AI 关注者")
+    grouping_mode = getattr(profile, "grouping_mode", "regional")
+    group_a_label = getattr(profile, "international_label", "分组A")
+    group_b_label = getattr(profile, "domestic_label", "分组B")
+    grouping_instruction = (
+        f"- 当前工作空间启用了两个内容分组：region=international 表示“{group_a_label}”，region=domestic 表示“{group_b_label}”。"
+        "请分别关注两个分组；如果某一分组候选质量不足，可以少选，不要用低质量新闻凑数。"
+        if grouping_mode != "none"
+        else "- 当前工作空间不按分组组织内容。region 只是内部字段，不要为了凑分组选择低质量新闻。"
+    )
     return f"""
 {editor_persona}。下面是代码从 RSS/Atom 源抓到的候选新闻。
 
@@ -18,13 +27,13 @@ def build_news_processing_prompt(candidates: list[RawNewsCandidate], profile: An
 - 目标读者：{audience}。
 - 不要编造候选集中不存在的新闻、URL、融资金额、发布日期、产品能力或人物观点。
 - 对候选做事件级去重：多条候选报道同一事件时，只保留信息最完整、最权威或发布时间最合适的一条作为 candidate_id，其他放入 duplicate_candidate_ids。
-- 分别关注 international 和 domestic 新闻。国际候选通常选择 5-8 条，国内候选通常选择 3-5 条；如果某一区域候选质量不足，可以少选，不要用低质量新闻凑数。
+{grouping_instruction}
 - 排除与当前内容领域无关的新闻、广告稿、低质量转载、招聘/活动营销、无法判断事实主体的内容。
 - display_title 可以改写为中文标题，但不能改变事实。
 - summary 用 2-3 句中文，包含事实、影响和背景，不要夸大。
 - category 优先贴合当前内容领域；如果无法确定，可使用“行业观察”。
 - importance_score 按下面标准打分：
-  - 95-100：全球或国内该领域重大事件，影响多个公司、用户生态或监管方向。
+  - 95-100：该领域重大事件，影响多个公司、用户生态或监管方向。
   - 90-94：头部公司、重要模型、资本、监管、基础设施重大进展。
   - 80-89：值得进入早报的重要产品、研究、商业或开源动态。
   - 70-79：备选新闻，有价值但影响范围有限。
