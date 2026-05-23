@@ -31,6 +31,43 @@ class ContentProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ContentProfileUpdate(BaseModel):
+    publication_name: str | None = Field(default=None, min_length=1, max_length=120)
+    workspace_title: str | None = Field(default=None, min_length=1, max_length=120)
+    title_prefix: str | None = Field(default=None, min_length=1, max_length=120)
+    content_domain: str | None = Field(default=None, min_length=1)
+    editor_persona: str | None = Field(default=None, min_length=1)
+    audience: str | None = Field(default=None, min_length=1)
+    article_style: str | None = Field(default=None, min_length=1)
+    international_label: str | None = Field(default=None, min_length=1, max_length=80)
+    domestic_label: str | None = Field(default=None, min_length=1, max_length=80)
+    categories_json: str | None = Field(default=None, min_length=1)
+    image_style: str | None = Field(default=None, min_length=1)
+
+
+class WeChatAccountRead(BaseModel):
+    tenant_id: int
+    app_id: str
+    app_secret_configured: bool
+    auto_send_draft: bool
+
+
+class WeChatAccountUpdate(BaseModel):
+    app_id: str | None = Field(default=None, max_length=120)
+    app_secret: str | None = None
+    auto_send_draft: bool | None = None
+
+
+class WorkspaceConfigRead(BaseModel):
+    profile: ContentProfileRead
+    wechat: WeChatAccountRead
+
+
+class WorkspaceConfigUpdate(BaseModel):
+    profile: ContentProfileUpdate | None = None
+    wechat: WeChatAccountUpdate | None = None
+
+
 class NewsItemRead(BaseModel):
     id: int
     tenant_id: int

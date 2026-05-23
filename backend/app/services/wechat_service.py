@@ -5,15 +5,16 @@ import time
 import zlib
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Article, ArticleStatus
+from app.models import Article, ArticleStatus, WeChatAccount
 
 
 WECHAT_API_BASE = "https://api.weixin.qq.com"
 
-_token_cache: dict[str, str | float] = {"access_token": "", "expires_at": 0.0}
+_token_cache: dict[str, dict[str, str | float]] = {}
 
 
 class WeChatAPIError(RuntimeError):
@@ -25,7 +26,8 @@ class WeChatAPIError(RuntimeError):
 def send_article_to_wechat_draft(db: Session, article: Article) -> Article:
     try:
         settings = get_settings()
-        access_token = get_access_token(settings.wechat_app_id, settings.wechat_app_secret)
+        app_id, app_secret = resolve_wechat_credentials(db, article, settings.wechat_app_id, settings.wechat_app_secret)
+        access_token = get_access_token(app_id, app_secret)
         cover_bytes, content_type = get_cover_image(article.cover_image_url)
         thumb_media_id = upload_permanent_cover(access_token, cover_bytes, content_type)
         content_html = prepare_wechat_content_html(access_token, article.content_html, settings.public_api_base_url)
@@ -45,14 +47,27 @@ def send_article_to_wechat_draft(db: Session, article: Article) -> Article:
         raise
 
 
+def resolve_wechat_credentials(
+    db: Session,
+    article: Article,
+    fallback_app_id: str,
+    fallback_app_secret: str,
+) -> tuple[str, str]:
+    account = db.scalar(select(WeChatAccount).where(WeChatAccount.tenant_id == article.tenant_id))
+    if account and account.app_id and account.app_secret:
+        return account.app_id, account.app_secret
+    return fallback_app_id, fallback_app_secret
+
+
 def get_access_token(app_id: str, app_secret: str) -> str:
     if not app_id or not app_secret:
         raise WeChatAPIError("未配置 WECHAT_APP_ID 或 WECHAT_APP_SECRET", status_code=400)
     if not app_id.startswith("wx"):
         raise WeChatAPIError("WECHAT_APP_ID 看起来不是微信公众号 AppID。请使用公众号后台“设置与开发 > 基本配置”里的 AppID，通常以 wx 开头。", status_code=400)
 
-    cached_token = str(_token_cache["access_token"])
-    if cached_token and float(_token_cache["expires_at"]) > time.time() + 60:
+    cached = _token_cache.get(app_id, {})
+    cached_token = str(cached.get("access_token") or "")
+    if cached_token and float(cached.get("expires_at") or 0.0) > time.time() + 60:
         return cached_token
 
     with httpx.Client(timeout=12) as client:
@@ -69,8 +84,10 @@ def get_access_token(app_id: str, app_secret: str) -> str:
     if not access_token:
         raise WeChatAPIError(f"获取 access_token 失败：微信返回缺少 access_token，响应为 {safe_wechat_payload(data)}")
 
-    _token_cache["access_token"] = access_token
-    _token_cache["expires_at"] = time.time() + int(data.get("expires_in", 7200))
+    _token_cache[app_id] = {
+        "access_token": access_token,
+        "expires_at": time.time() + int(data.get("expires_in", 7200)),
+    }
     return str(access_token)
 
 

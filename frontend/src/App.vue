@@ -8,19 +8,29 @@ import {
   generateArticle,
   getAuthToken,
   getLatestArticle,
-  getProfile,
   getTenantId,
   getTask,
   getTaskEvents,
+  getWorkspaceConfig,
   listTenants,
   listNews,
   login,
   sendArticleToWechat,
   setTenantId,
   updateArticle,
-  updateNewsSelection
+  updateNewsSelection,
+  updateWorkspaceConfig
 } from './api'
-import type { Article, ArticleUpdate, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant } from './api/types'
+import type {
+  Article,
+  ArticleUpdate,
+  ContentProfile,
+  NewsItem,
+  OperationTask,
+  OperationTaskEvent,
+  Tenant,
+  WorkspaceConfig
+} from './api/types'
 
 type TaskActionName = 'fetch' | 'generate'
 type NewsTab = 'international' | 'domestic'
@@ -65,6 +75,27 @@ const form = reactive<ArticleUpdate>({
   intro: '',
   cover_image_url: '',
   content_html: ''
+})
+
+const profileForm = reactive({
+  publication_name: '',
+  workspace_title: '',
+  title_prefix: '',
+  content_domain: '',
+  editor_persona: '',
+  audience: '',
+  article_style: '',
+  international_label: '',
+  domestic_label: '',
+  categories_json: '[]',
+  image_style: ''
+})
+
+const wechatForm = reactive({
+  app_id: '',
+  app_secret: '',
+  app_secret_configured: false,
+  auto_send_draft: false
 })
 
 const hasArticle = computed(() => Boolean(article.value))
@@ -193,11 +224,30 @@ function wait(ms: number) {
 }
 
 async function loadAll() {
-  const [nextProfile, nextNews, nextArticle] = await Promise.all([getProfile(), listNews(), getLatestArticle()])
-  profile.value = nextProfile
+  const [nextConfig, nextNews, nextArticle] = await Promise.all([getWorkspaceConfig(), listNews(), getLatestArticle()])
+  setWorkspaceConfig(nextConfig)
   news.value = nextNews
   newsPage.value = 1
   setArticle(nextArticle)
+}
+
+function setWorkspaceConfig(config: WorkspaceConfig) {
+  profile.value = config.profile
+  profileForm.publication_name = config.profile.publication_name
+  profileForm.workspace_title = config.profile.workspace_title
+  profileForm.title_prefix = config.profile.title_prefix
+  profileForm.content_domain = config.profile.content_domain
+  profileForm.editor_persona = config.profile.editor_persona
+  profileForm.audience = config.profile.audience
+  profileForm.article_style = config.profile.article_style
+  profileForm.international_label = config.profile.international_label
+  profileForm.domestic_label = config.profile.domestic_label
+  profileForm.categories_json = config.profile.categories_json
+  profileForm.image_style = config.profile.image_style
+  wechatForm.app_id = config.wechat.app_id
+  wechatForm.app_secret = ''
+  wechatForm.app_secret_configured = config.wechat.app_secret_configured
+  wechatForm.auto_send_draft = config.wechat.auto_send_draft
 }
 
 async function loadTenantOptions() {
@@ -317,6 +367,25 @@ async function handleSaveArticle() {
   })
 }
 
+async function handleSaveConfig() {
+  await runAction('config', '正在保存工作空间配置', async () => {
+    const payload = {
+      profile: { ...profileForm },
+      wechat: {
+        app_id: wechatForm.app_id,
+        ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {}),
+        auto_send_draft: wechatForm.auto_send_draft
+      }
+    }
+    const nextConfig = await updateWorkspaceConfig(payload)
+    setWorkspaceConfig(nextConfig)
+    const matchedTenant = tenants.value.find((tenant) => String(tenant.id) === selectedTenantId.value)
+    if (matchedTenant) {
+      matchedTenant.name = nextConfig.profile.publication_name
+    }
+  })
+}
+
 function setNewsTab(tab: NewsTab) {
   activeNewsTab.value = tab
   newsPage.value = 1
@@ -400,6 +469,7 @@ onUnmounted(() => {
       <nav aria-label="主导航">
         <a href="#news">新闻候选</a>
         <a href="#article">文章草稿</a>
+        <a href="#config">工作空间配置</a>
       </nav>
       <div class="sidebar-footer">
         <div>
@@ -578,6 +648,84 @@ onUnmounted(() => {
             <p>生成文章后，这里会显示公众号图文预览。</p>
           </div>
         </article>
+      </section>
+
+      <section id="config" class="panel">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">配置中心</p>
+            <h2>工作空间配置</h2>
+          </div>
+        </div>
+        <form class="config-form" @submit.prevent="handleSaveConfig">
+          <div class="config-grid">
+            <label>
+              公众号/栏目名称
+              <input v-model="profileForm.publication_name" type="text" required />
+            </label>
+            <label>
+              工作台标题
+              <input v-model="profileForm.workspace_title" type="text" required />
+            </label>
+            <label>
+              文章标题前缀
+              <input v-model="profileForm.title_prefix" type="text" required />
+            </label>
+            <label>
+              国际分组名
+              <input v-model="profileForm.international_label" type="text" required />
+            </label>
+            <label>
+              国内分组名
+              <input v-model="profileForm.domestic_label" type="text" required />
+            </label>
+            <label>
+              微信 AppID
+              <input v-model="wechatForm.app_id" type="text" autocomplete="off" />
+            </label>
+          </div>
+
+          <label>
+            微信 AppSecret
+            <input
+              v-model="wechatForm.app_secret"
+              type="password"
+              autocomplete="new-password"
+              :placeholder="wechatForm.app_secret_configured ? '已配置，留空则不修改' : '未配置'"
+            />
+          </label>
+          <label class="toggle-row">
+            <input v-model="wechatForm.auto_send_draft" type="checkbox" />
+            定时任务完成后自动发送到公众号草稿箱
+          </label>
+          <label>
+            内容领域
+            <textarea v-model="profileForm.content_domain" rows="3" required></textarea>
+          </label>
+          <label>
+            编辑人设
+            <textarea v-model="profileForm.editor_persona" rows="3" required></textarea>
+          </label>
+          <label>
+            目标读者
+            <textarea v-model="profileForm.audience" rows="3" required></textarea>
+          </label>
+          <label>
+            文章风格
+            <textarea v-model="profileForm.article_style" rows="3" required></textarea>
+          </label>
+          <label>
+            图片风格
+            <textarea v-model="profileForm.image_style" rows="3" required></textarea>
+          </label>
+          <label>
+            分类 JSON
+            <textarea v-model="profileForm.categories_json" rows="3" required></textarea>
+          </label>
+          <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+            {{ pendingAction === 'config' ? '保存中' : '保存配置' }}
+          </button>
+        </form>
       </section>
     </main>
   </div>

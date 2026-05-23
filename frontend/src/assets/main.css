@@ -489,6 +489,30 @@ p {
   gap: 14px;
 }
 
+.config-form {
+  display: grid;
+  gap: 14px;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.toggle-row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
 form {
   display: grid;
   gap: 14px;
@@ -605,6 +629,10 @@ dd {
 
   .news-card {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .config-grid {
+    grid-template-columns: 1fr;
   }
 
   .score {

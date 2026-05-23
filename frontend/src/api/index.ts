@@ -6,7 +6,9 @@ import type {
   NewsItem,
   OperationTask,
   OperationTaskEvent,
-  Tenant
+  Tenant,
+  WorkspaceConfig,
+  WorkspaceConfigUpdate
 } from './types'
 
 const API_BASE = `${import.meta.env.BASE_URL}api`
@@ -79,6 +81,17 @@ export function listTenants() {
 
 export function getProfile() {
   return request<ContentProfile>('/profile')
+}
+
+export function getWorkspaceConfig() {
+  return request<WorkspaceConfig>('/workspace/config')
+}
+
+export function updateWorkspaceConfig(payload: WorkspaceConfigUpdate) {
+  return request<WorkspaceConfig>('/workspace/config', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  })
 }
 
 export function fetchNews() {

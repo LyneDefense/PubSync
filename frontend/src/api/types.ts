@@ -24,6 +24,43 @@ export interface ContentProfile {
   image_style: string
 }
 
+export interface ContentProfileUpdate {
+  publication_name?: string
+  workspace_title?: string
+  title_prefix?: string
+  content_domain?: string
+  editor_persona?: string
+  audience?: string
+  article_style?: string
+  international_label?: string
+  domestic_label?: string
+  categories_json?: string
+  image_style?: string
+}
+
+export interface WeChatAccount {
+  tenant_id: number
+  app_id: string
+  app_secret_configured: boolean
+  auto_send_draft: boolean
+}
+
+export interface WeChatAccountUpdate {
+  app_id?: string
+  app_secret?: string
+  auto_send_draft?: boolean
+}
+
+export interface WorkspaceConfig {
+  profile: ContentProfile
+  wechat: WeChatAccount
+}
+
+export interface WorkspaceConfigUpdate {
+  profile?: ContentProfileUpdate
+  wechat?: WeChatAccountUpdate
+}
+
 export interface NewsItem {
   id: number
   tenant_id: number

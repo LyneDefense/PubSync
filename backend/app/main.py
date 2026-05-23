@@ -13,10 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant
+from app.models import AppSetting, Article, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant, WeChatAccount
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
+    ContentProfileRead,
     DashboardRead,
     NewsItemRead,
     NewsItemUpdate,
@@ -24,8 +25,10 @@ from app.schemas import (
     OperationTaskEventRead,
     SettingRead,
     SettingUpdate,
-    ContentProfileRead,
     TenantRead,
+    WeChatAccountRead,
+    WorkspaceConfigRead,
+    WorkspaceConfigUpdate,
 )
 from app.services.article_service import update_article
 from app.services.auth_service import create_token, verify_credentials, verify_token
@@ -36,7 +39,15 @@ from app.services.task_service import (
     run_news_fetch_task,
     scheduled_daily_publish,
 )
-from app.services.tenant_service import get_default_tenant, get_profile, get_tenant, list_tenants
+from app.services.tenant_service import (
+    get_default_tenant,
+    get_profile,
+    get_tenant,
+    get_wechat_account,
+    list_tenants,
+    update_profile,
+    update_wechat_account,
+)
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
 
 
@@ -136,6 +147,41 @@ def list_tenants_endpoint(db: Session = Depends(get_db)) -> list[Tenant]:
 @app.get("/profile", response_model=ContentProfileRead)
 def get_profile_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> ContentProfile:
     return get_profile(db, tenant)
+
+
+def read_wechat_account(account: WeChatAccount) -> WeChatAccountRead:
+    return WeChatAccountRead(
+        tenant_id=account.tenant_id,
+        app_id=account.app_id,
+        app_secret_configured=bool(account.app_secret),
+        auto_send_draft=account.auto_send_draft,
+    )
+
+
+@app.get("/workspace/config", response_model=WorkspaceConfigRead)
+def get_workspace_config_endpoint(
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> WorkspaceConfigRead:
+    return WorkspaceConfigRead(
+        profile=get_profile(db, tenant),
+        wechat=read_wechat_account(get_wechat_account(db, tenant)),
+    )
+
+
+@app.put("/workspace/config", response_model=WorkspaceConfigRead)
+def update_workspace_config_endpoint(
+    payload: WorkspaceConfigUpdate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> WorkspaceConfigRead:
+    profile = get_profile(db, tenant)
+    account = get_wechat_account(db, tenant)
+    if payload.profile:
+        profile = update_profile(db, tenant, payload.profile)
+    if payload.wechat:
+        account = update_wechat_account(db, tenant, payload.wechat)
+    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account))
 
 
 @app.get("/dashboard", response_model=DashboardRead)
