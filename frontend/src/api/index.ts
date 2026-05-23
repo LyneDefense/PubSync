@@ -1,7 +1,6 @@
 import type {
   Article,
   ArticleUpdate,
-  Dashboard,
   LoginResponse,
   NewsItem,
   OperationTask,
@@ -55,10 +54,6 @@ export async function login(username: string, password: string) {
   })
   setAuthToken(result.access_token)
   return result
-}
-
-export function getDashboard() {
-  return request<Dashboard>('/dashboard')
 }
 
 export function fetchNews() {

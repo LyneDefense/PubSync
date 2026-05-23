@@ -5,7 +5,6 @@ import {
   clearAuthToken,
   fetchNews,
   generateArticle,
-  getDashboard,
   getAuthToken,
   getLatestArticle,
   getTask,
@@ -16,9 +15,11 @@ import {
   updateArticle,
   updateNewsSelection
 } from './api'
-import type { Article, ArticleUpdate, Dashboard, NewsItem, OperationTask, OperationTaskEvent } from './api/types'
+import type { Article, ArticleUpdate, NewsItem, OperationTask, OperationTaskEvent } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate'
+type NewsTab = 'international' | 'domestic'
+type ArticleTab = 'edit' | 'preview'
 
 const statusText: Record<string, string> = {
   draft: '草稿',
@@ -27,7 +28,6 @@ const statusText: Record<string, string> = {
   failed: '失败'
 }
 
-const dashboard = ref<Dashboard | null>(null)
 const news = ref<NewsItem[]>([])
 const article = ref<Article | null>(null)
 const message = ref('')
@@ -37,6 +37,10 @@ const taskEvents = ref<OperationTaskEvent[]>([])
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
+const activeNewsTab = ref<NewsTab>('international')
+const activeArticleTab = ref<ArticleTab>('preview')
+const newsPage = ref(1)
+const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
   fetch: 0,
   generate: 0
@@ -55,17 +59,20 @@ const form = reactive<ArticleUpdate>({
   content_html: ''
 })
 
-const apiBaseText = computed(() => `${import.meta.env.BASE_URL}api`)
 const hasArticle = computed(() => Boolean(article.value))
 const domesticNews = computed(() => news.value.filter((item) => item.region === 'domestic'))
 const internationalNews = computed(() => news.value.filter((item) => item.region !== 'domestic'))
-const domesticSelectedCount = computed(() => domesticNews.value.filter((item) => item.selected).length)
-const internationalSelectedCount = computed(() => internationalNews.value.filter((item) => item.selected).length)
-const articleStatus = computed(() => {
-  const status = dashboard.value?.latest_article?.status
-  return status ? statusText[status] || status : '未生成'
+const activeNews = computed(() => (activeNewsTab.value === 'domestic' ? domesticNews.value : internationalNews.value))
+const newsTotalPages = computed(() => Math.max(1, Math.ceil(activeNews.value.length / pageSize)))
+const pagedNews = computed(() => {
+  const start = (newsPage.value - 1) * pageSize
+  return activeNews.value.slice(start, start + pageSize)
 })
 const hasTaskEvents = computed(() => taskEvents.value.length > 0)
+const articleStateLabel = computed(() => {
+  const status = article.value?.status
+  return status ? statusText[status] || status : '未生成'
+})
 
 function showMessage(text: string, error = false) {
   message.value = text
@@ -174,13 +181,9 @@ function wait(ms: number) {
 }
 
 async function loadAll() {
-  const [nextDashboard, nextNews, nextArticle] = await Promise.all([
-    getDashboard(),
-    listNews(),
-    getLatestArticle()
-  ])
-  dashboard.value = nextDashboard
+  const [nextNews, nextArticle] = await Promise.all([listNews(), getLatestArticle()])
   news.value = nextNews
+  newsPage.value = 1
   setArticle(nextArticle)
 }
 
@@ -201,15 +204,14 @@ async function handleLogin() {
 function handleLogout() {
   clearAuthToken()
   isAuthenticated.value = false
-  dashboard.value = null
   news.value = []
+  taskEvents.value = []
   setArticle(null)
   showMessage('')
 }
 
-async function refreshDashboardAndArticle() {
-  const [nextDashboard, nextArticle] = await Promise.all([getDashboard(), getLatestArticle()])
-  dashboard.value = nextDashboard
+async function refreshArticle() {
+  const nextArticle = await getLatestArticle()
   setArticle(nextArticle)
 }
 
@@ -220,7 +222,8 @@ async function handleFetchNews() {
     fetchNews,
     async () => {
       news.value = await listNews()
-      await refreshDashboardAndArticle()
+      newsPage.value = 1
+      await refreshArticle()
     },
     '新闻仍在后台抓取，请稍后刷新页面查看最新候选新闻'
   )
@@ -232,7 +235,8 @@ async function handleGenerateArticle() {
     '已提交后台生成任务',
     generateArticle,
     async () => {
-        await refreshDashboardAndArticle()
+      await refreshArticle()
+      activeArticleTab.value = 'preview'
     },
     '文章还在后台生成，请稍后刷新页面查看最新文章'
   )
@@ -244,7 +248,7 @@ async function handleSendWechat() {
   }
   await runAction('wechat', '正在发送到公众号草稿箱', async () => {
     setArticle(await sendArticleToWechat(article.value!.id))
-    await refreshDashboardAndArticle()
+    await refreshArticle()
   })
 }
 
@@ -253,7 +257,7 @@ async function handleToggleNews(item: NewsItem, selected: boolean) {
   try {
     const updated = await updateNewsSelection(item.id, selected)
     news.value = news.value.map((newsItem) => (newsItem.id === updated.id ? updated : newsItem))
-    await refreshDashboardAndArticle()
+    await refreshArticle()
   } catch (error) {
     item.selected = !selected
     showMessage(error instanceof Error ? error.message : '更新新闻失败', true)
@@ -266,8 +270,17 @@ async function handleSaveArticle() {
   }
   await runAction('save', '正在保存文章', async () => {
     setArticle(await updateArticle(article.value!.id, { ...form }))
-    await refreshDashboardAndArticle()
+    await refreshArticle()
   })
+}
+
+function setNewsTab(tab: NewsTab) {
+  activeNewsTab.value = tab
+  newsPage.value = 1
+}
+
+function changeNewsPage(delta: number) {
+  newsPage.value = Math.min(newsTotalPages.value, Math.max(1, newsPage.value + delta))
 }
 
 function formatDate(value: string) {
@@ -328,19 +341,18 @@ onUnmounted(() => {
         <h1>AI 早报工作台</h1>
       </div>
       <nav aria-label="主导航">
-        <a href="#dashboard">总览</a>
         <a href="#news">新闻候选</a>
         <a href="#article">文章草稿</a>
-        <a href="#settings">配置</a>
       </nav>
       <button type="button" @click="handleLogout">退出登录</button>
     </aside>
 
     <main class="workspace">
-      <section id="dashboard" class="toolbar">
+      <section class="toolbar">
         <div>
           <p class="eyebrow">今日流程</p>
           <h2>抓取、筛选、生成、入草稿箱</h2>
+          <p class="toolbar-subtitle">当前文章状态：{{ articleStateLabel }}</p>
         </div>
         <div class="actions">
           <button
@@ -369,33 +381,6 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="metrics" aria-label="任务状态">
-        <article>
-          <span>候选新闻</span>
-          <strong>{{ dashboard?.news_count ?? '-' }}</strong>
-        </article>
-        <article>
-          <span>已选新闻</span>
-          <strong>{{ dashboard?.selected_count ?? '-' }}</strong>
-        </article>
-        <article>
-          <span>定时任务</span>
-          <strong>{{ dashboard?.scheduled_publish_time ?? '-' }}</strong>
-        </article>
-        <article>
-          <span>文章状态</span>
-          <strong>{{ articleStatus }}</strong>
-        </article>
-        <article>
-          <span>国际已选</span>
-          <strong>{{ internationalSelectedCount }}</strong>
-        </article>
-        <article>
-          <span>国内已选</span>
-          <strong>{{ domesticSelectedCount }}</strong>
-        </article>
-      </section>
-
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
 
       <section v-if="hasTaskEvents" class="panel task-events" aria-label="任务执行日志">
@@ -420,78 +405,86 @@ onUnmounted(() => {
             <p class="eyebrow">候选池</p>
             <h2>AI 大事件列表</h2>
           </div>
-        </div>
-        <div v-if="news.length" class="region-news-grid">
-          <section class="news-region">
-            <div class="region-header">
-              <h3>国际动态</h3>
-              <span>{{ internationalNews.length }} 条 · 已选 {{ internationalSelectedCount }}</span>
-            </div>
-            <div class="news-list">
-              <article v-for="item in internationalNews" :key="item.id" class="news-card">
-                <input
-                  type="checkbox"
-                  :checked="item.selected"
-                  :aria-label="`选择 ${item.title}`"
-                  @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
-                />
-                <div>
-                  <h3>{{ item.title }}</h3>
-                  <div class="meta">
-                    <span class="region-pill">{{ regionLabel(item.region) }}</span>
-                    {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
-                  </div>
-                  <p>{{ item.summary }}</p>
-                  <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
-                </div>
-                <div class="score">{{ item.importance_score }}</div>
-              </article>
-              <p v-if="!internationalNews.length" class="empty-region">暂无国际候选新闻。</p>
-            </div>
-          </section>
-
-          <section class="news-region">
-            <div class="region-header">
-              <h3>国内动态</h3>
-              <span>{{ domesticNews.length }} 条 · 已选 {{ domesticSelectedCount }}</span>
-            </div>
-            <div class="news-list">
-              <article v-for="item in domesticNews" :key="item.id" class="news-card">
-                <input
-                  type="checkbox"
-                  :checked="item.selected"
-                  :aria-label="`选择 ${item.title}`"
-                  @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
-                />
-                <div>
-                  <h3>{{ item.title }}</h3>
-                  <div class="meta">
-                    <span class="region-pill domestic">{{ regionLabel(item.region) }}</span>
-                    {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
-                  </div>
-                  <p>{{ item.summary }}</p>
-                  <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
-                </div>
-                <div class="score">{{ item.importance_score }}</div>
-              </article>
-              <p v-if="!domesticNews.length" class="empty-region">暂无国内候选新闻。</p>
-            </div>
-          </section>
-        </div>
-        <p v-else>还没有候选新闻，点击重新抓取开始。</p>
-      </section>
-
-      <section id="article" class="editor-grid">
-        <form class="panel" @submit.prevent="handleSaveArticle">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">编辑</p>
-              <h2>公众号文章</h2>
-            </div>
-            <button type="submit" :disabled="!hasArticle || Boolean(pendingAction)">
-              {{ pendingAction === 'save' ? '保存中' : '保存修改' }}
+          <div class="tabs" role="tablist" aria-label="新闻区域">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeNewsTab === 'international'"
+              :class="{ active: activeNewsTab === 'international' }"
+              @click="setNewsTab('international')"
+            >
+              国际动态
+              <span>{{ internationalNews.length }}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeNewsTab === 'domestic'"
+              :class="{ active: activeNewsTab === 'domestic' }"
+              @click="setNewsTab('domestic')"
+            >
+              国内动态
+              <span>{{ domesticNews.length }}</span>
             </button>
           </div>
+        </div>
+        <div v-if="activeNews.length" class="news-list">
+          <article v-for="item in pagedNews" :key="item.id" class="news-card">
+            <input
+              type="checkbox"
+              :checked="item.selected"
+              :aria-label="`选择 ${item.title}`"
+              @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
+            />
+            <div>
+              <h3>{{ item.title }}</h3>
+              <div class="meta">
+                <span class="region-pill" :class="{ domestic: item.region === 'domestic' }">{{ regionLabel(item.region) }}</span>
+                {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
+              </div>
+              <p>{{ item.summary }}</p>
+              <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
+            </div>
+            <div class="score">{{ item.importance_score }}</div>
+          </article>
+          <div class="pagination">
+            <button type="button" :disabled="newsPage <= 1" @click="changeNewsPage(-1)">上一页</button>
+            <span>第 {{ newsPage }} / {{ newsTotalPages }} 页</span>
+            <button type="button" :disabled="newsPage >= newsTotalPages" @click="changeNewsPage(1)">下一页</button>
+          </div>
+        </div>
+        <p v-else class="empty-region">当前分类还没有候选新闻。</p>
+      </section>
+
+      <section id="article" class="panel">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">文章草稿</p>
+            <h2>公众号文章</h2>
+          </div>
+          <div class="tabs" role="tablist" aria-label="文章草稿">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeArticleTab === 'preview'"
+              :class="{ active: activeArticleTab === 'preview' }"
+              @click="activeArticleTab = 'preview'"
+            >
+              预览
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeArticleTab === 'edit'"
+              :class="{ active: activeArticleTab === 'edit' }"
+              @click="activeArticleTab = 'edit'"
+            >
+              编辑
+            </button>
+          </div>
+        </div>
+
+        <form v-if="activeArticleTab === 'edit'" class="article-form" @submit.prevent="handleSaveArticle">
           <label>
             标题
             <input v-model="form.title" type="text" :disabled="!hasArticle" />
@@ -508,15 +501,12 @@ onUnmounted(() => {
             正文 HTML
             <textarea v-model="form.content_html" rows="16" :disabled="!hasArticle"></textarea>
           </label>
+          <button type="submit" :disabled="!hasArticle || Boolean(pendingAction)">
+            {{ pendingAction === 'save' ? '保存中' : '保存修改' }}
+          </button>
         </form>
 
-        <article class="panel preview-panel">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">预览</p>
-              <h2>图文效果</h2>
-            </div>
-          </div>
+        <article v-else class="preview-panel">
           <img v-if="form.cover_image_url" class="cover" :src="form.cover_image_url" alt="文章封面预览" />
           <h3>{{ form.title || '尚未生成文章' }}</h3>
           <p class="intro-preview">{{ form.intro }}</p>
@@ -525,29 +515,6 @@ onUnmounted(() => {
             <p>生成文章后，这里会显示公众号图文预览。</p>
           </div>
         </article>
-      </section>
-
-      <section id="settings" class="panel settings-panel">
-        <div class="section-header">
-          <div>
-            <p class="eyebrow">配置</p>
-            <h2>运行设置</h2>
-          </div>
-        </div>
-        <dl>
-          <div>
-            <dt>API 地址</dt>
-            <dd>{{ apiBaseText }}</dd>
-          </div>
-          <div>
-            <dt>新闻来源</dt>
-            <dd>RSS/Atom 候选源 + 大模型筛选与改写</dd>
-          </div>
-          <div>
-            <dt>微信接口</dt>
-            <dd>真实公众号草稿箱 API，服务器出口 IP 需要加入微信白名单</dd>
-          </div>
-        </dl>
       </section>
     </main>
   </div>

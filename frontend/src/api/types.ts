@@ -28,14 +28,6 @@ export interface Article {
   updated_at: string
 }
 
-export interface Dashboard {
-  news_count: number
-  selected_count: number
-  latest_article: Article | null
-  last_fetch_at: string | null
-  scheduled_publish_time: string
-}
-
 export interface ArticleUpdate {
   title: string
   intro: string
