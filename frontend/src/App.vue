@@ -852,15 +852,27 @@ onUnmounted(() => {
           </div>
           <label>
             通用新闻源
-            <textarea v-model="publishingForm.news_source_urls" rows="3"></textarea>
+            <textarea
+              v-model="publishingForm.news_source_urls"
+              rows="3"
+              placeholder="用英文逗号分隔，例如：PetfoodIndustry|https://www.petfoodindustry.com/rss,AVMA|https://www.avma.org/news/rss"
+            ></textarea>
           </label>
           <label>
             国际新闻源
-            <textarea v-model="publishingForm.international_news_source_urls" rows="3"></textarea>
+            <textarea
+              v-model="publishingForm.international_news_source_urls"
+              rows="3"
+              placeholder="格式：名称|RSS地址,名称|RSS地址"
+            ></textarea>
           </label>
           <label>
             国内新闻源
-            <textarea v-model="publishingForm.domestic_news_source_urls" rows="3"></textarea>
+            <textarea
+              v-model="publishingForm.domestic_news_source_urls"
+              rows="3"
+              placeholder="格式：名称|RSS地址,名称|RSS地址"
+            ></textarea>
           </label>
 
           <div class="config-subsection">

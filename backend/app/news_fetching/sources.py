@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from app.news_fetching.models import NewsRegion, NewsSourceConfig
 
 
@@ -44,8 +46,17 @@ def parse_configured_sources(value: str, region: NewsRegion, max_items: int) -> 
         else:
             name = f"{region.value}-{index + 1}"
             url = item
+        if not is_valid_source_url(url):
+            continue
         sources.append(NewsSourceConfig(name=name, url=url, region=region, max_items=max_items))
     return sources
+
+
+def is_valid_source_url(url: str) -> bool:
+    if not url or any(ord(char) < 32 for char in url):
+        return False
+    parsed = urlsplit(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def with_limit(sources: list[NewsSourceConfig], max_items: int) -> list[NewsSourceConfig]:

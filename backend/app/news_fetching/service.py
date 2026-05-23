@@ -94,7 +94,7 @@ def fetch_source_candidates(
     try:
         response = client.get(source.url)
         response.raise_for_status()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
         report.error = f"{type(exc).__name__}: {exc}"
         return [], report
 
