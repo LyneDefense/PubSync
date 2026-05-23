@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,9 @@ from uuid import uuid4
 import httpx
 
 from app.config import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class AIServiceError(RuntimeError):
@@ -96,9 +100,14 @@ def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
     try:
-        parsed = json.loads(extract_json_object(text))
+        parsed = parse_json_object_text(text)
     except json.JSONDecodeError as exc:
-        raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from exc
+        logger.warning("AI 首次返回不是合法 JSON，开始尝试修复：错误=%s，片段=%s", exc, text[:240])
+        repaired_text = repair_json_response(settings, text)
+        try:
+            parsed = parse_json_object_text(repaired_text)
+        except json.JSONDecodeError as repaired_exc:
+            raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from repaired_exc
     if not isinstance(parsed, dict):
         raise AIServiceError("AI 返回 JSON 不是对象")
     return parsed
@@ -124,12 +133,18 @@ def minimax_text(settings: Settings, prompt: str) -> str:
             {
                 "role": "system",
                 "name": "PubSync",
-                "content": "你是严谨的 AI 新闻编辑。所有输出必须是合法 JSON，不要输出 Markdown 代码块。",
+                "content": (
+                    "你是严谨的 AI 新闻编辑。所有输出必须是合法 JSON。"
+                    "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
+                ),
             },
             {"role": "user", "name": "User", "content": prompt},
         ],
         "temperature": 0.2,
+        "reasoning_split": True,
     }
+    if supports_minimax_response_format(settings.minimax_text_model):
+        payload["response_format"] = {"type": "json_object"}
     data = minimax_post(settings, "/chat/completions", payload, timeout=180)
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
@@ -140,6 +155,31 @@ def minimax_text(settings: Settings, prompt: str) -> str:
     if isinstance(reply, str):
         return reply
     raise AIServiceError(f"MiniMax 文本响应中没有可解析内容：{data}")
+
+
+def supports_minimax_response_format(model: str) -> bool:
+    return model.strip().lower() in {"minimax-text-01", "text-01"}
+
+
+def repair_json_response(settings: Settings, raw_text: str) -> str:
+    prompt = f"""
+下面是一个大模型返回结果。它本应是合法 JSON，但可能混入了 <think>、解释文字、Markdown 或其他非 JSON 内容。
+
+请只做格式修复：
+- 只能返回一个合法 JSON 对象。
+- 不要新增事实，不要改写字段含义。
+- 不要输出 Markdown、解释文字、<think> 或 JSON 之外的任何字符。
+- 如果原文里有多个 JSON 片段，选择最完整、字段最多、最符合任务结果的那个。
+
+原始返回：
+{raw_text[:12000]}
+"""
+    provider = settings.llm_provider.lower()
+    if provider == "minimax":
+        return minimax_text(settings, prompt)
+    if provider == "openai":
+        return openai_text(settings, prompt)
+    raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
 
 def generate_openai_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
@@ -288,8 +328,23 @@ def first_base64_image(data: dict[str, Any]) -> str:
     return ""
 
 
+def parse_json_object_text(text: str) -> dict[str, Any]:
+    stripped = extract_json_object(text)
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stripped):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(stripped[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return json.loads(stripped)
+
+
 def extract_json_object(text: str) -> str:
-    stripped = text.strip()
+    stripped = remove_reasoning_text(text).strip()
     if stripped.startswith("```"):
         stripped = re.sub(r"^```(?:json)?", "", stripped).strip()
         stripped = re.sub(r"```$", "", stripped).strip()
@@ -300,6 +355,12 @@ def extract_json_object(text: str) -> str:
     if start >= 0 and end > start:
         return stripped[start : end + 1]
     return stripped
+
+
+def remove_reasoning_text(text: str) -> str:
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"<think>.*", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    return cleaned.strip()
 
 
 def safe_slug(value: str) -> str:
