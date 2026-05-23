@@ -206,7 +206,8 @@ def ensure_runtime_schema() -> None:
         """,
         """
         INSERT INTO publishing_settings (
-            tenant_id, daily_publish_enabled, publish_time_hour, publish_time_minute, auto_send_wechat_draft,
+            tenant_id, daily_publish_enabled, publish_frequency, publish_weekday, publish_month_day,
+            publish_time_hour, publish_time_minute, auto_send_wechat_draft,
             generate_article_images, max_article_images, min_article_images,
             news_source_urls, news_per_source_limit,
             news_lookback_hours, max_news_candidates, dedup_lookback_days,
@@ -215,7 +216,7 @@ def ensure_runtime_schema() -> None:
             updated_at
         )
         VALUES (
-            1, false, 8, 0, false,
+            1, false, 'daily', 1, 1, 8, 0, false,
             true, 3, 1,
             '', 8,
             72, 80, 7,
@@ -227,7 +228,8 @@ def ensure_runtime_schema() -> None:
         """,
         """
         INSERT INTO publishing_settings (
-            tenant_id, daily_publish_enabled, publish_time_hour, publish_time_minute, auto_send_wechat_draft,
+            tenant_id, daily_publish_enabled, publish_frequency, publish_weekday, publish_month_day,
+            publish_time_hour, publish_time_minute, auto_send_wechat_draft,
             generate_article_images, max_article_images, min_article_images,
             news_source_urls, news_per_source_limit,
             news_lookback_hours, max_news_candidates, dedup_lookback_days,
@@ -236,7 +238,7 @@ def ensure_runtime_schema() -> None:
             updated_at
         )
         VALUES (
-            2, false, 8, 0, false,
+            2, false, 'daily', 1, 1, 8, 0, false,
             true, 2, 1,
             '', 8,
             72, 60, 7,
@@ -246,6 +248,9 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_frequency VARCHAR(20) NOT NULL DEFAULT 'daily'",
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_weekday INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_month_day INTEGER NOT NULL DEFAULT 1",
         """
         CREATE TABLE IF NOT EXISTS content_groups (
             id SERIAL PRIMARY KEY,

@@ -31,7 +31,7 @@ from app.schemas import (
     WorkspaceConfigUpdate,
 )
 from app.services.article_service import update_article
-from app.services.auth_service import create_token, verify_credentials, verify_token
+from app.services.auth_service import create_token, tenant_ids_for_user, token_username, verify_credentials, verify_token
 from app.services.news_service import list_news
 from app.services.task_service import (
     create_operation_task,
@@ -130,14 +130,33 @@ def login(payload: LoginRequest) -> LoginResponse:
     return LoginResponse(access_token=create_token(settings, payload.username))
 
 
+def current_username(request: Request) -> str:
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="请先登录")
+    username = token_username(token, settings)
+    if not username:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return username
+
+
 def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
+    username = current_username(request)
+    allowed_tenant_ids = tenant_ids_for_user(username, settings)
+    if not allowed_tenant_ids:
+        raise HTTPException(status_code=403, detail="当前账号没有可访问的工作空间")
+
     raw_tenant_id = request.headers.get("X-Tenant-ID")
     if not raw_tenant_id:
-        return get_default_tenant(db)
-    try:
-        tenant_id = int(raw_tenant_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-Tenant-ID 不合法") from exc
+        tenant_id = allowed_tenant_ids[0]
+    else:
+        try:
+            tenant_id = int(raw_tenant_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="X-Tenant-ID 不合法") from exc
+    if tenant_id not in allowed_tenant_ids:
+        raise HTTPException(status_code=403, detail="当前账号不能访问该工作空间")
     try:
         return get_tenant(db, tenant_id)
     except ValueError as exc:
@@ -145,8 +164,13 @@ def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
 
 
 @app.get("/tenants", response_model=list[TenantRead])
-def list_tenants_endpoint(db: Session = Depends(get_db)) -> list[Tenant]:
-    return list_tenants(db)
+def list_tenants_endpoint(request: Request, db: Session = Depends(get_db)) -> list[Tenant]:
+    username = current_username(request)
+    allowed_tenant_ids = tenant_ids_for_user(username, settings)
+    tenants = [tenant for tenant in list_tenants(db) if tenant.id in allowed_tenant_ids]
+    if not tenants:
+        raise HTTPException(status_code=403, detail="当前账号没有可访问的工作空间")
+    return tenants
 
 
 @app.get("/profile", response_model=ContentProfileRead)
@@ -220,12 +244,17 @@ def get_dashboard(tenant: Tenant = Depends(current_tenant), db: Session = Depend
     )
     last_fetch_at = db.get(AppSetting, f"tenant:{tenant.id}:last_fetch_at")
     publishing = get_publishing_settings(db, tenant)
+    schedule_label = {
+        "daily": "每日",
+        "weekly": f"每周{publishing.publish_weekday}",
+        "monthly": f"每月{publishing.publish_month_day}日",
+    }.get(publishing.publish_frequency, "每日")
     return DashboardRead(
         news_count=news_count,
         selected_count=selected_count,
         latest_article=latest_article,
         last_fetch_at=last_fetch_at.value if last_fetch_at else None,
-        scheduled_publish_time=f"{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}",
+        scheduled_publish_time=f"{schedule_label} {publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}",
     )
 
 

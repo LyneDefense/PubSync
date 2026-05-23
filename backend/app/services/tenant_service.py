@@ -330,6 +330,8 @@ def normalize_publishing_value(key: str, value: object) -> object:
         except (TypeError, ValueError):
             parsed = 0.0
         return str(max(0.0, min(1.0, parsed)))
+    if key == "publish_frequency":
+        return value if value in {"daily", "weekly", "monthly"} else "daily"
     return value
 
 

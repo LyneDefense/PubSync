@@ -120,6 +120,9 @@ class LayoutSettingsUpdate(BaseModel):
 class PublishingSettingsRead(BaseModel):
     tenant_id: int
     daily_publish_enabled: bool
+    publish_frequency: str
+    publish_weekday: int
+    publish_month_day: int
     publish_time_hour: int
     publish_time_minute: int
     auto_send_wechat_draft: bool
@@ -142,6 +145,9 @@ class PublishingSettingsRead(BaseModel):
 
 class PublishingSettingsUpdate(BaseModel):
     daily_publish_enabled: bool | None = None
+    publish_frequency: str | None = Field(default=None, pattern="^(daily|weekly|monthly)$")
+    publish_weekday: int | None = Field(default=None, ge=1, le=7)
+    publish_month_day: int | None = Field(default=None, ge=1, le=31)
     publish_time_hour: int | None = Field(default=None, ge=0, le=23)
     publish_time_minute: int | None = Field(default=None, ge=0, le=59)
     auto_send_wechat_draft: bool | None = None

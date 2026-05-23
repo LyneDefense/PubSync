@@ -12,6 +12,10 @@ EXTRA_USERS = {
     "eyangpet": "123456",
 }
 
+USER_TENANT_IDS = {
+    "eyangpet": [2],
+}
+
 
 def create_token(settings: Settings, username: str | None = None) -> str:
     payload = {
@@ -25,23 +29,30 @@ def create_token(settings: Settings, username: str | None = None) -> str:
 
 
 def verify_token(token: str, settings: Settings) -> bool:
+    return token_username(token, settings) is not None
+
+
+def token_username(token: str, settings: Settings) -> str | None:
     try:
         encoded_payload, signature = token.split(".", 1)
     except ValueError:
-        return False
+        return None
     expected = sign(encoded_payload, settings)
     if not hmac.compare_digest(signature, expected):
-        return False
+        return None
     try:
         payload = json.loads(base64.urlsafe_b64decode(pad_base64(encoded_payload)))
     except (ValueError, json.JSONDecodeError):
-        return False
+        return None
     if not isinstance(payload, dict):
-        return False
-    if not is_known_user(str(payload.get("sub") or ""), settings):
-        return False
+        return None
+    username = str(payload.get("sub") or "")
+    if not is_known_user(username, settings):
+        return None
     exp = payload.get("exp")
-    return isinstance(exp, int) and exp > time.time()
+    if not isinstance(exp, int) or exp <= time.time():
+        return None
+    return username
 
 
 def verify_credentials(username: str, password: str, settings: Settings) -> bool:
@@ -53,6 +64,12 @@ def verify_credentials(username: str, password: str, settings: Settings) -> bool
 
 def is_known_user(username: str, settings: Settings) -> bool:
     return hmac.compare_digest(username, settings.admin_username) or username in EXTRA_USERS
+
+
+def tenant_ids_for_user(username: str, settings: Settings) -> list[int]:
+    if hmac.compare_digest(username, settings.admin_username):
+        return [1]
+    return USER_TENANT_IDS.get(username, [])
 
 
 def sign(encoded_payload: str, settings: Settings) -> str:

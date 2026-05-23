@@ -36,6 +36,8 @@ import type {
 type TaskActionName = 'fetch' | 'generate'
 type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
+type MainTab = 'news' | 'article' | 'settings'
+type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 
 const statusText: Record<string, string> = {
   draft: '草稿',
@@ -57,8 +59,10 @@ const taskEvents = ref<OperationTaskEvent[]>([])
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
+const activeMainTab = ref<MainTab>('news')
 const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
+const activeSettingsTab = ref<SettingsTab>('general')
 const newsPage = ref(1)
 const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
@@ -116,8 +120,12 @@ const layoutForm = reactive({
 
 const publishingForm = reactive({
   daily_publish_enabled: false,
+  publish_frequency: 'daily' as 'daily' | 'weekly' | 'monthly',
+  publish_weekday: 1,
+  publish_month_day: 1,
   publish_time_hour: 8,
   publish_time_minute: 0,
+  publish_time_value: '08:00',
   auto_send_wechat_draft: false,
   generate_article_images: true,
   max_article_images: 3,
@@ -331,6 +339,7 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   layoutForm.show_source = config.layout.show_source
   layoutForm.show_editor_note = config.layout.show_editor_note
   Object.assign(publishingForm, config.publishing)
+  publishingForm.publish_time_value = formatScheduleTime(config.publishing.publish_time_hour, config.publishing.publish_time_minute)
 }
 
 async function loadTenantOptions() {
@@ -454,6 +463,15 @@ async function handleSaveArticle() {
 
 async function handleSaveConfig() {
   await runAction('config', '正在保存工作空间配置', async () => {
+    const { hour, minute } = parseScheduleTime(publishingForm.publish_time_value)
+    const publishingPayload = {
+      ...publishingForm,
+      publish_time_hour: hour,
+      publish_time_minute: minute,
+      publish_weekday: Number(publishingForm.publish_weekday),
+      publish_month_day: Number(publishingForm.publish_month_day)
+    }
+    delete (publishingPayload as Partial<typeof publishingForm>).publish_time_value
     const payload = {
       profile: {
         publication_name: profileForm.publication_name,
@@ -472,7 +490,7 @@ async function handleSaveConfig() {
         ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {})
       },
       layout: { ...layoutForm },
-      publishing: { ...publishingForm },
+      publishing: publishingPayload,
       content_groups: contentGroupForms.value.map((group, index) => ({
         group_key: group.group_key,
         name: group.name,
@@ -532,6 +550,17 @@ function changeNewsPage(delta: number) {
   newsPage.value = Math.min(newsTotalPages.value, Math.max(1, newsPage.value + delta))
 }
 
+function formatScheduleTime(hour: number, minute: number) {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseScheduleTime(value: string) {
+  const [rawHour, rawMinute] = value.split(':')
+  const hour = Math.max(0, Math.min(23, Number(rawHour) || 0))
+  const minute = Math.max(0, Math.min(59, Number(rawMinute) || 0))
+  return { hour, minute }
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -587,7 +616,7 @@ onUnmounted(() => {
   </main>
 
   <div v-else class="app-shell">
-    <aside class="sidebar">
+    <header class="topbar">
       <div class="brand-block">
         <div class="brand-mark" aria-hidden="true">PS</div>
         <div>
@@ -595,62 +624,50 @@ onUnmounted(() => {
           <h1>{{ workspaceTitle }}</h1>
         </div>
       </div>
-      <label class="tenant-switcher">
-        工作空间
-        <select v-model="selectedTenantId" @change="handleTenantChange">
-          <option v-for="tenant in tenants" :key="tenant.id" :value="String(tenant.id)">
-            {{ tenant.name }}
-          </option>
-        </select>
-      </label>
-      <nav aria-label="主导航">
-        <a href="#news">新闻候选</a>
-        <a href="#article">文章草稿</a>
-        <a href="#config">工作空间配置</a>
-      </nav>
-      <div class="sidebar-footer">
-        <div>
-          <span>工作台</span>
-          <strong>已登录</strong>
-        </div>
-        <button type="button" @click="handleLogout">退出</button>
+      <div class="topbar-controls">
+        <label class="tenant-switcher">
+          工作空间
+          <select v-model="selectedTenantId" @change="handleTenantChange">
+            <option v-for="tenant in tenants" :key="tenant.id" :value="String(tenant.id)">
+              {{ tenant.name }}
+            </option>
+          </select>
+        </label>
+        <button type="button" @click="handleLogout">退出登录</button>
       </div>
-    </aside>
+    </header>
+
+    <nav class="main-tabs" role="tablist" aria-label="主模块">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeMainTab === 'news'"
+        :class="{ active: activeMainTab === 'news' }"
+        @click="activeMainTab = 'news'"
+      >
+        候选新闻
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeMainTab === 'article'"
+        :class="{ active: activeMainTab === 'article' }"
+        @click="activeMainTab = 'article'"
+      >
+        文章预览
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeMainTab === 'settings'"
+        :class="{ active: activeMainTab === 'settings' }"
+        @click="activeMainTab = 'settings'"
+      >
+        设置
+      </button>
+    </nav>
 
     <main class="workspace">
-      <section class="toolbar">
-        <div>
-          <p class="eyebrow">{{ publicationName }}</p>
-          <h2>抓取、筛选、生成、入草稿箱</h2>
-          <p class="toolbar-subtitle">当前文章状态：{{ articleStateLabel }}</p>
-        </div>
-        <div class="actions">
-          <button
-            type="button"
-            class="task-button"
-            :class="{ running: pendingAction === 'fetch' }"
-            :style="taskButtonStyle('fetch')"
-            :disabled="Boolean(pendingAction)"
-            @click="handleFetchNews"
-          >
-            <span>{{ pendingAction === 'fetch' ? `抓取中 ${Math.round(taskProgress.fetch)}%` : '重新抓取' }}</span>
-          </button>
-          <button
-            type="button"
-            class="task-button"
-            :class="{ running: pendingAction === 'generate' }"
-            :style="taskButtonStyle('generate')"
-            :disabled="Boolean(pendingAction)"
-            @click="handleGenerateArticle"
-          >
-            <span>{{ pendingAction === 'generate' ? `生成中 ${Math.round(taskProgress.generate)}%` : '生成文章' }}</span>
-          </button>
-          <button type="button" class="primary" :disabled="!hasArticle || Boolean(pendingAction)" @click="handleSendWechat">
-            {{ pendingAction === 'wechat' ? '发送中' : '发送草稿箱' }}
-          </button>
-        </div>
-      </section>
-
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
 
       <section v-if="hasTaskEvents" class="panel task-events" aria-label="任务执行日志">
@@ -669,12 +686,26 @@ onUnmounted(() => {
         </ol>
       </section>
 
-      <section id="news" class="panel">
+      <section v-if="activeMainTab === 'news'" class="panel">
         <div class="section-header">
           <div>
             <p class="eyebrow">候选池</p>
             <h2>{{ workspaceTitle }}候选新闻</h2>
           </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="task-button"
+              :class="{ running: pendingAction === 'fetch' }"
+              :style="taskButtonStyle('fetch')"
+              :disabled="Boolean(pendingAction)"
+              @click="handleFetchNews"
+            >
+              <span>{{ pendingAction === 'fetch' ? `抓取中 ${Math.round(taskProgress.fetch)}%` : '重新抓取' }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="module-subnav">
           <div class="tabs" role="tablist" aria-label="新闻分组">
             <button
               v-for="tab in visibleNewsTabs"
@@ -720,12 +751,30 @@ onUnmounted(() => {
         <p v-else class="empty-region">当前分类还没有候选新闻。</p>
       </section>
 
-      <section id="article" class="panel">
+      <section v-if="activeMainTab === 'article'" class="panel">
         <div class="section-header">
           <div>
             <p class="eyebrow">文章草稿</p>
             <h2>公众号文章</h2>
+            <p class="toolbar-subtitle">当前文章状态：{{ articleStateLabel }}</p>
           </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="task-button"
+              :class="{ running: pendingAction === 'generate' }"
+              :style="taskButtonStyle('generate')"
+              :disabled="Boolean(pendingAction)"
+              @click="handleGenerateArticle"
+            >
+              <span>{{ pendingAction === 'generate' ? `生成中 ${Math.round(taskProgress.generate)}%` : '生成文章' }}</span>
+            </button>
+            <button type="button" class="primary" :disabled="!hasArticle || Boolean(pendingAction)" @click="handleSendWechat">
+              {{ pendingAction === 'wechat' ? '发送中' : '发送草稿箱' }}
+            </button>
+          </div>
+        </div>
+        <div class="module-subnav">
           <div class="tabs" role="tablist" aria-label="文章草稿">
             <button
               type="button"
@@ -781,290 +830,360 @@ onUnmounted(() => {
         </article>
       </section>
 
-      <section id="config" class="panel">
+      <section v-if="activeMainTab === 'settings'" class="panel">
         <div class="section-header">
           <div>
             <p class="eyebrow">配置中心</p>
             <h2>工作空间配置</h2>
           </div>
-        </div>
-        <form class="config-form" @submit.prevent="handleSaveConfig">
-          <div class="config-subsection">
-            <p class="eyebrow">基础信息</p>
-            <h3>工作空间与文章标题</h3>
-          </div>
-          <div class="config-grid">
-            <label>
-              公众号/栏目名称
-              <input v-model="profileForm.publication_name" type="text" required />
-            </label>
-            <label>
-              工作台标题
-              <input v-model="profileForm.workspace_title" type="text" required />
-            </label>
-            <label>
-              文章标题前缀
-              <input v-model="profileForm.title_prefix" type="text" required />
-            </label>
-            <label>
-              内容分组
-              <select v-model="profileForm.grouping_mode">
-                <option value="regional">按内容分组</option>
-                <option value="none">不分组</option>
-              </select>
-            </label>
-            <label>
-              微信 AppID
-              <input v-model="wechatForm.app_id" type="text" autocomplete="off" />
-            </label>
-          </div>
-
-          <div class="config-subsection">
-            <p class="eyebrow">公众号</p>
-            <h3>微信草稿箱配置</h3>
-          </div>
-          <label>
-            微信 AppSecret
-            <input
-              v-model="wechatForm.app_secret"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="wechatForm.app_secret_configured ? '已配置，留空则不修改' : '未配置'"
-            />
-          </label>
-          <div class="config-subsection">
-            <p class="eyebrow">自动化</p>
-            <h3>定时发布</h3>
-          </div>
-          <div class="config-grid">
-            <label class="toggle-row">
-              <input v-model="publishingForm.daily_publish_enabled" type="checkbox" />
-              启用每日定时任务
-            </label>
-            <label class="toggle-row">
-              <input v-model="publishingForm.auto_send_wechat_draft" type="checkbox" />
-              生成后自动发送草稿箱
-            </label>
-            <label>
-              发布时间：小时
-              <input v-model.number="publishingForm.publish_time_hour" type="number" min="0" max="23" />
-            </label>
-            <label>
-              发布时间：分钟
-              <input v-model.number="publishingForm.publish_time_minute" type="number" min="0" max="59" />
-            </label>
-          </div>
-
-          <div class="config-subsection">
-            <p class="eyebrow">新闻抓取</p>
-            <h3>来源与候选池</h3>
-          </div>
-          <div class="config-grid">
-            <label>
-              每个源最多抓取
-              <input v-model.number="publishingForm.news_per_source_limit" type="number" min="1" max="50" />
-            </label>
-            <label>
-              新闻回看小时
-              <input v-model.number="publishingForm.news_lookback_hours" type="number" min="1" max="168" />
-            </label>
-            <label>
-              总候选上限
-              <input v-model.number="publishingForm.max_news_candidates" type="number" min="1" max="300" />
-            </label>
-          </div>
-          <div class="group-editor">
-            <article v-for="(group, index) in contentGroupForms" :key="`${group.group_key}-${index}`" class="group-card">
-              <div class="group-card-header">
-                <strong>{{ group.name || `内容分组 ${index + 1}` }}</strong>
-                <button type="button" @click="removeContentGroup(index)">移除</button>
-              </div>
-              <div class="config-grid">
-                <label>
-                  分组 Key
-                  <input v-model="group.group_key" type="text" required />
-                </label>
-                <label>
-                  分组名称
-                  <input v-model="group.name" type="text" required />
-                </label>
-                <label>
-                  候选数量
-                  <input v-model.number="group.candidate_limit" type="number" min="0" max="300" />
-                </label>
-                <label class="toggle-row">
-                  <input v-model="group.enabled" type="checkbox" />
-                  启用分组
-                </label>
-                <label>
-                  文章最少
-                  <input v-model.number="group.article_min" type="number" min="0" max="50" />
-                </label>
-                <label>
-                  文章目标
-                  <input v-model.number="group.article_target" type="number" min="0" max="50" />
-                </label>
-                <label>
-                  文章最多
-                  <input v-model.number="group.article_max" type="number" min="0" max="50" />
-                </label>
-              </div>
-              <label>
-                新闻源
-                <textarea
-                  v-model="group.source_urls"
-                  rows="3"
-                  placeholder="格式：名称|RSS地址,名称|RSS地址"
-                ></textarea>
-              </label>
-            </article>
-            <button type="button" class="secondary" @click="addContentGroup">新增内容分组</button>
-          </div>
-
-          <div class="config-subsection">
-            <p class="eyebrow">生成策略</p>
-            <h3>文章、图片与去重</h3>
-          </div>
-          <div class="config-grid">
-            <label class="toggle-row">
-              <input v-model="publishingForm.generate_article_images" type="checkbox" />
-              生成正文配图
-            </label>
-            <label class="toggle-row">
-              <input v-model="publishingForm.dedup_enable_llm_review" type="checkbox" />
-              启用大模型去重复核
-            </label>
-            <label>
-              最少正文图
-              <input v-model.number="publishingForm.min_article_images" type="number" min="0" max="10" />
-            </label>
-            <label>
-              最多正文图
-              <input v-model.number="publishingForm.max_article_images" type="number" min="0" max="10" />
-            </label>
-            <label>
-              文章新闻数量
-              <input v-model.number="publishingForm.article_news_limit" type="number" min="1" max="50" />
-            </label>
-            <label>
-              文章回看小时
-              <input v-model.number="publishingForm.article_news_lookback_hours" type="number" min="1" max="168" />
-            </label>
-            <label>
-              去重回看天数
-              <input v-model.number="publishingForm.dedup_lookback_days" type="number" min="1" max="30" />
-            </label>
-            <label>
-              直接判重阈值
-              <input v-model="publishingForm.dedup_direct_similarity" type="number" min="0" max="1" step="0.01" />
-            </label>
-            <label>
-              大模型复核阈值
-              <input v-model="publishingForm.dedup_review_similarity" type="number" min="0" max="1" step="0.01" />
-            </label>
-          </div>
-          <div class="config-subsection">
-            <p class="eyebrow">排版</p>
-            <h3>视觉参数与实时预览</h3>
-          </div>
-          <div class="layout-editor">
-            <div class="layout-controls">
-              <div class="config-grid">
-                <label>
-                  版式模板
-                  <select v-model="layoutForm.template_name">
-                    <option value="clean">清爽资讯</option>
-                    <option value="warm">温和科普</option>
-                    <option value="compact">紧凑早报</option>
-                  </select>
-                </label>
-                <label>
-                  主色
-                  <input v-model="layoutForm.primary_color" type="color" />
-                </label>
-                <label>
-                  强调线颜色
-                  <input v-model="layoutForm.accent_color" type="color" />
-                </label>
-                <label>
-                  正文字号
-                  <input v-model.number="layoutForm.body_font_size" type="number" min="12" max="20" />
-                </label>
-                <label>
-                  标题字号
-                  <input v-model.number="layoutForm.heading_font_size" type="number" min="14" max="26" />
-                </label>
-                <label>
-                  行高
-                  <input v-model="layoutForm.line_height" type="number" min="1.4" max="2.2" step="0.05" />
-                </label>
-                <label>
-                  段落间距
-                  <input v-model.number="layoutForm.section_spacing" type="number" min="12" max="48" />
-                </label>
-                <label>
-                  图片圆角
-                  <input v-model.number="layoutForm.image_radius" type="number" min="0" max="24" />
-                </label>
-              </div>
-              <label class="toggle-row">
-                <input v-model="layoutForm.show_group_heading" type="checkbox" />
-                显示分组标题
-              </label>
-              <label class="toggle-row">
-                <input v-model="layoutForm.show_editor_note" type="checkbox" />
-                显示编辑观察
-              </label>
-              <label class="toggle-row">
-                <input v-model="layoutForm.show_source" type="checkbox" />
-                显示来源
-              </label>
-            </div>
-            <div class="layout-preview" :style="layoutPreviewStyle" aria-label="排版预览">
-              <p class="layout-preview-kicker">公众号预览</p>
-              <section v-if="layoutForm.show_group_heading" :style="layoutPreviewSectionStyle">
-                <h3 :style="layoutPreviewHeadingStyle">{{ usesRegionalGrouping ? contentGroupForms[0]?.name || '内容分组' : '精选内容' }}</h3>
-              </section>
-              <section :style="layoutPreviewSectionStyle">
-                <h2 :style="layoutPreviewHeadingStyle">01｜一条适合当前工作空间的内容标题</h2>
-                <p>这里展示正文段落的字号、行高和整体阅读密度。实际生成文章时，后端会用同一套参数渲染公众号 HTML。</p>
-                <div class="layout-preview-image" :style="layoutPreviewImageStyle"></div>
-                <blockquote v-if="layoutForm.show_editor_note" :style="{ borderLeftColor: layoutForm.accent_color }">
-                  编辑观察：这里展示强调块的颜色和间距。
-                </blockquote>
-                <p v-if="layoutForm.show_source">
-                  来源：<a :style="{ color: layoutForm.primary_color, borderBottomColor: layoutForm.primary_color }">示例来源</a>
-                </p>
-              </section>
-            </div>
-          </div>
-          <label>
-            内容领域
-            <textarea v-model="profileForm.content_domain" rows="3" readonly></textarea>
-          </label>
-          <label>
-            编辑人设
-            <textarea v-model="profileForm.editor_persona" rows="3" readonly></textarea>
-          </label>
-          <label>
-            目标读者
-            <textarea v-model="profileForm.audience" rows="3" readonly></textarea>
-          </label>
-          <label>
-            文章风格
-            <textarea v-model="profileForm.article_style" rows="3" readonly></textarea>
-          </label>
-          <label>
-            图片风格
-            <textarea v-model="profileForm.image_style" rows="3" readonly></textarea>
-          </label>
-          <label>
-            分类 JSON
-            <textarea v-model="profileForm.categories_json" rows="3" readonly></textarea>
-          </label>
-          <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+          <button type="submit" form="workspace-config-form" class="primary" :disabled="Boolean(pendingAction)">
             {{ pendingAction === 'config' ? '保存中' : '保存配置' }}
           </button>
+        </div>
+        <div class="module-subnav">
+          <div class="tabs" role="tablist" aria-label="设置模块">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'general'"
+              :class="{ active: activeSettingsTab === 'general' }"
+              @click="activeSettingsTab = 'general'"
+            >
+              通用设置
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'wechat'"
+              :class="{ active: activeSettingsTab === 'wechat' }"
+              @click="activeSettingsTab = 'wechat'"
+            >
+              公众号设置
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'automation'"
+              :class="{ active: activeSettingsTab === 'automation' }"
+              @click="activeSettingsTab = 'automation'"
+            >
+              自动化设置
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'sources'"
+              :class="{ active: activeSettingsTab === 'sources' }"
+              @click="activeSettingsTab = 'sources'"
+            >
+              新闻源设置
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'generation'"
+              :class="{ active: activeSettingsTab === 'generation' }"
+              @click="activeSettingsTab = 'generation'"
+            >
+              生成策略
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeSettingsTab === 'layout'"
+              :class="{ active: activeSettingsTab === 'layout' }"
+              @click="activeSettingsTab = 'layout'"
+            >
+              排版设置
+            </button>
+          </div>
+        </div>
+
+        <form id="workspace-config-form" class="config-form" @submit.prevent="handleSaveConfig">
+          <div v-if="activeSettingsTab === 'general'" class="settings-pane">
+            <h3>工作空间与文章标题</h3>
+            <div class="config-grid">
+              <label>
+                公众号/栏目名称
+                <input v-model="profileForm.publication_name" type="text" required />
+              </label>
+              <label>
+                工作台标题
+                <input v-model="profileForm.workspace_title" type="text" required />
+              </label>
+              <label>
+                文章标题前缀
+                <input v-model="profileForm.title_prefix" type="text" required />
+              </label>
+            </div>
+            <label>
+              内容领域
+              <textarea v-model="profileForm.content_domain" rows="3" readonly></textarea>
+            </label>
+            <label>
+              编辑人设
+              <textarea v-model="profileForm.editor_persona" rows="3" readonly></textarea>
+            </label>
+            <label>
+              目标读者
+              <textarea v-model="profileForm.audience" rows="3" readonly></textarea>
+            </label>
+            <label>
+              文章风格
+              <textarea v-model="profileForm.article_style" rows="3" readonly></textarea>
+            </label>
+            <label>
+              图片风格
+              <textarea v-model="profileForm.image_style" rows="3" readonly></textarea>
+            </label>
+            <label>
+              分类 JSON
+              <textarea v-model="profileForm.categories_json" rows="3" readonly></textarea>
+            </label>
+          </div>
+
+          <div v-if="activeSettingsTab === 'wechat'" class="settings-pane">
+            <h3>微信草稿箱配置</h3>
+            <div class="config-grid">
+              <label>
+                微信 AppID
+                <input v-model="wechatForm.app_id" type="text" autocomplete="off" />
+              </label>
+              <label>
+                微信 AppSecret
+                <input
+                  v-model="wechatForm.app_secret"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="wechatForm.app_secret_configured ? '已配置，留空则不修改' : '未配置'"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsTab === 'automation'" class="settings-pane">
+            <h3>定时发布</h3>
+            <div class="config-grid">
+              <label class="toggle-row">
+                <input v-model="publishingForm.daily_publish_enabled" type="checkbox" />
+                启用定时任务
+              </label>
+              <label class="toggle-row">
+                <input v-model="publishingForm.auto_send_wechat_draft" type="checkbox" />
+                生成后自动发送草稿箱
+              </label>
+              <label>
+                发布周期
+                <select v-model="publishingForm.publish_frequency">
+                  <option value="daily">每日</option>
+                  <option value="weekly">每周</option>
+                  <option value="monthly">每月</option>
+                </select>
+              </label>
+              <label v-if="publishingForm.publish_frequency === 'weekly'">
+                每周执行日
+                <select v-model.number="publishingForm.publish_weekday">
+                  <option :value="1">周一</option>
+                  <option :value="2">周二</option>
+                  <option :value="3">周三</option>
+                  <option :value="4">周四</option>
+                  <option :value="5">周五</option>
+                  <option :value="6">周六</option>
+                  <option :value="7">周日</option>
+                </select>
+              </label>
+              <label v-if="publishingForm.publish_frequency === 'monthly'">
+                每月执行日
+                <input v-model.number="publishingForm.publish_month_day" type="number" min="1" max="31" />
+              </label>
+              <label>
+                时间点
+                <input v-model="publishingForm.publish_time_value" type="time" step="60" />
+              </label>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsTab === 'sources'" class="settings-pane">
+            <h3>来源与候选池</h3>
+            <div class="config-grid">
+              <label>
+                每个源最多抓取
+                <input v-model.number="publishingForm.news_per_source_limit" type="number" min="1" max="50" />
+              </label>
+              <label>
+                新闻回看小时
+                <input v-model.number="publishingForm.news_lookback_hours" type="number" min="1" max="168" />
+              </label>
+              <label>
+                总候选上限
+                <input v-model.number="publishingForm.max_news_candidates" type="number" min="1" max="300" />
+              </label>
+            </div>
+            <div class="group-editor">
+              <article v-for="(group, index) in contentGroupForms" :key="`${group.group_key}-${index}`" class="group-card">
+                <div class="group-card-header">
+                  <strong>{{ group.name || `内容分组 ${index + 1}` }}</strong>
+                  <button type="button" @click="removeContentGroup(index)">移除</button>
+                </div>
+                <div class="config-grid">
+                  <label>
+                    分组 Key
+                    <input v-model="group.group_key" type="text" required />
+                  </label>
+                  <label>
+                    分组名称
+                    <input v-model="group.name" type="text" required />
+                  </label>
+                  <label>
+                    候选数量
+                    <input v-model.number="group.candidate_limit" type="number" min="0" max="300" />
+                  </label>
+                  <label class="toggle-row">
+                    <input v-model="group.enabled" type="checkbox" />
+                    启用分组
+                  </label>
+                  <label>
+                    文章最少
+                    <input v-model.number="group.article_min" type="number" min="0" max="50" />
+                  </label>
+                  <label>
+                    文章目标
+                    <input v-model.number="group.article_target" type="number" min="0" max="50" />
+                  </label>
+                  <label>
+                    文章最多
+                    <input v-model.number="group.article_max" type="number" min="0" max="50" />
+                  </label>
+                </div>
+                <label>
+                  新闻源
+                  <textarea
+                    v-model="group.source_urls"
+                    rows="3"
+                    placeholder="格式：名称|RSS地址,名称|RSS地址"
+                  ></textarea>
+                </label>
+              </article>
+              <button type="button" class="secondary" @click="addContentGroup">新增内容分组</button>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsTab === 'generation'" class="settings-pane">
+            <h3>文章、图片与去重</h3>
+            <div class="config-grid">
+              <label class="toggle-row">
+                <input v-model="publishingForm.generate_article_images" type="checkbox" />
+                生成正文配图
+              </label>
+              <label class="toggle-row">
+                <input v-model="publishingForm.dedup_enable_llm_review" type="checkbox" />
+                启用大模型去重复核
+              </label>
+              <label>
+                最少正文图
+                <input v-model.number="publishingForm.min_article_images" type="number" min="0" max="10" />
+              </label>
+              <label>
+                最多正文图
+                <input v-model.number="publishingForm.max_article_images" type="number" min="0" max="10" />
+              </label>
+              <label>
+                文章新闻数量
+                <input v-model.number="publishingForm.article_news_limit" type="number" min="1" max="50" />
+              </label>
+              <label>
+                文章回看小时
+                <input v-model.number="publishingForm.article_news_lookback_hours" type="number" min="1" max="168" />
+              </label>
+              <label>
+                去重回看天数
+                <input v-model.number="publishingForm.dedup_lookback_days" type="number" min="1" max="30" />
+              </label>
+              <label>
+                直接判重阈值
+                <input v-model="publishingForm.dedup_direct_similarity" type="number" min="0" max="1" step="0.01" />
+              </label>
+              <label>
+                大模型复核阈值
+                <input v-model="publishingForm.dedup_review_similarity" type="number" min="0" max="1" step="0.01" />
+              </label>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsTab === 'layout'" class="settings-pane">
+            <h3>视觉参数与实时预览</h3>
+            <div class="layout-editor">
+              <div class="layout-controls">
+                <div class="config-grid">
+                  <label>
+                    版式模板
+                    <select v-model="layoutForm.template_name">
+                      <option value="clean">清爽资讯</option>
+                      <option value="warm">温和科普</option>
+                      <option value="compact">紧凑早报</option>
+                    </select>
+                  </label>
+                  <label>
+                    主色
+                    <input v-model="layoutForm.primary_color" type="color" />
+                  </label>
+                  <label>
+                    强调线颜色
+                    <input v-model="layoutForm.accent_color" type="color" />
+                  </label>
+                  <label>
+                    正文字号
+                    <input v-model.number="layoutForm.body_font_size" type="number" min="12" max="20" />
+                  </label>
+                  <label>
+                    标题字号
+                    <input v-model.number="layoutForm.heading_font_size" type="number" min="14" max="26" />
+                  </label>
+                  <label>
+                    行高
+                    <input v-model="layoutForm.line_height" type="number" min="1.4" max="2.2" step="0.05" />
+                  </label>
+                  <label>
+                    段落间距
+                    <input v-model.number="layoutForm.section_spacing" type="number" min="12" max="48" />
+                  </label>
+                  <label>
+                    图片圆角
+                    <input v-model.number="layoutForm.image_radius" type="number" min="0" max="24" />
+                  </label>
+                </div>
+                <label class="toggle-row">
+                  <input v-model="layoutForm.show_group_heading" type="checkbox" />
+                  显示分组标题
+                </label>
+                <label class="toggle-row">
+                  <input v-model="layoutForm.show_editor_note" type="checkbox" />
+                  显示编辑观察
+                </label>
+                <label class="toggle-row">
+                  <input v-model="layoutForm.show_source" type="checkbox" />
+                  显示来源
+                </label>
+              </div>
+              <div class="layout-preview" :style="layoutPreviewStyle" aria-label="排版预览">
+                <p class="layout-preview-kicker">公众号预览</p>
+                <section v-if="layoutForm.show_group_heading" :style="layoutPreviewSectionStyle">
+                  <h3 :style="layoutPreviewHeadingStyle">{{ usesRegionalGrouping ? contentGroupForms[0]?.name || '内容分组' : '精选内容' }}</h3>
+                </section>
+                <section :style="layoutPreviewSectionStyle">
+                  <h2 :style="layoutPreviewHeadingStyle">01｜一条适合当前工作空间的内容标题</h2>
+                  <p>这里展示正文段落的字号、行高和整体阅读密度。实际生成文章时，后端会用同一套参数渲染公众号 HTML。</p>
+                  <div class="layout-preview-image" :style="layoutPreviewImageStyle"></div>
+                  <blockquote v-if="layoutForm.show_editor_note" :style="{ borderLeftColor: layoutForm.accent_color }">
+                    编辑观察：这里展示强调块的颜色和间距。
+                  </blockquote>
+                  <p v-if="layoutForm.show_source">
+                    来源：<a :style="{ color: layoutForm.primary_color, borderBottomColor: layoutForm.primary_color }">示例来源</a>
+                  </p>
+                </section>
+              </div>
+            </div>
+          </div>
         </form>
       </section>
     </main>

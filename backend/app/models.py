@@ -128,6 +128,9 @@ class PublishingSettings(Base):
 
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
     daily_publish_enabled: Mapped[bool] = mapped_column(default=False)
+    publish_frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="daily")
+    publish_weekday: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    publish_month_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     publish_time_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
     publish_time_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     auto_send_wechat_draft: Mapped[bool] = mapped_column(default=False)

@@ -1,4 +1,5 @@
 import logging
+from calendar import monthrange
 from datetime import datetime
 from uuid import uuid4
 
@@ -135,21 +136,43 @@ def scheduled_workspace_publish() -> None:
             .where(Tenant.status == TenantStatus.active, PublishingSettings.daily_publish_enabled.is_(True))
         ).all()
         for tenant, publishing in rows:
-            if publishing.publish_time_hour != now.hour or publishing.publish_time_minute != now.minute:
+            if not should_run_schedule(publishing, now):
                 continue
-            marker_key = f"tenant:{tenant.id}:last_daily_publish_date"
-            today = now.strftime("%Y-%m-%d")
+            marker_key = f"tenant:{tenant.id}:last_scheduled_publish_at"
+            schedule_key = schedule_marker_value(publishing, now)
             marker = db.get(AppSetting, marker_key)
-            if marker and marker.value == today:
+            if marker and marker.value == schedule_key:
                 continue
             task = create_operation_task(db, "daily_publish", tenant_id=tenant.id)
-            db.merge(AppSetting(key=marker_key, tenant_id=tenant.id, value=today))
+            db.merge(AppSetting(key=marker_key, tenant_id=tenant.id, value=schedule_key))
             db.commit()
             task_ids.append(task.id)
     finally:
         db.close()
     for task_id in task_ids:
         run_daily_publish_task(task_id)
+
+
+def should_run_schedule(publishing: PublishingSettings, now: datetime) -> bool:
+    if publishing.publish_time_hour != now.hour or publishing.publish_time_minute != now.minute:
+        return False
+    frequency = publishing.publish_frequency or "daily"
+    if frequency == "weekly":
+        return publishing.publish_weekday == now.isoweekday()
+    if frequency == "monthly":
+        target_day = min(publishing.publish_month_day, monthrange(now.year, now.month)[1])
+        return now.day == target_day
+    return True
+
+
+def schedule_marker_value(publishing: PublishingSettings, now: datetime) -> str:
+    frequency = publishing.publish_frequency or "daily"
+    if frequency == "weekly":
+        year, week, _ = now.isocalendar()
+        return f"weekly:{year}-{week:02d}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
+    if frequency == "monthly":
+        return f"monthly:{now.year}-{now.month:02d}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
+    return f"daily:{now.strftime('%Y-%m-%d')}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
 
 
 def build_harness(db: Session, task_id: str, task_type: str, tenant_id: int) -> PubSyncHarness:

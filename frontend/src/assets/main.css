@@ -115,23 +115,58 @@ button.task-button.running span {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 228px minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 100vh;
 }
 
-.sidebar {
+.topbar {
   position: sticky;
   top: 0;
-  height: 100vh;
-  border-right: 1px solid rgba(125, 211, 252, 0.14);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.9)),
-    radial-gradient(circle at 50% 0%, rgba(45, 212, 191, 0.12), transparent 16rem);
-  backdrop-filter: blur(16px);
-  padding: 24px 16px;
+  z-index: 20;
   display: flex;
-  flex-direction: column;
-  gap: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.9)),
+    radial-gradient(circle at 12% 0%, rgba(45, 212, 191, 0.12), transparent 18rem);
+  backdrop-filter: blur(16px);
+  padding: 16px 28px;
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.main-tabs {
+  position: sticky;
+  top: 75px;
+  z-index: 19;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(8, 17, 31, 0.92);
+  backdrop-filter: blur(14px);
+  padding: 0 28px;
+}
+
+.main-tabs button {
+  min-height: 54px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 18px;
+  font-weight: 800;
+}
+
+.main-tabs button.active {
+  border-bottom-color: var(--accent);
+  color: #ccfbf1;
 }
 
 .brand-block {
@@ -154,15 +189,10 @@ button.task-button.running span {
   font-weight: 900;
 }
 
-.sidebar h1 {
+.brand-block h1 {
   margin: 4px 0 0;
   font-size: 22px;
   line-height: 1.15;
-}
-
-nav {
-  display: grid;
-  gap: 6px;
 }
 
 .tenant-switcher {
@@ -182,58 +212,11 @@ nav {
   cursor: pointer;
 }
 
-nav a {
-  color: #dbeafe;
-  text-decoration: none;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 0 12px;
-}
-
-nav a:hover {
-  border-color: var(--border);
-  background: rgba(14, 165, 233, 0.12);
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.68);
-  padding: 10px;
-}
-
-.sidebar-footer span,
-.sidebar-footer strong {
-  display: block;
-}
-
-.sidebar-footer span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.sidebar-footer strong {
-  color: #dbeafe;
-  font-size: 14px;
-}
-
-.sidebar-footer button {
-  min-height: 34px;
-  padding: 0 10px;
-}
-
 .workspace {
   padding: 28px;
   display: grid;
   gap: 20px;
+  align-content: start;
 }
 
 .login-shell {
@@ -273,7 +256,6 @@ p {
   margin-top: 0;
 }
 
-.toolbar,
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -281,15 +263,6 @@ p {
   box-shadow: var(--shadow);
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px;
-}
-
-.toolbar h2,
 .section-header h2 {
   margin: 6px 0 0;
   font-size: 24px;
@@ -328,6 +301,11 @@ p {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.module-subnav {
+  margin-bottom: 18px;
+  overflow-x: auto;
 }
 
 .tabs {
@@ -492,6 +470,17 @@ p {
 .config-form {
   display: grid;
   gap: 14px;
+}
+
+.settings-pane {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-pane h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
 }
 
 .config-grid {
@@ -690,15 +679,21 @@ dd {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
-    position: static;
-    height: auto;
-    gap: 18px;
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
   }
 
-  .toolbar {
-    align-items: flex-start;
+  .topbar-controls {
+    align-items: stretch;
     flex-direction: column;
+  }
+
+  .main-tabs {
+    top: 0;
+    overflow-x: auto;
+    padding: 0 16px;
   }
 
   .layout-editor {

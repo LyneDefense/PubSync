@@ -99,6 +99,9 @@ export interface LayoutSettingsUpdate {
 export interface PublishingSettings {
   tenant_id: number
   daily_publish_enabled: boolean
+  publish_frequency: 'daily' | 'weekly' | 'monthly'
+  publish_weekday: number
+  publish_month_day: number
   publish_time_hour: number
   publish_time_minute: number
   auto_send_wechat_draft: boolean
