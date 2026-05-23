@@ -23,6 +23,7 @@ class ContentProfileRead(BaseModel):
     editor_persona: str
     audience: str
     article_style: str
+    grouping_mode: str
     international_label: str
     domestic_label: str
     categories_json: str
@@ -39,6 +40,7 @@ class ContentProfileUpdate(BaseModel):
     editor_persona: str | None = Field(default=None, min_length=1)
     audience: str | None = Field(default=None, min_length=1)
     article_style: str | None = Field(default=None, min_length=1)
+    grouping_mode: str | None = Field(default=None, pattern="^(regional|none)$")
     international_label: str | None = Field(default=None, min_length=1, max_length=80)
     domestic_label: str | None = Field(default=None, min_length=1, max_length=80)
     categories_json: str | None = Field(default=None, min_length=1)

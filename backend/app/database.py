@@ -35,22 +35,47 @@ def ensure_runtime_schema() -> None:
         ON CONFLICT (id) DO NOTHING
         """,
         """
+        INSERT INTO tenants (id, name, slug, status, created_at)
+        VALUES (2, 'EyangPet 宠物内容', 'eyangpet', 'active', NOW())
+        ON CONFLICT (id) DO NOTHING
+        """,
+        "ALTER TABLE content_profiles ADD COLUMN IF NOT EXISTS grouping_mode VARCHAR(30) NOT NULL DEFAULT 'regional'",
+        """
         INSERT INTO content_profiles (
             tenant_id, publication_name, workspace_title, title_prefix, content_domain,
-            editor_persona, audience, article_style, international_label, domestic_label,
+            editor_persona, audience, article_style, grouping_mode, international_label, domestic_label,
             categories_json, image_style, updated_at
         )
         VALUES (
             1, 'AI 科技早报', 'AI 早报', 'AI科技早报 | ', 'AI、科技、模型、算力、企业应用',
             '你是严谨的 AI 科技新闻主编', '科技从业者、产品经理、投资人与 AI 关注者',
-            '信息密度高，事实准确，带行业观察', '国际动态', '国内动态',
+            '信息密度高，事实准确，带行业观察', 'regional', '国际动态', '国内动态',
             '[]', '抽象科技视觉、信息图、芯片、网络、云与模型架构', NOW()
+        )
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
+        """
+        INSERT INTO content_profiles (
+            tenant_id, publication_name, workspace_title, title_prefix, content_domain,
+            editor_persona, audience, article_style, grouping_mode, international_label, domestic_label,
+            categories_json, image_style, updated_at
+        )
+        VALUES (
+            2, 'EyangPet 宠物内容', 'EyangPet', 'EyangPet | ', '宠物健康、养宠知识、宠物行业资讯、宠物食品用品、宠物服务',
+            '你是严谨、温和、实用的宠物内容主编', '养宠家庭、宠物行业从业者、宠物店和宠物服务经营者',
+            '通俗易懂，实用可信，避免制造焦虑，必要时提醒咨询兽医', 'none', '精选资讯', '养宠知识',
+            '[]', '温暖、干净、可信的宠物知识视觉，避免夸张医疗暗示和恐怖画面', NOW()
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
         """
         INSERT INTO wechat_accounts (tenant_id, app_id, app_secret, auto_send_draft, updated_at)
         VALUES (1, '', '', false, NOW())
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
+        """
+        INSERT INTO wechat_accounts (tenant_id, app_id, app_secret, auto_send_draft, updated_at)
+        VALUES (2, '', '', false, NOW())
         ON CONFLICT (tenant_id) DO NOTHING
         """,
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.article_selection.models import ArticleSelectionResult, RegionSelectionRule
 from app.config import Settings
-from app.models import NewsItem
+from app.models import ContentProfile, NewsItem
 
 
 DOMESTIC = "domestic"
@@ -14,9 +14,16 @@ INTERNATIONAL = "international"
 logger = logging.getLogger(__name__)
 
 
-def select_article_news(db: Session, settings: Settings, tenant_id: int) -> ArticleSelectionResult:
+def select_article_news(
+    db: Session,
+    settings: Settings,
+    tenant_id: int,
+    profile: ContentProfile | None = None,
+) -> ArticleSelectionResult:
     article_limit = max(1, settings.article_news_limit)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, settings.article_news_lookback_hours))
+    if profile and profile.grouping_mode == "none":
+        return select_article_news_without_groups(db, tenant_id, cutoff, article_limit)
     logger.info(
         "文章新闻选择开始：数量上限=%s，回看小时=%s",
         article_limit,
@@ -70,6 +77,36 @@ def select_article_news(db: Session, settings: Settings, tenant_id: int) -> Arti
         domestic_count=len(selected_domestic),
         international_count=len(selected_international),
         total_available=len(domestic_pool) + len(international_pool),
+    )
+
+
+def select_article_news_without_groups(
+    db: Session,
+    tenant_id: int,
+    cutoff: datetime,
+    article_limit: int,
+) -> ArticleSelectionResult:
+    pool = list(
+        db.scalars(
+            select(NewsItem)
+            .where(
+                NewsItem.selected.is_(True),
+                NewsItem.tenant_id == tenant_id,
+                NewsItem.published_at >= cutoff,
+                or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),
+            )
+            .order_by(NewsItem.importance_score.desc(), NewsItem.published_at.desc())
+            .limit(article_limit)
+        )
+    )
+    domestic_count = sum(1 for item in pool if item.region == DOMESTIC)
+    international_count = len(pool) - domestic_count
+    logger.info("文章新闻选择完成：不分组，总数=%s，可用候选=%s", len(pool), len(pool))
+    return ArticleSelectionResult(
+        news_items=pool,
+        domestic_count=domestic_count,
+        international_count=international_count,
+        total_available=len(pool),
     )
 
 

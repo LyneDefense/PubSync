@@ -14,7 +14,7 @@ class SelectArticleNewsStep(HarnessStep):
         self.article_tool = article_tool or ArticleTool()
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
-        selection = self.article_tool.select_news(context.db, context.settings, context.tenant.id)
+        selection = self.article_tool.select_news(context.db, context.settings, context.tenant.id, context.profile)
         context.selection = selection
         context.selected_news = selection.news_items
         if not context.selected_news:
@@ -95,7 +95,7 @@ class LayoutArticleStep(HarnessStep):
             return "公众号排版已由基础模板完成", {"页面字符数": len(context.content_html)}
         if context.composed_article is None:
             raise RuntimeError("缺少文章正文结构，无法排版")
-        context.content_html = self.article_tool.render_article(context.composed_article)
+        context.content_html = self.article_tool.render_article(context.composed_article, context.profile)
         return "公众号排版完成", {"页面字符数": len(context.content_html)}
 
 

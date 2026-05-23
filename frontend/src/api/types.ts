@@ -18,6 +18,7 @@ export interface ContentProfile {
   editor_persona: string
   audience: string
   article_style: string
+  grouping_mode: 'regional' | 'none'
   international_label: string
   domestic_label: string
   categories_json: string
@@ -32,6 +33,7 @@ export interface ContentProfileUpdate {
   editor_persona?: string
   audience?: string
   article_style?: string
+  grouping_mode?: 'regional' | 'none'
   international_label?: string
   domestic_label?: string
   categories_json?: string

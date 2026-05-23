@@ -81,6 +81,7 @@ const profileForm = reactive({
   publication_name: '',
   workspace_title: '',
   title_prefix: '',
+  grouping_mode: 'regional' as 'regional' | 'none',
   content_domain: '',
   editor_persona: '',
   audience: '',
@@ -103,9 +104,15 @@ const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早�
 const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
 const internationalLabel = computed(() => profile.value?.international_label || '国际动态')
 const domesticLabel = computed(() => profile.value?.domestic_label || '国内动态')
+const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 const domesticNews = computed(() => news.value.filter((item) => item.region === 'domestic'))
 const internationalNews = computed(() => news.value.filter((item) => item.region !== 'domestic'))
-const activeNews = computed(() => (activeNewsTab.value === 'domestic' ? domesticNews.value : internationalNews.value))
+const activeNews = computed(() => {
+  if (!usesRegionalGrouping.value) {
+    return news.value
+  }
+  return activeNewsTab.value === 'domestic' ? domesticNews.value : internationalNews.value
+})
 const newsTotalPages = computed(() => Math.max(1, Math.ceil(activeNews.value.length / pageSize)))
 const pagedNews = computed(() => {
   const start = (newsPage.value - 1) * pageSize
@@ -236,6 +243,7 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   profileForm.publication_name = config.profile.publication_name
   profileForm.workspace_title = config.profile.workspace_title
   profileForm.title_prefix = config.profile.title_prefix
+  profileForm.grouping_mode = config.profile.grouping_mode
   profileForm.content_domain = config.profile.content_domain
   profileForm.editor_persona = config.profile.editor_persona
   profileForm.audience = config.profile.audience
@@ -370,7 +378,14 @@ async function handleSaveArticle() {
 async function handleSaveConfig() {
   await runAction('config', '正在保存工作空间配置', async () => {
     const payload = {
-      profile: { ...profileForm },
+      profile: {
+        publication_name: profileForm.publication_name,
+        workspace_title: profileForm.workspace_title,
+        title_prefix: profileForm.title_prefix,
+        grouping_mode: profileForm.grouping_mode,
+        international_label: profileForm.international_label,
+        domestic_label: profileForm.domestic_label
+      },
       wechat: {
         app_id: wechatForm.app_id,
         ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {}),
@@ -538,7 +553,7 @@ onUnmounted(() => {
             <p class="eyebrow">候选池</p>
             <h2>{{ workspaceTitle }}候选新闻</h2>
           </div>
-          <div class="tabs" role="tablist" aria-label="新闻区域">
+          <div v-if="usesRegionalGrouping" class="tabs" role="tablist" aria-label="新闻区域">
             <button
               type="button"
               role="tab"
@@ -572,7 +587,9 @@ onUnmounted(() => {
             <div>
               <h3>{{ item.title }}</h3>
               <div class="meta">
-                <span class="region-pill" :class="{ domestic: item.region === 'domestic' }">{{ regionLabel(item.region) }}</span>
+                <span v-if="usesRegionalGrouping" class="region-pill" :class="{ domestic: item.region === 'domestic' }">
+                  {{ regionLabel(item.region) }}
+                </span>
                 {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
               </div>
               <p>{{ item.summary }}</p>
@@ -672,12 +689,19 @@ onUnmounted(() => {
               <input v-model="profileForm.title_prefix" type="text" required />
             </label>
             <label>
+              内容分组
+              <select v-model="profileForm.grouping_mode">
+                <option value="regional">按国内/国际分组</option>
+                <option value="none">不分组</option>
+              </select>
+            </label>
+            <label>
               国际分组名
-              <input v-model="profileForm.international_label" type="text" required />
+              <input v-model="profileForm.international_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
             </label>
             <label>
               国内分组名
-              <input v-model="profileForm.domestic_label" type="text" required />
+              <input v-model="profileForm.domestic_label" type="text" :disabled="profileForm.grouping_mode === 'none'" required />
             </label>
             <label>
               微信 AppID
@@ -700,27 +724,27 @@ onUnmounted(() => {
           </label>
           <label>
             内容领域
-            <textarea v-model="profileForm.content_domain" rows="3" required></textarea>
+            <textarea v-model="profileForm.content_domain" rows="3" readonly></textarea>
           </label>
           <label>
             编辑人设
-            <textarea v-model="profileForm.editor_persona" rows="3" required></textarea>
+            <textarea v-model="profileForm.editor_persona" rows="3" readonly></textarea>
           </label>
           <label>
             目标读者
-            <textarea v-model="profileForm.audience" rows="3" required></textarea>
+            <textarea v-model="profileForm.audience" rows="3" readonly></textarea>
           </label>
           <label>
             文章风格
-            <textarea v-model="profileForm.article_style" rows="3" required></textarea>
+            <textarea v-model="profileForm.article_style" rows="3" readonly></textarea>
           </label>
           <label>
             图片风格
-            <textarea v-model="profileForm.image_style" rows="3" required></textarea>
+            <textarea v-model="profileForm.image_style" rows="3" readonly></textarea>
           </label>
           <label>
             分类 JSON
-            <textarea v-model="profileForm.categories_json" rows="3" required></textarea>
+            <textarea v-model="profileForm.categories_json" rows="3" readonly></textarea>
           </label>
           <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
             {{ pendingAction === 'config' ? '保存中' : '保存配置' }}

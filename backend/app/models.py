@@ -60,6 +60,7 @@ class ContentProfile(Base):
     editor_persona: Mapped[str] = mapped_column(Text, nullable=False, default="你是严谨的 AI 科技新闻主编")
     audience: Mapped[str] = mapped_column(Text, nullable=False, default="科技从业者、产品经理、投资人与 AI 关注者")
     article_style: Mapped[str] = mapped_column(Text, nullable=False, default="信息密度高，事实准确，带行业观察")
+    grouping_mode: Mapped[str] = mapped_column(String(30), nullable=False, default="regional")
     international_label: Mapped[str] = mapped_column(String(80), nullable=False, default="国际动态")
     domestic_label: Mapped[str] = mapped_column(String(80), nullable=False, default="国内动态")
     categories_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")

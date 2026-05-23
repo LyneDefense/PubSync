@@ -3,22 +3,23 @@ from html import escape
 
 from app.article_composition.models import ArticleSection, ComposedArticle
 from app.article_layout.wechat_formatter import format_wechat_article_html
-from app.models import NewsItem
+from app.models import ContentProfile, NewsItem
 
 
 logger = logging.getLogger(__name__)
 
 
-def render_wechat_article_html(article: ComposedArticle) -> str:
+def render_wechat_article_html(article: ComposedArticle, profile: ContentProfile | None = None) -> str:
     logger.info("文章排版开始：段落数=%s", len(article.sections))
     parts = [
         "<section>",
         f"<p>{escape(article.intro)}</p>",
         "</section>",
     ]
-    for label, sections in grouped_sections(article.sections):
+    for label, sections in grouped_sections(article.sections, profile):
         if sections:
-            parts.extend(["<section>", f"<h3>{escape(label)}</h3>", "</section>"])
+            if label:
+                parts.extend(["<section>", f"<h3>{escape(label)}</h3>", "</section>"])
             for section in sections:
                 parts.extend(render_section(section))
     html = format_wechat_article_html("\n".join(parts))
@@ -26,14 +27,21 @@ def render_wechat_article_html(article: ComposedArticle) -> str:
     return html
 
 
-def grouped_sections(sections: list[ArticleSection]) -> list[tuple[str, list[ArticleSection]]]:
+def grouped_sections(
+    sections: list[ArticleSection],
+    profile: ContentProfile | None = None,
+) -> list[tuple[str, list[ArticleSection]]]:
+    if profile and profile.grouping_mode == "none":
+        return [("", sections)]
+    international_label = profile.international_label if profile else "国际动态"
+    domestic_label = profile.domestic_label if profile else "国内动态"
     international = [section for section in sections if section.region != "domestic"]
     domestic = [section for section in sections if section.region == "domestic"]
     if international and domestic:
-        return [("国际动态", international), ("国内动态", domestic)]
+        return [(international_label, international), (domestic_label, domestic)]
     if domestic:
-        return [("国内动态", domestic)]
-    return [("国际动态", international)]
+        return [(domestic_label, domestic)]
+    return [(international_label, international)]
 
 
 def render_section(section: ArticleSection) -> list[str]:

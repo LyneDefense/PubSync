@@ -14,8 +14,14 @@ from app.tools.image_tool import DEFAULT_COVER
 
 
 class ArticleTool:
-    def select_news(self, db: Session, settings: Settings, tenant_id: int) -> ArticleSelectionResult:
-        return select_article_news(db, settings, tenant_id)
+    def select_news(
+        self,
+        db: Session,
+        settings: Settings,
+        tenant_id: int,
+        profile: ContentProfile | None = None,
+    ) -> ArticleSelectionResult:
+        return select_article_news(db, settings, tenant_id, profile)
 
     def build_news_payload(self, selected_news: list[NewsItem]) -> list[dict[str, Any]]:
         return [
@@ -46,8 +52,8 @@ class ArticleTool:
         content_html = render_basic_article_html(intro, selected_news)
         return title, intro, content_html, DEFAULT_COVER
 
-    def render_article(self, composed_article: ComposedArticle) -> str:
-        return render_wechat_article_html(composed_article)
+    def render_article(self, composed_article: ComposedArticle, profile: ContentProfile | None = None) -> str:
+        return render_wechat_article_html(composed_article, profile)
 
     def ai_enabled(self, settings: Settings) -> bool:
         return is_ai_enabled(settings)

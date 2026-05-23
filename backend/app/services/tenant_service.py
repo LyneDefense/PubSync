@@ -48,6 +48,7 @@ def ensure_tenant_defaults(db: Session, tenant: Tenant) -> None:
                 publication_name=tenant.name,
                 workspace_title="AI 早报" if tenant.id == DEFAULT_TENANT_ID else tenant.name,
                 title_prefix="AI科技早报 | " if tenant.id == DEFAULT_TENANT_ID else f"{tenant.name} | ",
+                grouping_mode="regional" if tenant.id == DEFAULT_TENANT_ID else "none",
             )
         )
     if not db.get(WeChatAccount, tenant.id):

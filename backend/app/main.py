@@ -122,7 +122,7 @@ def health() -> dict[str, str]:
 def login(payload: LoginRequest) -> LoginResponse:
     if not verify_credentials(payload.username, payload.password, settings):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    return LoginResponse(access_token=create_token(settings))
+    return LoginResponse(access_token=create_token(settings, payload.username))
 
 
 def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
