@@ -14,7 +14,7 @@ class SelectArticleNewsStep(HarnessStep):
         self.article_tool = article_tool or ArticleTool()
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
-        selection = self.article_tool.select_news(context.db, context.settings)
+        selection = self.article_tool.select_news(context.db, context.settings, context.tenant.id)
         context.selection = selection
         context.selected_news = selection.news_items
         if not context.selected_news:
@@ -56,6 +56,7 @@ class GenerateImagesStep(HarnessStep):
             context.settings,
             context.selected_news,
             context.news_payload,
+            context.profile,
         )
         return "正文配图完成", {"已生成": generated_count}
 
@@ -70,13 +71,14 @@ class ComposeArticleStep(HarnessStep):
 
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
         if self.article_tool.ai_enabled(context.settings):
-            context.composed_article = self.llm_tool.compose_article(context.settings, context.news_payload)
-            context.title = normalize_article_title(context.composed_article.title)[:300]
+            context.composed_article = self.llm_tool.compose_article(context.settings, context.news_payload, context.profile)
+            context.title = normalize_article_title(context.composed_article.title, context.profile.title_prefix)[:300]
             context.intro = context.composed_article.intro
             return "正文生成完成", {"段落数": len(context.composed_article.sections), "标题": context.title}
 
         context.title, context.intro, context.content_html, context.cover_image_url = self.article_tool.build_basic_article(
-            context.selected_news
+            context.selected_news,
+            context.profile,
         )
         return "未启用大模型，已使用基础正文", {"标题": context.title}
 
@@ -108,7 +110,12 @@ class GenerateCoverStep(HarnessStep):
         if context.cover_image_url:
             return "已使用基础封面", {"封面": context.cover_image_url}
         cover_prompt = context.composed_article.cover_prompt if context.composed_article else ""
-        context.cover_image_url = self.image_tool.generate_cover(context.settings, context.selected_news, cover_prompt)
+        context.cover_image_url = self.image_tool.generate_cover(
+            context.settings,
+            context.selected_news,
+            cover_prompt,
+            context.profile,
+        )
         return "封面生成完成", {"封面": context.cover_image_url}
 
 
@@ -119,6 +126,7 @@ class PersistArticleStep(HarnessStep):
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
         context.article = persist_article(
             context.db,
+            context.tenant.id,
             context.title,
             context.intro,
             context.content_html,

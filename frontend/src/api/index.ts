@@ -1,14 +1,17 @@
 import type {
   Article,
   ArticleUpdate,
+  ContentProfile,
   LoginResponse,
   NewsItem,
   OperationTask,
-  OperationTaskEvent
+  OperationTaskEvent,
+  Tenant
 } from './types'
 
 const API_BASE = `${import.meta.env.BASE_URL}api`
 const TOKEN_KEY = 'pubsync_token'
+const TENANT_KEY = 'pubsync_tenant_id'
 
 export function getAuthToken() {
   return window.localStorage.getItem(TOKEN_KEY) || ''
@@ -22,12 +25,26 @@ export function clearAuthToken() {
   window.localStorage.removeItem(TOKEN_KEY)
 }
 
+export function getTenantId() {
+  return window.localStorage.getItem(TENANT_KEY) || ''
+}
+
+export function setTenantId(id: number | string) {
+  window.localStorage.setItem(TENANT_KEY, String(id))
+}
+
+export function clearTenantId() {
+  window.localStorage.removeItem(TENANT_KEY)
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken()
+  const tenantId = getTenantId()
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}),
       ...(options.headers || {})
     },
     ...options
@@ -54,6 +71,14 @@ export async function login(username: string, password: string) {
   })
   setAuthToken(result.access_token)
   return result
+}
+
+export function listTenants() {
+  return request<Tenant[]>('/tenants')
+}
+
+export function getProfile() {
+  return request<ContentProfile>('/profile')
 }
 
 export function fetchNews() {

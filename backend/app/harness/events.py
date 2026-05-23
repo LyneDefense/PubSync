@@ -20,6 +20,7 @@ def record_event(
     context.db.add(
         OperationTaskEvent(
             task_id=context.task_id,
+            tenant_id=context.tenant.id,
             step_name=step_name,
             status=status,
             message=message,

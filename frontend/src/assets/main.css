@@ -32,7 +32,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -55,7 +56,8 @@ button:hover {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
@@ -155,6 +157,23 @@ button.task-button.running span {
 nav {
   display: grid;
   gap: 6px;
+}
+
+.tenant-switcher {
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tenant-switcher select {
+  min-height: 44px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 6px;
+  color: #e7eefc;
+  background: rgba(2, 6, 23, 0.54);
+  padding: 0 36px 0 12px;
+  cursor: pointer;
 }
 
 nav a {
@@ -483,7 +502,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;

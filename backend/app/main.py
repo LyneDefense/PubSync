@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, NewsItem, OperationTask, OperationTaskEvent
+from app.models import AppSetting, Article, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
@@ -24,6 +24,8 @@ from app.schemas import (
     OperationTaskEventRead,
     SettingRead,
     SettingUpdate,
+    ContentProfileRead,
+    TenantRead,
 )
 from app.services.article_service import update_article
 from app.services.auth_service import create_token, verify_credentials, verify_token
@@ -34,6 +36,7 @@ from app.services.task_service import (
     run_news_fetch_task,
     scheduled_daily_publish,
 )
+from app.services.tenant_service import get_default_tenant, get_profile, get_tenant, list_tenants
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
 
 
@@ -111,12 +114,43 @@ def login(payload: LoginRequest) -> LoginResponse:
     return LoginResponse(access_token=create_token(settings))
 
 
+def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
+    raw_tenant_id = request.headers.get("X-Tenant-ID")
+    if not raw_tenant_id:
+        return get_default_tenant(db)
+    try:
+        tenant_id = int(raw_tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID 不合法") from exc
+    try:
+        return get_tenant(db, tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/tenants", response_model=list[TenantRead])
+def list_tenants_endpoint(db: Session = Depends(get_db)) -> list[Tenant]:
+    return list_tenants(db)
+
+
+@app.get("/profile", response_model=ContentProfileRead)
+def get_profile_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> ContentProfile:
+    return get_profile(db, tenant)
+
+
 @app.get("/dashboard", response_model=DashboardRead)
-def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
-    news_count = db.scalar(select(func.count()).select_from(NewsItem)) or 0
-    selected_count = db.scalar(select(func.count()).select_from(NewsItem).where(NewsItem.selected.is_(True))) or 0
-    latest_article = db.scalar(select(Article).order_by(Article.created_at.desc()).limit(1))
-    last_fetch_at = db.get(AppSetting, "last_fetch_at")
+def get_dashboard(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> DashboardRead:
+    news_count = db.scalar(select(func.count()).select_from(NewsItem).where(NewsItem.tenant_id == tenant.id)) or 0
+    selected_count = (
+        db.scalar(
+            select(func.count()).select_from(NewsItem).where(NewsItem.tenant_id == tenant.id, NewsItem.selected.is_(True))
+        )
+        or 0
+    )
+    latest_article = db.scalar(
+        select(Article).where(Article.tenant_id == tenant.id).order_by(Article.created_at.desc()).limit(1)
+    )
+    last_fetch_at = db.get(AppSetting, f"tenant:{tenant.id}:last_fetch_at")
     return DashboardRead(
         news_count=news_count,
         selected_count=selected_count,
@@ -127,21 +161,30 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
 
 
 @app.post("/news/fetch", response_model=OperationTaskRead)
-def fetch_news_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
-    task = create_operation_task(db, "news_fetch")
+def fetch_news_endpoint(
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    task = create_operation_task(db, "news_fetch", tenant_id=tenant.id)
     background_tasks.add_task(run_news_fetch_task, task.id)
     return task
 
 
 @app.get("/news", response_model=list[NewsItemRead])
-def list_news_endpoint(db: Session = Depends(get_db)) -> list[NewsItem]:
-    return list_news(db)
+def list_news_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> list[NewsItem]:
+    return list_news(db, tenant.id)
 
 
 @app.patch("/news/{news_id}", response_model=NewsItemRead)
-def update_news_endpoint(news_id: int, payload: NewsItemUpdate, db: Session = Depends(get_db)) -> NewsItem:
+def update_news_endpoint(
+    news_id: int,
+    payload: NewsItemUpdate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> NewsItem:
     news = db.get(NewsItem, news_id)
-    if not news:
+    if not news or news.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="News item not found")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(news, key, value)
@@ -151,51 +194,68 @@ def update_news_endpoint(news_id: int, payload: NewsItemUpdate, db: Session = De
 
 
 @app.post("/articles/generate", response_model=OperationTaskRead)
-def generate_article_endpoint(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> OperationTask:
-    task = create_operation_task(db, "article_generation")
+def generate_article_endpoint(
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    task = create_operation_task(db, "article_generation", tenant_id=tenant.id)
     background_tasks.add_task(run_article_generation_task, task.id)
     return task
 
 
 @app.get("/tasks/{task_id}", response_model=OperationTaskRead)
-def get_task_endpoint(task_id: str, db: Session = Depends(get_db)) -> OperationTask:
+def get_task_endpoint(task_id: str, tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> OperationTask:
     task = db.get(OperationTask, task_id)
-    if not task:
+    if not task or task.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
 @app.get("/tasks/{task_id}/events", response_model=list[OperationTaskEventRead])
-def list_task_events_endpoint(task_id: str, db: Session = Depends(get_db)) -> list[OperationTaskEvent]:
+def list_task_events_endpoint(
+    task_id: str,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[OperationTaskEvent]:
     task = db.get(OperationTask, task_id)
-    if not task:
+    if not task or task.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Task not found")
     return list(
         db.scalars(
             select(OperationTaskEvent)
-            .where(OperationTaskEvent.task_id == task_id)
+            .where(OperationTaskEvent.task_id == task_id, OperationTaskEvent.tenant_id == tenant.id)
             .order_by(OperationTaskEvent.created_at.asc(), OperationTaskEvent.id.asc())
         )
     )
 
 
 @app.get("/articles/latest", response_model=ArticleRead | None)
-def latest_article_endpoint(db: Session = Depends(get_db)) -> Article | None:
-    return db.scalar(select(Article).order_by(Article.created_at.desc()).limit(1))
+def latest_article_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> Article | None:
+    return db.scalar(select(Article).where(Article.tenant_id == tenant.id).order_by(Article.created_at.desc()).limit(1))
 
 
 @app.patch("/articles/{article_id}", response_model=ArticleRead)
-def update_article_endpoint(article_id: int, payload: ArticleUpdate, db: Session = Depends(get_db)) -> Article:
+def update_article_endpoint(
+    article_id: int,
+    payload: ArticleUpdate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> Article:
     article = db.get(Article, article_id)
-    if not article:
+    if not article or article.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Article not found")
     return update_article(db, article, **payload.model_dump(exclude_unset=True))
 
 
 @app.post("/articles/{article_id}/send-to-wechat", response_model=ArticleRead)
-def send_to_wechat_endpoint(article_id: int, db: Session = Depends(get_db)) -> Article:
+def send_to_wechat_endpoint(
+    article_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> Article:
     article = db.get(Article, article_id)
-    if not article:
+    if not article or article.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Article not found")
     try:
         return send_article_to_wechat_draft(db, article)

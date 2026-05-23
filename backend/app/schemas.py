@@ -2,11 +2,38 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ArticleStatus, SourceStatus, TaskStatus
+from app.models import ArticleStatus, SourceStatus, TaskStatus, TenantStatus
+
+
+class TenantRead(BaseModel):
+    id: int
+    name: str
+    slug: str
+    status: TenantStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContentProfileRead(BaseModel):
+    tenant_id: int
+    publication_name: str
+    workspace_title: str
+    title_prefix: str
+    content_domain: str
+    editor_persona: str
+    audience: str
+    article_style: str
+    international_label: str
+    domestic_label: str
+    categories_json: str
+    image_style: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class NewsItemRead(BaseModel):
     id: int
+    tenant_id: int
     title: str
     source: str
     url: str
@@ -32,6 +59,7 @@ class NewsItemUpdate(BaseModel):
 
 class ArticleRead(BaseModel):
     id: int
+    tenant_id: int
     title: str
     intro: str
     content_html: str
@@ -47,6 +75,7 @@ class ArticleRead(BaseModel):
 
 class OperationTaskRead(BaseModel):
     id: str
+    tenant_id: int
     task_type: str
     status: TaskStatus
     message: str
@@ -60,6 +89,7 @@ class OperationTaskRead(BaseModel):
 
 class OperationTaskEventRead(BaseModel):
     id: int
+    tenant_id: int
     task_id: str
     step_name: str
     status: str

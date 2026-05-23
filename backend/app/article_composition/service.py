@@ -10,11 +10,11 @@ from app.services.ai_service import AIServiceError, create_json_response
 logger = logging.getLogger(__name__)
 
 
-def compose_article(settings: Settings, news_items: list[dict[str, Any]]):
+def compose_article(settings: Settings, news_items: list[dict[str, Any]], profile: Any | None = None):
     logger.info("文章正文生成请求开始：新闻数=%s", len(news_items))
     data = create_json_response(
         settings=settings,
-        prompt=build_article_composition_prompt(news_items),
+        prompt=build_article_composition_prompt(news_items, profile),
     )
     try:
         article = validate_composed_article(data, news_items)

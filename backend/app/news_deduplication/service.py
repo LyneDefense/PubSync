@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 def deduplicate_processed_news(
     db: Session,
     settings: Settings,
+    tenant_id: int,
     processed_items: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], DeduplicationReport]:
     lookback_days = max(1, settings.dedup_lookback_days)
@@ -29,12 +30,13 @@ def deduplicate_processed_news(
     recent_items = list(
         db.scalars(
             select(NewsItem)
-            .where(NewsItem.published_at >= cutoff)
+            .where(NewsItem.tenant_id == tenant_id, NewsItem.published_at >= cutoff)
             .order_by(NewsItem.published_at.desc())
         )
     )
     logger.info(
-        "新闻去重开始：候选=%s，历史窗口=%s天，历史新闻=%s",
+        "新闻去重开始：租户ID=%s，候选=%s，历史窗口=%s天，历史新闻=%s",
+        tenant_id,
         len(processed_items),
         lookback_days,
         len(recent_items),

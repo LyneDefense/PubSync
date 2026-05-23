@@ -8,14 +8,14 @@ from app.article_layout import render_basic_article_html, render_wechat_article_
 from app.article_selection import select_article_news
 from app.article_selection.models import ArticleSelectionResult
 from app.config import Settings
-from app.models import NewsItem
+from app.models import ContentProfile, NewsItem
 from app.services.ai_service import is_ai_enabled
 from app.tools.image_tool import DEFAULT_COVER
 
 
 class ArticleTool:
-    def select_news(self, db: Session, settings: Settings) -> ArticleSelectionResult:
-        return select_article_news(db, settings)
+    def select_news(self, db: Session, settings: Settings, tenant_id: int) -> ArticleSelectionResult:
+        return select_article_news(db, settings, tenant_id)
 
     def build_news_payload(self, selected_news: list[NewsItem]) -> list[dict[str, Any]]:
         return [
@@ -34,10 +34,15 @@ class ArticleTool:
             for index, item in enumerate(selected_news)
         ]
 
-    def build_basic_article(self, selected_news: list[NewsItem]) -> tuple[str, str, str, str]:
+    def build_basic_article(
+        self,
+        selected_news: list[NewsItem],
+        profile: ContentProfile | None = None,
+    ) -> tuple[str, str, str, str]:
         today = datetime.now().strftime("%Y-%m-%d")
-        title = normalize_article_title(f"{today} 重要动态")
-        intro = f"今天精选 {len(selected_news)} 条 AI 行业大事件，覆盖模型、产品、基础设施和监管动态。"
+        title = normalize_article_title(f"{today} 重要动态", title_prefix(profile))
+        domain = profile.content_domain if profile else "AI 行业"
+        intro = f"今天精选 {len(selected_news)} 条{domain}重要动态，梳理产品、行业和关键变化。"
         content_html = render_basic_article_html(intro, selected_news)
         return title, intro, content_html, DEFAULT_COVER
 
@@ -48,11 +53,16 @@ class ArticleTool:
         return is_ai_enabled(settings)
 
 
-def normalize_article_title(title: str) -> str:
+def title_prefix(profile: ContentProfile | None) -> str:
+    if profile and profile.title_prefix.strip():
+        return profile.title_prefix.strip() + (" " if not profile.title_prefix.endswith(" ") else "")
+    return "AI科技早报 | "
+
+
+def normalize_article_title(title: str, prefix: str = "AI科技早报 | ") -> str:
     clean_title = " ".join(title.strip().split())
-    prefix = "AI科技早报 | "
     if not clean_title:
-        return f"{prefix}今日 AI 行业重要动态"
+        return f"{prefix}今日重要动态"
     if clean_title.startswith(prefix):
         return clean_title
     if clean_title.startswith("AI科技早报|"):

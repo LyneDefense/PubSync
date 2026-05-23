@@ -3,19 +3,24 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 
 import {
   clearAuthToken,
+  clearTenantId,
   fetchNews,
   generateArticle,
   getAuthToken,
   getLatestArticle,
+  getProfile,
+  getTenantId,
   getTask,
   getTaskEvents,
+  listTenants,
   listNews,
   login,
   sendArticleToWechat,
+  setTenantId,
   updateArticle,
   updateNewsSelection
 } from './api'
-import type { Article, ArticleUpdate, NewsItem, OperationTask, OperationTaskEvent } from './api/types'
+import type { Article, ArticleUpdate, ContentProfile, NewsItem, OperationTask, OperationTaskEvent, Tenant } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate'
 type NewsTab = 'international' | 'domestic'
@@ -30,6 +35,9 @@ const statusText: Record<string, string> = {
 
 const news = ref<NewsItem[]>([])
 const article = ref<Article | null>(null)
+const tenants = ref<Tenant[]>([])
+const profile = ref<ContentProfile | null>(null)
+const selectedTenantId = ref(getTenantId())
 const message = ref('')
 const isError = ref(false)
 const pendingAction = ref<string | null>(null)
@@ -60,6 +68,10 @@ const form = reactive<ArticleUpdate>({
 })
 
 const hasArticle = computed(() => Boolean(article.value))
+const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早报')
+const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
+const internationalLabel = computed(() => profile.value?.international_label || '国际动态')
+const domesticLabel = computed(() => profile.value?.domestic_label || '国内动态')
 const domesticNews = computed(() => news.value.filter((item) => item.region === 'domestic'))
 const internationalNews = computed(() => news.value.filter((item) => item.region !== 'domestic'))
 const activeNews = computed(() => (activeNewsTab.value === 'domestic' ? domesticNews.value : internationalNews.value))
@@ -181,10 +193,22 @@ function wait(ms: number) {
 }
 
 async function loadAll() {
-  const [nextNews, nextArticle] = await Promise.all([listNews(), getLatestArticle()])
+  const [nextProfile, nextNews, nextArticle] = await Promise.all([getProfile(), listNews(), getLatestArticle()])
+  profile.value = nextProfile
   news.value = nextNews
   newsPage.value = 1
   setArticle(nextArticle)
+}
+
+async function loadTenantOptions() {
+  const nextTenants = await listTenants()
+  tenants.value = nextTenants
+  const current = selectedTenantId.value
+  const selected = nextTenants.find((tenant) => String(tenant.id) === current) || nextTenants[0]
+  if (selected) {
+    selectedTenantId.value = String(selected.id)
+    setTenantId(selected.id)
+  }
 }
 
 async function handleLogin() {
@@ -193,6 +217,7 @@ async function handleLogin() {
   try {
     await login(loginForm.username, loginForm.password)
     isAuthenticated.value = true
+    await loadTenantOptions()
     await loadAll()
   } catch (error) {
     loginMessage.value = error instanceof Error ? error.message : '登录失败'
@@ -203,11 +228,29 @@ async function handleLogin() {
 
 function handleLogout() {
   clearAuthToken()
+  clearTenantId()
   isAuthenticated.value = false
   news.value = []
+  tenants.value = []
+  profile.value = null
   taskEvents.value = []
   setArticle(null)
   showMessage('')
+}
+
+async function handleTenantChange() {
+  if (!selectedTenantId.value) {
+    return
+  }
+  setTenantId(selectedTenantId.value)
+  taskEvents.value = []
+  showMessage('正在切换工作空间')
+  try {
+    await loadAll()
+    showMessage('工作空间已切换')
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '切换工作空间失败', true)
+  }
 }
 
 async function refreshArticle() {
@@ -298,11 +341,14 @@ function regionLabel(region: string) {
 
 onMounted(() => {
   if (isAuthenticated.value) {
-    loadAll().catch((error) => {
-      clearAuthToken()
-      isAuthenticated.value = false
-      loginMessage.value = error instanceof Error ? error.message : '登录已失效，请重新登录'
-    })
+    loadTenantOptions()
+      .then(loadAll)
+      .catch((error) => {
+        clearAuthToken()
+        clearTenantId()
+        isAuthenticated.value = false
+        loginMessage.value = error instanceof Error ? error.message : '登录已失效，请重新登录'
+      })
   }
 })
 
@@ -340,9 +386,17 @@ onUnmounted(() => {
         <div class="brand-mark" aria-hidden="true">PS</div>
         <div>
           <p class="eyebrow">PubSync</p>
-          <h1>AI 早报</h1>
+          <h1>{{ workspaceTitle }}</h1>
         </div>
       </div>
+      <label class="tenant-switcher">
+        工作空间
+        <select v-model="selectedTenantId" @change="handleTenantChange">
+          <option v-for="tenant in tenants" :key="tenant.id" :value="String(tenant.id)">
+            {{ tenant.name }}
+          </option>
+        </select>
+      </label>
       <nav aria-label="主导航">
         <a href="#news">新闻候选</a>
         <a href="#article">文章草稿</a>
@@ -359,7 +413,7 @@ onUnmounted(() => {
     <main class="workspace">
       <section class="toolbar">
         <div>
-          <p class="eyebrow">今日流程</p>
+          <p class="eyebrow">{{ publicationName }}</p>
           <h2>抓取、筛选、生成、入草稿箱</h2>
           <p class="toolbar-subtitle">当前文章状态：{{ articleStateLabel }}</p>
         </div>
@@ -412,7 +466,7 @@ onUnmounted(() => {
         <div class="section-header">
           <div>
             <p class="eyebrow">候选池</p>
-            <h2>AI 大事件列表</h2>
+            <h2>{{ workspaceTitle }}候选新闻</h2>
           </div>
           <div class="tabs" role="tablist" aria-label="新闻区域">
             <button
@@ -422,7 +476,7 @@ onUnmounted(() => {
               :class="{ active: activeNewsTab === 'international' }"
               @click="setNewsTab('international')"
             >
-              国际动态
+              {{ internationalLabel }}
               <span>{{ internationalNews.length }}</span>
             </button>
             <button
@@ -432,7 +486,7 @@ onUnmounted(() => {
               :class="{ active: activeNewsTab === 'domestic' }"
               @click="setNewsTab('domestic')"
             >
-              国内动态
+              {{ domesticLabel }}
               <span>{{ domesticNews.length }}</span>
             </button>
           </div>

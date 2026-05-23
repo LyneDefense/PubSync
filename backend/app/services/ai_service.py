@@ -23,19 +23,25 @@ def is_ai_enabled(settings: Settings) -> bool:
     return False
 
 
-def decide_article_image(settings: Settings, news_item: dict[str, Any], forced: bool = False) -> dict[str, Any]:
+def decide_article_image(
+    settings: Settings,
+    news_item: dict[str, Any],
+    forced: bool = False,
+    image_style: str = "抽象科技视觉、信息图、芯片、网络、云与模型架构",
+) -> dict[str, Any]:
     mode_instruction = (
         "这次是强制补图：必须返回 should_generate=true，并给出一个安全、抽象、可生成的 prompt。"
         if forced
         else "请判断这条新闻是否适合配一张正文图。should_generate 只表示是否适合配抽象图，不表示是否包含人物或公司。"
     )
     prompt = f"""
-你是 AI 新闻公众号的视觉编辑。请基于单条新闻事实判断是否生成正文配图，并生成图片 prompt。
+你是公众号的视觉编辑。请基于单条新闻事实判断是否生成正文配图，并生成图片 prompt。
 
 目标：
 - {mode_instruction}
 - 新闻里出现人物、CEO、创始人、公司、产品、真实场景，并不代表不能配图；只是生成 prompt 不能描绘真实人物、肖像、logo、产品截图或新闻现场。
-- 配图只能是抽象科技视觉、信息图、概念插画或数据/芯片/网络/云/模型架构等非人物隐喻。
+- 配图视觉方向：{image_style}。
+- 配图只能是抽象视觉、信息图、概念插画或非人物隐喻。
 - prompt 必须动态贴合新闻内容，但要把具体人物、公司 logo、真实产品界面、真实现场改写成抽象隐喻；不要直接写人物姓名、公司 logo、产品截图或新闻现场。
 - prompt 必须包含安全约束：no human, no face, no celebrity, no real person, no logo, no brand mark, no photorealistic news scene, no UI screenshot, no text.
 - 即使 should_generate=false，也要返回 fallback_prompt，供代码在最低配图数量不足时强制补图。

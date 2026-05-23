@@ -14,7 +14,7 @@ INTERNATIONAL = "international"
 logger = logging.getLogger(__name__)
 
 
-def select_article_news(db: Session, settings: Settings) -> ArticleSelectionResult:
+def select_article_news(db: Session, settings: Settings, tenant_id: int) -> ArticleSelectionResult:
     article_limit = max(1, settings.article_news_limit)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, settings.article_news_lookback_hours))
     logger.info(
@@ -36,8 +36,8 @@ def select_article_news(db: Session, settings: Settings) -> ArticleSelectionResu
     ).normalized(article_limit)
     domestic_rule, international_rule = fit_targets_to_limit(domestic_rule, international_rule, article_limit)
 
-    domestic_pool = fetch_region_pool(db, domestic_rule.region, cutoff, domestic_rule.maximum)
-    international_pool = fetch_region_pool(db, international_rule.region, cutoff, international_rule.maximum)
+    domestic_pool = fetch_region_pool(db, tenant_id, domestic_rule.region, cutoff, domestic_rule.maximum)
+    international_pool = fetch_region_pool(db, tenant_id, international_rule.region, cutoff, international_rule.maximum)
     logger.info(
         "文章新闻候选池准备完成：国际=%s，国内=%s",
         len(international_pool),
@@ -106,7 +106,7 @@ def fit_targets_to_limit(
     )
 
 
-def fetch_region_pool(db: Session, region: str, cutoff: datetime, limit: int) -> list[NewsItem]:
+def fetch_region_pool(db: Session, tenant_id: int, region: str, cutoff: datetime, limit: int) -> list[NewsItem]:
     if limit <= 0:
         return []
     return list(
@@ -114,6 +114,7 @@ def fetch_region_pool(db: Session, region: str, cutoff: datetime, limit: int) ->
             select(NewsItem)
             .where(
                 NewsItem.selected.is_(True),
+                NewsItem.tenant_id == tenant_id,
                 NewsItem.region == region,
                 NewsItem.published_at >= cutoff,
                 or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),

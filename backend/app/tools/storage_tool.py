@@ -11,6 +11,7 @@ from app.news_fetching.models import NewsFetchResult
 
 def persist_processed_news(
     db: Session,
+    tenant_id: int,
     fetch_result: NewsFetchResult,
     processed_items: list[dict[str, Any]],
 ) -> tuple[list[NewsItem], int, int]:
@@ -25,7 +26,7 @@ def persist_processed_news(
         if not url or not title or "example.com" in url:
             skipped_invalid += 1
             continue
-        exists = db.scalar(select(NewsItem).where(NewsItem.url == url))
+        exists = db.scalar(select(NewsItem).where(NewsItem.tenant_id == tenant_id, NewsItem.url == url))
         if exists:
             skipped_existing += 1
             continue
@@ -41,6 +42,7 @@ def persist_processed_news(
         source = normalize_text(item.get("source"), default="Unknown")[:200]
 
         news = NewsItem(
+            tenant_id=tenant_id,
             title=title[:500],
             source=source,
             url=url[:1000],
@@ -57,8 +59,14 @@ def persist_processed_news(
         db.add(news)
         created_items.append(news)
 
-    db.merge(AppSetting(key="last_fetch_at", value=now.isoformat()))
-    db.merge(AppSetting(key="last_fetch_report", value=json.dumps(fetch_result.report.to_dict(), ensure_ascii=False)))
+    db.merge(AppSetting(key=f"tenant:{tenant_id}:last_fetch_at", tenant_id=tenant_id, value=now.isoformat()))
+    db.merge(
+        AppSetting(
+            key=f"tenant:{tenant_id}:last_fetch_report",
+            tenant_id=tenant_id,
+            value=json.dumps(fetch_result.report.to_dict(), ensure_ascii=False),
+        )
+    )
     db.commit()
 
     for news in created_items:
@@ -68,6 +76,7 @@ def persist_processed_news(
 
 def persist_article(
     db: Session,
+    tenant_id: int,
     title: str,
     intro: str,
     content_html: str,
@@ -75,6 +84,7 @@ def persist_article(
     selected_news: list[NewsItem],
 ) -> Article:
     article = Article(
+        tenant_id=tenant_id,
         title=title,
         intro=intro,
         content_html=content_html,
@@ -85,7 +95,7 @@ def persist_article(
     db.flush()
 
     for position, news in enumerate(selected_news, start=1):
-        db.add(ArticleNewsItem(article_id=article.id, news_item_id=news.id, position=position))
+        db.add(ArticleNewsItem(article_id=article.id, news_item_id=news.id, tenant_id=tenant_id, position=position))
 
     db.commit()
     db.refresh(article)

@@ -38,7 +38,7 @@ class ProcessNewsStep(HarnessStep):
     def run(self, context: HarnessContext) -> tuple[str, dict | None]:
         if not context.raw_candidates:
             raise AIServiceError("没有可处理的候选新闻")
-        context.processed_items = self.llm_tool.process_news(context.settings, context.raw_candidates)
+        context.processed_items = self.llm_tool.process_news(context.settings, context.raw_candidates, context.profile)
         return "新闻后处理完成", {"可用条数": len(context.processed_items)}
 
 
@@ -50,6 +50,7 @@ class DeduplicateNewsStep(HarnessStep):
         unique_items, report = deduplicate_processed_news(
             context.db,
             context.settings,
+            context.tenant.id,
             context.processed_items,
         )
         context.processed_items = unique_items
@@ -66,6 +67,7 @@ class PersistNewsStep(HarnessStep):
             raise RuntimeError("缺少新闻抓取结果")
         created_items, skipped_existing, skipped_invalid = persist_processed_news(
             context.db,
+            context.tenant.id,
             context.fetch_result,
             context.processed_items,
         )

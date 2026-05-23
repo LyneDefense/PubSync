@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -30,13 +30,66 @@ class TaskStatus(StrEnum):
     failed = "failed"
 
 
-class NewsItem(Base):
-    __tablename__ = "news_items"
+class TenantStatus(StrEnum):
+    active = "active"
+    disabled = "disabled"
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    status: Mapped[TenantStatus] = mapped_column(
+        Enum(TenantStatus, name="tenant_status"),
+        default=TenantStatus.active,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ContentProfile(Base):
+    __tablename__ = "content_profiles"
+
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    publication_name: Mapped[str] = mapped_column(String(120), nullable=False, default="AI 科技早报")
+    workspace_title: Mapped[str] = mapped_column(String(120), nullable=False, default="AI 早报")
+    title_prefix: Mapped[str] = mapped_column(String(120), nullable=False, default="AI科技早报 | ")
+    content_domain: Mapped[str] = mapped_column(Text, nullable=False, default="AI、科技、模型、算力、企业应用")
+    editor_persona: Mapped[str] = mapped_column(Text, nullable=False, default="你是严谨的 AI 科技新闻主编")
+    audience: Mapped[str] = mapped_column(Text, nullable=False, default="科技从业者、产品经理、投资人与 AI 关注者")
+    article_style: Mapped[str] = mapped_column(Text, nullable=False, default="信息密度高，事实准确，带行业观察")
+    international_label: Mapped[str] = mapped_column(String(80), nullable=False, default="国际动态")
+    domestic_label: Mapped[str] = mapped_column(String(80), nullable=False, default="国内动态")
+    categories_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    image_style: Mapped[str] = mapped_column(Text, nullable=False, default="抽象科技视觉、信息图、芯片、网络、云与模型架构")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class WeChatAccount(Base):
+    __tablename__ = "wechat_accounts"
+
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    app_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    app_secret: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    auto_send_draft: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class NewsItem(Base):
+    __tablename__ = "news_items"
+    __table_args__ = (UniqueConstraint("tenant_id", "url", name="uq_news_items_tenant_url"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     source: Mapped[str] = mapped_column(String(200), nullable=False)
-    url: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False)
+    url: Mapped[str] = mapped_column(String(1000), nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -49,11 +102,14 @@ class NewsItem(Base):
     dedup_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
+    tenant: Mapped[Tenant] = relationship()
+
 
 class Article(Base):
     __tablename__ = "articles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     intro: Mapped[str] = mapped_column(Text, nullable=False)
     content_html: Mapped[str] = mapped_column(Text, nullable=False)
@@ -72,6 +128,7 @@ class Article(Base):
         back_populates="article",
         cascade="all, delete-orphan",
     )
+    tenant: Mapped[Tenant] = relationship()
 
 
 class ArticleNewsItem(Base):
@@ -79,24 +136,30 @@ class ArticleNewsItem(Base):
 
     article_id: Mapped[int] = mapped_column(ForeignKey("articles.id"), primary_key=True)
     news_item_id: Mapped[int] = mapped_column(ForeignKey("news_items.id"), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
     article: Mapped[Article] = relationship(back_populates="items")
     news_item: Mapped[NewsItem] = relationship()
+    tenant: Mapped[Tenant] = relationship()
 
 
 class AppSetting(Base):
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
 
 
 class NewsSource(Base):
     __tablename__ = "news_sources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     url: Mapped[str] = mapped_column(String(1000), nullable=False)
     status: Mapped[SourceStatus] = mapped_column(
@@ -106,11 +169,14 @@ class NewsSource(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
+    tenant: Mapped[Tenant] = relationship()
+
 
 class OperationTask(Base):
     __tablename__ = "operation_tasks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     task_type: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus, name="task_status"),
@@ -124,12 +190,14 @@ class OperationTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     article: Mapped[Article | None] = relationship()
+    tenant: Mapped[Tenant] = relationship()
 
 
 class OperationTaskEvent(Base):
     __tablename__ = "operation_task_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     task_id: Mapped[str] = mapped_column(ForeignKey("operation_tasks.id"), nullable=False, index=True)
     step_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -138,3 +206,4 @@ class OperationTaskEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     task: Mapped[OperationTask] = relationship()
+    tenant: Mapped[Tenant] = relationship()

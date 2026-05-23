@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from app.config import Settings
-from app.models import NewsItem
+from app.models import ContentProfile, NewsItem
 from app.services.ai_service import AIServiceError, generate_image
 from app.tools.llm_tool import LLMTool
 
@@ -20,6 +20,7 @@ class ImageTool:
         settings: Settings,
         selected_news: list[NewsItem],
         news_payload: list[dict[str, Any]],
+        profile: ContentProfile | None = None,
     ) -> int:
         max_images = max(0, settings.max_article_images)
         min_images = max(0, min(settings.min_article_images, max_images))
@@ -33,11 +34,11 @@ class ImageTool:
         for index, news in enumerate(selected_news):
             if len(generated_indexes) >= max_images:
                 break
-            decision = self.decide_news_image(settings, news, forced=False)
+            decision = self.decide_news_image(settings, news, profile, forced=False)
             if not truthy(decision.get("should_generate")):
                 logger.info("正文配图决策为跳过：新闻ID=%s，标题=%s", news.id, truncate_log_text(news.title))
                 continue
-            if self.generate_news_image(settings, news, news_payload, index, decision, forced=False):
+            if self.generate_news_image(settings, news, news_payload, index, decision, profile, forced=False):
                 generated_indexes.add(index)
 
         if len(generated_indexes) >= min_images:
@@ -50,8 +51,8 @@ class ImageTool:
                 break
             if index in generated_indexes:
                 continue
-            decision = self.decide_news_image(settings, news, forced=True)
-            if self.generate_news_image(settings, news, news_payload, index, decision, forced=True):
+            decision = self.decide_news_image(settings, news, profile, forced=True)
+            if self.generate_news_image(settings, news, news_payload, index, decision, profile, forced=True):
                 generated_indexes.add(index)
 
         if len(generated_indexes) < min_images:
@@ -60,15 +61,22 @@ class ImageTool:
             logger.info("正文配图生成完成：已生成=%s", len(generated_indexes))
         return len(generated_indexes)
 
-    def decide_news_image(self, settings: Settings, news: NewsItem, forced: bool) -> dict[str, Any]:
+    def decide_news_image(
+        self,
+        settings: Settings,
+        news: NewsItem,
+        profile: ContentProfile | None,
+        forced: bool,
+    ) -> dict[str, Any]:
         payload = news_image_decision_payload(news)
         try:
-            return self.llm_tool.decide_article_image(settings, payload, forced=forced)
+            image_style = profile.image_style if profile else None
+            return self.llm_tool.decide_article_image(settings, payload, forced=forced, image_style=image_style)
         except AIServiceError as exc:
             logger.warning("正文配图决策失败：新闻ID=%s，强制补图=%s，错误=%s", news.id, yes_no(forced), exc)
             if forced:
-                return {"should_generate": True, "fallback_prompt": build_forced_news_image_prompt(news)}
-            return {"should_generate": False, "fallback_prompt": build_forced_news_image_prompt(news)}
+                return {"should_generate": True, "fallback_prompt": build_forced_news_image_prompt(news, profile)}
+            return {"should_generate": False, "fallback_prompt": build_forced_news_image_prompt(news, profile)}
 
     def generate_news_image(
         self,
@@ -77,14 +85,15 @@ class ImageTool:
         news_payload: list[dict[str, Any]],
         index: int,
         decision: dict[str, Any],
+        profile: ContentProfile | None,
         forced: bool,
     ) -> bool:
         raw_prompt = str(decision.get("prompt") or decision.get("fallback_prompt") or "").strip()
         if forced and not raw_prompt:
-            raw_prompt = build_forced_news_image_prompt(news)
+            raw_prompt = build_forced_news_image_prompt(news, profile)
         prompt = make_safe_image_prompt(raw_prompt)
         if not prompt or not is_safe_image_prompt(prompt):
-            prompt = make_safe_image_prompt(build_forced_news_image_prompt(news))
+            prompt = make_safe_image_prompt(build_forced_news_image_prompt(news, profile))
         if not is_safe_image_prompt(prompt):
             logger.warning("正文配图提示词被拒绝：新闻ID=%s，强制补图=%s", news.id, yes_no(forced))
             return False
@@ -99,10 +108,16 @@ class ImageTool:
         logger.info("正文配图生成成功：新闻ID=%s，强制补图=%s", news.id, yes_no(forced))
         return True
 
-    def generate_cover(self, settings: Settings, news_items: list[NewsItem], cover_prompt: str) -> str:
+    def generate_cover(
+        self,
+        settings: Settings,
+        news_items: list[NewsItem],
+        cover_prompt: str,
+        profile: ContentProfile | None = None,
+    ) -> str:
         try:
             logger.info("文章封面图生成开始")
-            return generate_image(settings, cover_prompt or build_cover_prompt(news_items), "cover") or DEFAULT_COVER
+            return generate_image(settings, cover_prompt or build_cover_prompt(news_items, profile), "cover") or DEFAULT_COVER
         except AIServiceError:
             logger.warning("文章封面图生成失败，使用默认封面")
             return DEFAULT_COVER
@@ -164,12 +179,13 @@ def make_safe_image_prompt(prompt: str) -> str:
     return f"{prompt.rstrip()} {safety_suffix}"
 
 
-def build_forced_news_image_prompt(news: NewsItem) -> str:
+def build_forced_news_image_prompt(news: NewsItem, profile: ContentProfile | None = None) -> str:
     summary = " ".join(news.summary.split())[:220]
+    image_style = profile.image_style if profile else "abstract editorial infographic"
     return (
-        "Editorial abstract technology infographic for an AI newsletter article. "
+        f"Editorial abstract infographic for a newsletter article. Visual direction: {image_style}. "
         f"Theme: {news.category}. "
-        "Represent the news as data flows, model layers, chips, cloud infrastructure, and network signals. "
+        "Represent the news with non-human symbols, structured information layers, and conceptual visual metaphors. "
         "Use the article context without depicting named people, logos, screenshots, or real scenes. "
         f"Context: {summary}. "
         "No human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
@@ -177,10 +193,11 @@ def build_forced_news_image_prompt(news: NewsItem) -> str:
     )
 
 
-def build_cover_prompt(news_items: list[NewsItem]) -> str:
+def build_cover_prompt(news_items: list[NewsItem], profile: ContentProfile | None = None) -> str:
     topics = "; ".join(item.title for item in news_items[:5])
+    image_style = profile.image_style if profile else "abstract technology infographic"
     return (
-        "Modern Chinese AI newsletter cover image, 16:9 composition, abstract technology infographic, "
+        f"Modern Chinese newsletter cover image, 16:9 composition, {image_style}, "
         "no human, no face, no celebrity, no real person, no fictional person, no logo, no brand mark, "
         "no photorealistic news scene, no UI screenshot, no text, polished editorial style. Topics: "
         f"{topics}"

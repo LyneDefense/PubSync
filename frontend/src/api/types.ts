@@ -1,8 +1,32 @@
 export type ArticleStatus = 'draft' | 'generated' | 'sent_to_wechat' | 'failed'
 export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type TenantStatus = 'active' | 'disabled'
+
+export interface Tenant {
+  id: number
+  name: string
+  slug: string
+  status: TenantStatus
+}
+
+export interface ContentProfile {
+  tenant_id: number
+  publication_name: string
+  workspace_title: string
+  title_prefix: string
+  content_domain: string
+  editor_persona: string
+  audience: string
+  article_style: string
+  international_label: string
+  domestic_label: string
+  categories_json: string
+  image_style: string
+}
 
 export interface NewsItem {
   id: number
+  tenant_id: number
   title: string
   source: string
   url: string
@@ -17,6 +41,7 @@ export interface NewsItem {
 
 export interface Article {
   id: number
+  tenant_id: number
   title: string
   intro: string
   content_html: string
@@ -42,6 +67,7 @@ export interface LoginResponse {
 
 export interface OperationTask {
   id: string
+  tenant_id: number
   task_type: string
   status: TaskStatus
   message: string
@@ -53,6 +79,7 @@ export interface OperationTask {
 
 export interface OperationTaskEvent {
   id: number
+  tenant_id: number
   task_id: string
   step_name: string
   status: string
