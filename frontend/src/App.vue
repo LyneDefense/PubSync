@@ -56,6 +56,7 @@ const message = ref('')
 const isError = ref(false)
 const pendingAction = ref<string | null>(null)
 const taskEvents = ref<OperationTaskEvent[]>([])
+const taskEventsAction = ref<TaskActionName | null>(null)
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
@@ -172,9 +173,18 @@ const pagedNews = computed(() => {
   const start = (newsPage.value - 1) * pageSize
   return activeNews.value.slice(start, start + pageSize)
 })
+const visibleTaskEvents = computed(() => {
+  if (!taskEventsAction.value) {
+    return []
+  }
+  return taskActionTab(taskEventsAction.value) === activeMainTab.value ? taskEvents.value : []
+})
 const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate')
+const isVisibleTaskRunning = computed(
+  () => isTaskRunning.value && taskEventsAction.value !== null && taskActionTab(taskEventsAction.value) === activeMainTab.value
+)
 const runningTaskName = computed(() => (pendingAction.value === 'fetch' ? '新闻抓取' : '文章生成'))
-const hasTaskEvents = computed(() => taskEvents.value.length > 0 || isTaskRunning.value)
+const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
 const articleStateLabel = computed(() => {
   const status = article.value?.status
   return status ? statusText[status] || status : '未生成'
@@ -245,6 +255,10 @@ function taskButtonStyle(name: TaskActionName) {
   return { '--progress': `${taskProgress[name]}%` }
 }
 
+function taskActionTab(name: TaskActionName): MainTab {
+  return name === 'fetch' ? 'news' : 'article'
+}
+
 async function runTaskAction(
   name: TaskActionName,
   label: string,
@@ -253,6 +267,7 @@ async function runTaskAction(
   timeoutMessage: string
 ) {
   pendingAction.value = name
+  taskEventsAction.value = name
   startFakeProgress(name)
   showMessage(label)
   try {
@@ -381,6 +396,7 @@ function handleLogout() {
   contentGroups.value = []
   contentGroupForms.value = []
   taskEvents.value = []
+  taskEventsAction.value = null
   setArticle(null)
   showMessage('')
 }
@@ -391,6 +407,7 @@ async function handleTenantChange() {
   }
   setTenantId(selectedTenantId.value)
   taskEvents.value = []
+  taskEventsAction.value = null
   showMessage('正在切换工作空间')
   try {
     await loadAll()
@@ -683,12 +700,12 @@ onUnmounted(() => {
           </div>
         </div>
         <ol>
-          <li v-for="event in taskEvents" :key="event.id" :class="`event-${event.status}`">
+          <li v-for="event in visibleTaskEvents" :key="event.id" :class="`event-${event.status}`">
             <span>{{ event.step_name }}</span>
             <strong>{{ event.message }}</strong>
             <time>{{ formatDate(event.created_at) }}</time>
           </li>
-          <li v-if="isTaskRunning" class="event-live-tail" aria-live="polite">
+          <li v-if="isVisibleTaskRunning" class="event-live-tail" aria-live="polite">
             <span>{{ runningTaskName }}</span>
             <strong class="live-tail" aria-label="流程仍在执行">
               <i aria-hidden="true"></i>
