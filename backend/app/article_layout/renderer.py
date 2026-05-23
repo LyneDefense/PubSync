@@ -11,9 +11,22 @@ def render_wechat_article_html(article: ComposedArticle) -> str:
         f"<p>{escape(article.intro)}</p>",
         "</section>",
     ]
-    for section in article.sections:
-        parts.extend(render_section(section))
+    for label, sections in grouped_sections(article.sections):
+        if sections:
+            parts.extend(["<section>", f"<h2>{escape(label)}</h2>", "</section>"])
+            for section in sections:
+                parts.extend(render_section(section))
     return format_wechat_article_html("\n".join(parts))
+
+
+def grouped_sections(sections: list[ArticleSection]) -> list[tuple[str, list[ArticleSection]]]:
+    international = [section for section in sections if section.region != "domestic"]
+    domestic = [section for section in sections if section.region == "domestic"]
+    if international and domestic:
+        return [("国际动态", international), ("国内动态", domestic)]
+    if domestic:
+        return [("国内动态", domestic)]
+    return [("国际动态", international)]
 
 
 def render_section(section: ArticleSection) -> list[str]:

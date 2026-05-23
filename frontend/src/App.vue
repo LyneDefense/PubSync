@@ -55,6 +55,10 @@ const form = reactive<ArticleUpdate>({
 
 const apiBaseText = computed(() => `${import.meta.env.BASE_URL}api`)
 const hasArticle = computed(() => Boolean(article.value))
+const domesticNews = computed(() => news.value.filter((item) => item.region === 'domestic'))
+const internationalNews = computed(() => news.value.filter((item) => item.region !== 'domestic'))
+const domesticSelectedCount = computed(() => domesticNews.value.filter((item) => item.selected).length)
+const internationalSelectedCount = computed(() => internationalNews.value.filter((item) => item.selected).length)
 const articleStatus = computed(() => {
   const status = dashboard.value?.latest_article?.status
   return status ? statusText[status] || status : '未生成'
@@ -270,6 +274,10 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
+function regionLabel(region: string) {
+  return region === 'domestic' ? '国内' : '国际'
+}
+
 onMounted(() => {
   if (isAuthenticated.value) {
     loadAll().catch((error) => {
@@ -373,6 +381,14 @@ onUnmounted(() => {
           <span>文章状态</span>
           <strong>{{ articleStatus }}</strong>
         </article>
+        <article>
+          <span>国际已选</span>
+          <strong>{{ internationalSelectedCount }}</strong>
+        </article>
+        <article>
+          <span>国内已选</span>
+          <strong>{{ domesticSelectedCount }}</strong>
+        </article>
       </section>
 
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
@@ -384,22 +400,62 @@ onUnmounted(() => {
             <h2>AI 大事件列表</h2>
           </div>
         </div>
-        <div v-if="news.length" class="news-list">
-          <article v-for="item in news" :key="item.id" class="news-card">
-            <input
-              type="checkbox"
-              :checked="item.selected"
-              :aria-label="`选择 ${item.title}`"
-              @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
-            />
-            <div>
-              <h3>{{ item.title }}</h3>
-              <div class="meta">{{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}</div>
-              <p>{{ item.summary }}</p>
-              <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
+        <div v-if="news.length" class="region-news-grid">
+          <section class="news-region">
+            <div class="region-header">
+              <h3>国际动态</h3>
+              <span>{{ internationalNews.length }} 条 · 已选 {{ internationalSelectedCount }}</span>
             </div>
-            <div class="score">{{ item.importance_score }}</div>
-          </article>
+            <div class="news-list">
+              <article v-for="item in internationalNews" :key="item.id" class="news-card">
+                <input
+                  type="checkbox"
+                  :checked="item.selected"
+                  :aria-label="`选择 ${item.title}`"
+                  @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
+                />
+                <div>
+                  <h3>{{ item.title }}</h3>
+                  <div class="meta">
+                    <span class="region-pill">{{ regionLabel(item.region) }}</span>
+                    {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
+                  </div>
+                  <p>{{ item.summary }}</p>
+                  <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
+                </div>
+                <div class="score">{{ item.importance_score }}</div>
+              </article>
+              <p v-if="!internationalNews.length" class="empty-region">暂无国际候选新闻。</p>
+            </div>
+          </section>
+
+          <section class="news-region">
+            <div class="region-header">
+              <h3>国内动态</h3>
+              <span>{{ domesticNews.length }} 条 · 已选 {{ domesticSelectedCount }}</span>
+            </div>
+            <div class="news-list">
+              <article v-for="item in domesticNews" :key="item.id" class="news-card">
+                <input
+                  type="checkbox"
+                  :checked="item.selected"
+                  :aria-label="`选择 ${item.title}`"
+                  @change="handleToggleNews(item, ($event.target as HTMLInputElement).checked)"
+                />
+                <div>
+                  <h3>{{ item.title }}</h3>
+                  <div class="meta">
+                    <span class="region-pill domestic">{{ regionLabel(item.region) }}</span>
+                    {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
+                  </div>
+                  <p>{{ item.summary }}</p>
+                  <a :href="item.url" target="_blank" rel="noreferrer">查看来源</a>
+                </div>
+                <div class="score">{{ item.importance_score }}</div>
+              </article>
+              <p v-if="!domesticNews.length" class="empty-region">暂无国内候选新闻。</p>
+            </div>
+          </section>
         </div>
         <p v-else>还没有候选新闻，点击重新抓取开始。</p>
       </section>

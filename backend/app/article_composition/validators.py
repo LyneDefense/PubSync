@@ -57,6 +57,7 @@ def normalize_section(
     editor_note = normalize_text(raw_section.get("editor_note"), "这条动态值得关注的是，它反映了 AI 技术从能力展示走向真实应用的持续变化。")
     return ArticleSection(
         news_index=news_index,
+        region=str(item.get("region") or "international").strip() or "international",
         heading=heading,
         paragraphs=paragraphs,
         editor_note=editor_note,
@@ -70,6 +71,7 @@ def fallback_section(index: int, item: dict[str, Any]) -> ArticleSection:
     summary = normalize_text(item.get("summary"), "这条 AI 动态值得关注。")
     return ArticleSection(
         news_index=index,
+        region=str(item.get("region") or "international").strip() or "international",
         heading=f"{index + 1:02d}｜{normalize_text(item.get('title'), 'AI 动态')[:80]}",
         paragraphs=[summary],
         editor_note="这条动态值得关注的是，它可能影响后续产品落地、开发者生态或行业竞争格局。",
