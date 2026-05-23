@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -37,6 +38,12 @@ from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_d
 
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
+logging.addLevelName(logging.DEBUG, "调试")
+logging.addLevelName(logging.INFO, "信息")
+logging.addLevelName(logging.WARNING, "警告")
+logging.addLevelName(logging.ERROR, "错误")
+logging.addLevelName(logging.CRITICAL, "严重")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 

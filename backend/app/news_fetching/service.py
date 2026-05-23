@@ -113,29 +113,35 @@ def fetch_source_candidates(
 def log_source_report(report: SourceFetchReport) -> None:
     if report.error:
         logger.warning(
-            "news source fetch failed source=%s region=%s url=%s error=%s",
+            "新闻源抓取失败：来源=%s，区域=%s，地址=%s，错误=%s",
             report.source,
-            report.region.value,
+            region_label(report.region),
             report.url,
             report.error,
         )
         return
     if report.parsed_count == 0:
         logger.warning(
-            "news source returned no parsable items source=%s region=%s url=%s",
+            "新闻源没有解析出可用条目：来源=%s，区域=%s，地址=%s",
             report.source,
-            report.region.value,
+            region_label(report.region),
             report.url,
         )
         return
     logger.info(
-        "news source fetched source=%s region=%s parsed=%s filtered=%s accepted=%s",
+        "新闻源抓取完成：来源=%s，区域=%s，解析=%s，过滤后=%s，采纳=%s",
         report.source,
-        report.region.value,
+        region_label(report.region),
         report.parsed_count,
         report.filtered_count,
         report.accepted_count,
     )
+
+
+def region_label(region: NewsRegion) -> str:
+    if region == NewsRegion.domestic:
+        return "国内"
+    return "国际"
 
 
 def candidate_sort_key(candidate: RawNewsCandidate) -> datetime:

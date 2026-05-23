@@ -1,3 +1,4 @@
+import logging
 from html import escape
 
 from app.article_composition.models import ArticleSection, ComposedArticle
@@ -5,7 +6,11 @@ from app.article_layout.wechat_formatter import format_wechat_article_html
 from app.models import NewsItem
 
 
+logger = logging.getLogger(__name__)
+
+
 def render_wechat_article_html(article: ComposedArticle) -> str:
+    logger.info("文章排版开始：段落数=%s", len(article.sections))
     parts = [
         "<section>",
         f"<p>{escape(article.intro)}</p>",
@@ -16,7 +21,9 @@ def render_wechat_article_html(article: ComposedArticle) -> str:
             parts.extend(["<section>", f"<h2>{escape(label)}</h2>", "</section>"])
             for section in sections:
                 parts.extend(render_section(section))
-    return format_wechat_article_html("\n".join(parts))
+    html = format_wechat_article_html("\n".join(parts))
+    logger.info("文章排版完成：页面字符数=%s", len(html))
+    return html
 
 
 def grouped_sections(sections: list[ArticleSection]) -> list[tuple[str, list[ArticleSection]]]:
@@ -49,6 +56,7 @@ def render_section(section: ArticleSection) -> list[str]:
 
 
 def render_basic_article_html(intro: str, news_items: list[NewsItem]) -> str:
+    logger.info("基础文章排版开始：新闻数=%s", len(news_items))
     parts = [
         "<section>",
         f"<p>{escape(intro)}</p>",
@@ -64,4 +72,6 @@ def render_basic_article_html(intro: str, news_items: list[NewsItem]) -> str:
                 "</section>",
             ]
         )
-    return format_wechat_article_html("\n".join(parts))
+    html = format_wechat_article_html("\n".join(parts))
+    logger.info("基础文章排版完成：页面字符数=%s", len(html))
+    return html

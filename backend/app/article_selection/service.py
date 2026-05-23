@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -10,11 +11,17 @@ from app.models import NewsItem
 
 DOMESTIC = "domestic"
 INTERNATIONAL = "international"
+logger = logging.getLogger(__name__)
 
 
 def select_article_news(db: Session, settings: Settings) -> ArticleSelectionResult:
     article_limit = max(1, settings.article_news_limit)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, settings.article_news_lookback_hours))
+    logger.info(
+        "文章新闻选择开始：数量上限=%s，回看小时=%s",
+        article_limit,
+        settings.article_news_lookback_hours,
+    )
     domestic_rule = RegionSelectionRule(
         region=DOMESTIC,
         minimum=settings.article_domestic_min,
@@ -31,6 +38,11 @@ def select_article_news(db: Session, settings: Settings) -> ArticleSelectionResu
 
     domestic_pool = fetch_region_pool(db, domestic_rule.region, cutoff, domestic_rule.maximum)
     international_pool = fetch_region_pool(db, international_rule.region, cutoff, international_rule.maximum)
+    logger.info(
+        "文章新闻候选池准备完成：国际=%s，国内=%s",
+        len(international_pool),
+        len(domestic_pool),
+    )
 
     selected_domestic = domestic_pool[: domestic_rule.target]
     selected_international = international_pool[: international_rule.target]
@@ -46,6 +58,13 @@ def select_article_news(db: Session, settings: Settings) -> ArticleSelectionResu
     )
 
     news_items = [*selected_international, *selected_domestic]
+    logger.info(
+        "文章新闻选择完成：总数=%s，国际=%s，国内=%s，可用候选=%s",
+        len(news_items[:article_limit]),
+        len(selected_international),
+        len(selected_domestic),
+        len(domestic_pool) + len(international_pool),
+    )
     return ArticleSelectionResult(
         news_items=news_items[:article_limit],
         domestic_count=len(selected_domestic),

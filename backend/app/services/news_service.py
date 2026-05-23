@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -11,10 +12,14 @@ from app.news_processing import process_news_candidates
 from app.services.ai_service import AIServiceError, is_ai_enabled
 
 
+logger = logging.getLogger(__name__)
+
+
 def fetch_latest_news(db: Session) -> list[NewsItem]:
     settings = get_settings()
     if not is_ai_enabled(settings):
         raise AIServiceError("未配置可用的大模型 provider，请设置 LLM_PROVIDER 和对应 API key")
+    logger.info("新闻抓取流程开始")
     return fetch_ai_news(db)
 
 
@@ -25,17 +30,32 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
 
     fetch_result = fetch_news(settings)
     candidates = fetch_result.candidates
-    for item in process_news_candidates(settings, candidates):
+    logger.info(
+        "新闻候选准备完成：总数=%s，国际=%s，国内=%s",
+        len(candidates),
+        fetch_result.report.international_count,
+        fetch_result.report.domestic_count,
+    )
+
+    processed_items = process_news_candidates(settings, candidates)
+    logger.info("新闻后处理完成：可用条数=%s", len(processed_items))
+
+    skipped_existing = 0
+    skipped_invalid = 0
+    for item in processed_items:
         url = str(item.get("url", "")).strip()
         title = str(item.get("title", "")).strip()
         if not url or not title or "example.com" in url:
+            skipped_invalid += 1
             continue
         exists = db.scalar(select(NewsItem).where(NewsItem.url == url))
         if exists:
+            skipped_existing += 1
             continue
 
         importance_score = normalize_score(item.get("importance_score"))
         if importance_score is None:
+            skipped_invalid += 1
             continue
         published_at = parse_datetime(item.get("published_at")) or now
         summary = normalize_text(item.get("summary"), default="暂无摘要")
@@ -63,6 +83,12 @@ def fetch_ai_news(db: Session) -> list[NewsItem]:
 
     for news in created_items:
         db.refresh(news)
+    logger.info(
+        "新闻抓取流程完成：新增=%s，跳过重复=%s，跳过无效=%s",
+        len(created_items),
+        skipped_existing,
+        skipped_invalid,
+    )
     return created_items
 
 
