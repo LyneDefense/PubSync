@@ -149,8 +149,9 @@ const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早�
 const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
 const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
+const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
 const visibleNewsTabs = computed(() => {
-  if (!usesRegionalGrouping.value) {
+  if (!hasNewsGroups.value) {
     return [{ group_key: 'all', name: '全部', count: news.value.length }]
   }
   const tabs = enabledContentGroups.value.map((group) => ({
@@ -161,7 +162,7 @@ const visibleNewsTabs = computed(() => {
   return tabs.length ? tabs : [{ group_key: 'all', name: '全部', count: news.value.length }]
 })
 const activeNews = computed(() => {
-  if (!usesRegionalGrouping.value || activeNewsTab.value === 'all') {
+  if (!hasNewsGroups.value || activeNewsTab.value === 'all') {
     return news.value
   }
   return news.value.filter((item) => item.group_key === activeNewsTab.value)
@@ -732,7 +733,7 @@ onUnmounted(() => {
             <div>
               <h3>{{ item.title }}</h3>
               <div class="meta">
-                <span v-if="usesRegionalGrouping" class="region-pill">
+                <span v-if="hasNewsGroups" class="region-pill">
                   {{ groupLabel(item.group_key) }}
                 </span>
                 {{ item.category }} · {{ item.source }} · {{ formatDate(item.published_at) }}
