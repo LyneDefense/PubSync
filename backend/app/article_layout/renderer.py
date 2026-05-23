@@ -18,7 +18,7 @@ def render_wechat_article_html(article: ComposedArticle) -> str:
     ]
     for label, sections in grouped_sections(article.sections):
         if sections:
-            parts.extend(["<section>", f"<h2>{escape(label)}</h2>", "</section>"])
+            parts.extend(["<section>", f"<h3>{escape(label)}</h3>", "</section>"])
             for section in sections:
                 parts.extend(render_section(section))
     html = format_wechat_article_html("\n".join(parts))

@@ -6,12 +6,12 @@ class WeChatArticleHTMLFormatter(HTMLParser):
     allowed_tags = {"section", "h2", "h3", "p", "ul", "li", "blockquote", "a", "img", "strong", "br"}
 
     styles = {
-        "section": "margin:0 0 28px;padding:0 0 24px;border-bottom:1px solid rgba(148,163,184,0.45);",
+        "section": "margin:0 0 28px;padding:0 0 8px;",
         "h2": (
             "margin:34px 0 18px;padding:0 0 10px;border-bottom:2px solid rgba(148,163,184,0.65);"
             "background:transparent;color:inherit;font-size:19px;line-height:1.45;font-weight:700;"
         ),
-        "h3": "margin:20px 0 10px;color:inherit;font-size:16px;line-height:1.5;font-weight:700;",
+        "h3": "margin:28px 0 14px;color:inherit;font-size:18px;line-height:1.5;font-weight:700;",
         "p": "margin:0 0 14px;color:inherit;font-size:15px;line-height:1.85;letter-spacing:0;text-align:justify;",
         "ul": "margin:8px 0 16px;padding-left:20px;color:inherit;",
         "li": "margin:0 0 8px;color:inherit;font-size:15px;line-height:1.75;",
