@@ -52,6 +52,7 @@ export interface ContentGroup {
   tenant_id: number
   group_key: string
   name: string
+  content_mode: 'news' | 'knowledge' | 'analysis'
   source_urls: string
   candidate_limit: number
   article_min: number

@@ -257,6 +257,7 @@ def ensure_runtime_schema() -> None:
             tenant_id INTEGER NOT NULL REFERENCES tenants(id),
             group_key VARCHAR(80) NOT NULL,
             name VARCHAR(120) NOT NULL,
+            content_mode VARCHAR(30) NOT NULL DEFAULT 'news',
             source_urls TEXT NOT NULL DEFAULT '',
             candidate_limit INTEGER NOT NULL DEFAULT 40,
             article_min INTEGER NOT NULL DEFAULT 0,
@@ -269,14 +270,15 @@ def ensure_runtime_schema() -> None:
             CONSTRAINT uq_content_groups_tenant_key UNIQUE (tenant_id, group_key)
         )
         """,
+        "ALTER TABLE content_groups ADD COLUMN IF NOT EXISTS content_mode VARCHAR(30) NOT NULL DEFAULT 'news'",
         f"""
         INSERT INTO content_groups (
-            tenant_id, group_key, name, source_urls, candidate_limit,
+            tenant_id, group_key, name, content_mode, source_urls, candidate_limit,
             article_min, article_target, article_max, position, enabled, created_at, updated_at
         )
         VALUES
-            (1, 'global', '国际动态', '{AI_GLOBAL_SOURCE_URLS}', 40, 3, 6, 7, 0, true, NOW(), NOW()),
-            (1, 'china', '国内动态', '{AI_CHINA_SOURCE_URLS}', 40, 1, 3, 4, 1, true, NOW(), NOW())
+            (1, 'global', '国际动态', 'news', '{AI_GLOBAL_SOURCE_URLS}', 40, 3, 6, 7, 0, true, NOW(), NOW()),
+            (1, 'china', '国内动态', 'news', '{AI_CHINA_SOURCE_URLS}', 40, 1, 3, 4, 1, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
         """,
         f"""
@@ -292,14 +294,26 @@ def ensure_runtime_schema() -> None:
         """,
         f"""
         INSERT INTO content_groups (
-            tenant_id, group_key, name, source_urls, candidate_limit,
+            tenant_id, group_key, name, content_mode, source_urls, candidate_limit,
             article_min, article_target, article_max, position, enabled, created_at, updated_at
         )
         VALUES
-            (2, 'pet-health', '宠物健康', '{PET_HEALTH_SOURCE_URLS}', 30, 0, 3, 4, 0, true, NOW(), NOW()),
-            (2, 'pet-knowledge', '养宠知识', '{PET_KNOWLEDGE_SOURCE_URLS}', 30, 0, 3, 4, 1, true, NOW(), NOW()),
-            (2, 'pet-industry', '行业资讯', '{PET_INDUSTRY_SOURCE_URLS}', 20, 0, 2, 3, 2, true, NOW(), NOW())
+            (2, 'pet-health', '宠物健康', 'knowledge', '{PET_HEALTH_SOURCE_URLS}', 30, 0, 3, 4, 0, true, NOW(), NOW()),
+            (2, 'pet-knowledge', '养宠知识', 'knowledge', '{PET_KNOWLEDGE_SOURCE_URLS}', 30, 0, 3, 4, 1, true, NOW(), NOW()),
+            (2, 'pet-industry', '行业资讯', 'analysis', '{PET_INDUSTRY_SOURCE_URLS}', 20, 0, 2, 3, 2, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
+        """,
+        """
+        UPDATE content_groups
+        SET content_mode = CASE group_key
+            WHEN 'pet-health' THEN 'knowledge'
+            WHEN 'pet-knowledge' THEN 'knowledge'
+            WHEN 'pet-industry' THEN 'analysis'
+            ELSE content_mode
+        END
+        WHERE tenant_id = 2
+          AND group_key IN ('pet-health', 'pet-knowledge', 'pet-industry')
+          AND content_mode = 'news'
         """,
         f"""
         UPDATE content_groups

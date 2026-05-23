@@ -70,17 +70,41 @@ def normalize_section(
 
 def fallback_section(index: int, item: dict[str, Any]) -> ArticleSection:
     summary = normalize_text(item.get("summary"), "这条 AI 动态值得关注。")
+    content_mode = str(item.get("content_mode") or "news")
     return ArticleSection(
         news_index=index,
         group_key=str(item.get("group_key") or "main").strip() or "main",
         group_name=str(item.get("group_name") or "精选内容").strip() or "精选内容",
         heading=f"{index + 1:02d}｜{normalize_text(item.get('title'), 'AI 动态')[:80]}",
-        paragraphs=[summary],
-        editor_note="这条动态值得关注的是，它可能影响后续产品落地、开发者生态或行业竞争格局。",
+        paragraphs=fallback_paragraphs(summary, content_mode),
+        editor_note=fallback_editor_note(content_mode),
         image_url=str(item.get("image_url") or "").strip(),
         source_name=str(item.get("source") or "来源").strip(),
         source_url=str(item.get("url") or "").strip(),
     )
+
+
+def fallback_paragraphs(summary: str, content_mode: str) -> list[str]:
+    if content_mode == "knowledge":
+        return [
+            summary,
+            "从日常养护角度看，这类内容更适合转化成可执行的提醒：先判断宠物年龄、体况、饮食和近期行为变化，再决定是否调整护理方式。",
+            "如果涉及健康风险、用药、营养补充或持续异常，建议把它当作科普信息参考，并结合兽医建议做具体决策。",
+        ]
+    if content_mode == "analysis":
+        return [
+            summary,
+            "这背后反映的是宠物消费、医疗服务和内容需求正在继续细分，品牌和门店需要把专业可信与用户体验同时做好。",
+        ]
+    return [summary]
+
+
+def fallback_editor_note(content_mode: str) -> str:
+    if content_mode == "knowledge":
+        return "编辑观察：知识分享的价值不在于制造焦虑，而是帮助读者把复杂信息转化成更稳妥的日常判断。"
+    if content_mode == "analysis":
+        return "编辑观察：这类变化值得关注，因为它可能影响宠物服务供给、用户信任和行业竞争方式。"
+    return "编辑观察：这条动态值得关注的是，它可能影响后续产品落地、开发者生态或行业竞争格局。"
 
 
 def normalize_paragraphs(value: object, fallback: str) -> list[str]:
@@ -88,7 +112,7 @@ def normalize_paragraphs(value: object, fallback: str) -> list[str]:
         return [normalize_text(fallback, "暂无摘要")]
     paragraphs = [normalize_text(item, "") for item in value]
     paragraphs = [item for item in paragraphs if item]
-    return paragraphs[:3] or [normalize_text(fallback, "暂无摘要")]
+    return paragraphs[:5] or [normalize_text(fallback, "暂无摘要")]
 
 
 def normalize_text(value: object, default: str) -> str:

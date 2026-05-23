@@ -76,6 +76,7 @@ class ContentGroup(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     group_key: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    content_mode: Mapped[str] = mapped_column(String(30), nullable=False, default="news")
     source_urls: Mapped[str] = mapped_column(Text, nullable=False, default="")
     candidate_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
     article_min: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

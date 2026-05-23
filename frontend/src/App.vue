@@ -495,6 +495,7 @@ async function handleSaveConfig() {
       content_groups: contentGroupForms.value.map((group, index) => ({
         group_key: group.group_key,
         name: group.name,
+        content_mode: group.content_mode,
         source_urls: group.source_urls,
         candidate_limit: group.candidate_limit,
         article_min: group.article_min,
@@ -529,6 +530,7 @@ function addContentGroup() {
     tenant_id: Number(selectedTenantId.value || 0),
     group_key: `group-${nextIndex}`,
     name: `内容分组 ${nextIndex}`,
+    content_mode: 'news',
     source_urls: '',
     candidate_limit: 40,
     article_min: 0,
@@ -1034,6 +1036,14 @@ onUnmounted(() => {
                   <label>
                     分组名称
                     <input v-model="group.name" type="text" required />
+                  </label>
+                  <label>
+                    内容形态
+                    <select v-model="group.content_mode">
+                      <option value="news">新闻资讯</option>
+                      <option value="knowledge">知识分享</option>
+                      <option value="analysis">行业观察</option>
+                    </select>
                   </label>
                   <label>
                     候选数量

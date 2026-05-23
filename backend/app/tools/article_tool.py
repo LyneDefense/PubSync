@@ -26,6 +26,7 @@ class ArticleTool:
 
     def build_news_payload(self, selected_news: list[NewsItem], content_groups: list | None = None) -> list[dict[str, Any]]:
         group_names = {group.group_key: group.name for group in (content_groups or [])}
+        group_modes = {group.group_key: group.content_mode for group in (content_groups or [])}
         return [
             {
                 "index": index,
@@ -37,6 +38,7 @@ class ArticleTool:
                 "category": item.category,
                 "group_key": item.group_key,
                 "group_name": group_names.get(item.group_key, item.group_key),
+                "content_mode": group_modes.get(item.group_key, "news"),
                 "region": item.region,
                 "importance_score": item.importance_score,
                 "image_url": None,

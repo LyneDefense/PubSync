@@ -16,7 +16,10 @@ def build_article_composition_prompt(
     image_style = getattr(profile, "image_style", "抽象科技视觉、信息图、芯片、网络、云与模型架构")
     grouping_mode = getattr(profile, "grouping_mode", "regional")
     groups = [group for group in (content_groups or []) if getattr(group, "enabled", True)]
-    group_description = "，".join(f"{group.group_key}={group.name}" for group in groups) or "main=精选内容"
+    group_description = "，".join(
+        f"{group.group_key}={group.name}，内容形态={content_mode_label(getattr(group, 'content_mode', 'news'))}"
+        for group in groups
+    ) or "main=精选内容"
     grouping_instruction = (
         f"排版层会自动按 group_key 渲染分组标题，可用分组为：{group_description}。你不要在 heading 或正文里重复输出分组标题。"
         if grouping_mode == "regional"
@@ -37,9 +40,11 @@ def build_article_composition_prompt(
 - 新闻事实中的 group_key 只用于组织内容；不要直接输出 group_key 等内部字段。
 - 新闻事实已经按推荐顺序排列，sections 应尊重这个顺序。
 - {grouping_instruction}
-- 每条新闻都要写得充分一些，不能只复述摘要；每条至少包含“发生了什么”“为什么重要”“编辑观察”三个层次。
-- 每条新闻建议 220-360 个中文字，既要有事实，也要有背景解释和影响分析。
-- 每条新闻输出 2-3 个正文段落 paragraphs，每段 80-140 个中文字。
+- 根据每条素材的 content_mode 决定写法：
+  - news：写成资讯解读，至少包含“发生了什么”“为什么重要”“编辑观察”三个层次；建议 220-360 个中文字，输出 2-3 段。
+  - knowledge：写成长一点的知识分享/科普指南，重点解释概念、适用场景、实操建议、注意事项；建议 420-700 个中文字，输出 3-5 段。可以围绕主题做常识性延展，但不能编造具体研究、病例、数据或来源。
+  - analysis：写成行业观察，重点写背景、趋势、商业影响、经营启发；建议 320-520 个中文字，输出 3-4 段。
+- 每段 paragraphs 建议 80-150 个中文字。
 - editor_note 写 1 句编辑观察，避免套话，不能展示内部评分、分类、候选池排序等后台筛选信息。
 - heading 使用“01｜新闻标题”这种编号格式，不要重复写过长标题。
 - 每条输入新闻都必须生成一个 section，不要漏掉，也不要新增输入之外的新闻。
@@ -63,3 +68,11 @@ def build_article_composition_prompt(
   ]
 }}
 """
+
+
+def content_mode_label(mode: str) -> str:
+    return {
+        "news": "新闻资讯",
+        "knowledge": "知识分享",
+        "analysis": "行业观察",
+    }.get(mode, "新闻资讯")

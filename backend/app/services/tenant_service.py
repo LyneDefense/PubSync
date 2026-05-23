@@ -93,6 +93,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="global",
                 name="国际动态",
+                content_mode="news",
                 source_urls=default_source_urls("global"),
                 candidate_limit=40,
                 article_min=3,
@@ -104,6 +105,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="china",
                 name="国内动态",
+                content_mode="news",
                 source_urls=default_source_urls("china"),
                 candidate_limit=40,
                 article_min=1,
@@ -118,6 +120,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="pet-health",
                 name="宠物健康",
+                content_mode="knowledge",
                 source_urls=default_source_urls("pet-health"),
                 candidate_limit=30,
                 article_min=0,
@@ -129,6 +132,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="pet-knowledge",
                 name="养宠知识",
+                content_mode="knowledge",
                 source_urls=default_source_urls("pet-knowledge"),
                 candidate_limit=30,
                 article_min=0,
@@ -140,6 +144,7 @@ def ensure_content_group_defaults(db: Session, tenant: Tenant) -> None:
                 tenant_id=tenant.id,
                 group_key="pet-industry",
                 name="行业资讯",
+                content_mode="analysis",
                 source_urls=default_source_urls("pet-industry"),
                 candidate_limit=20,
                 article_min=0,
@@ -254,6 +259,7 @@ def update_content_groups(db: Session, tenant: Tenant, payload: list[ContentGrou
                 tenant_id=tenant.id,
                 group_key=item["group_key"],
                 name=item["name"],
+                content_mode=item["content_mode"],
                 source_urls=item["source_urls"],
                 candidate_limit=item["candidate_limit"],
                 article_min=item["article_min"],
@@ -286,6 +292,7 @@ def normalize_group_payload(payload: list[ContentGroupUpdate]) -> list[dict[str,
             {
                 "group_key": group_key,
                 "name": raw_name[:120],
+                "content_mode": normalize_content_mode(data.get("content_mode")),
                 "source_urls": str(data.get("source_urls") or "").strip(),
                 "candidate_limit": clamp_int(data.get("candidate_limit"), 0, 300, 40),
                 "article_min": article_min,
@@ -299,6 +306,7 @@ def normalize_group_payload(payload: list[ContentGroupUpdate]) -> list[dict[str,
             {
                 "group_key": "main",
                 "name": "精选内容",
+                "content_mode": "news",
                 "source_urls": "",
                 "candidate_limit": 60,
                 "article_min": 0,
@@ -313,6 +321,13 @@ def normalize_group_payload(payload: list[ContentGroupUpdate]) -> list[dict[str,
 def normalize_group_key(value: object) -> str:
     key = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-_")
     return key[:80] or "main"
+
+
+def normalize_content_mode(value: object) -> str:
+    mode = str(value or "").strip()
+    if mode in {"news", "knowledge", "analysis"}:
+        return mode
+    return "news"
 
 
 def clamp_int(value: object, minimum: int, maximum: int, default: int) -> int:

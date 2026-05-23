@@ -48,6 +48,7 @@ class ContentGroupRead(BaseModel):
     tenant_id: int
     group_key: str
     name: str
+    content_mode: str
     source_urls: str
     candidate_limit: int
     article_min: int
@@ -62,6 +63,7 @@ class ContentGroupRead(BaseModel):
 class ContentGroupUpdate(BaseModel):
     group_key: str | None = Field(default=None, min_length=1, max_length=80)
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    content_mode: str | None = Field(default=None, pattern="^(news|knowledge|analysis)$")
     source_urls: str | None = ""
     candidate_limit: int | None = Field(default=None, ge=0, le=300)
     article_min: int | None = Field(default=None, ge=0, le=50)
