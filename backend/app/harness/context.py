@@ -7,6 +7,7 @@ from app.article_composition.models import ComposedArticle
 from app.article_selection.models import ArticleSelectionResult
 from app.config import Settings
 from app.models import Article, NewsItem
+from app.news_deduplication.models import DeduplicationReport
 from app.news_fetching.models import NewsFetchResult, RawNewsCandidate
 
 
@@ -20,6 +21,7 @@ class HarnessContext:
     fetch_result: NewsFetchResult | None = None
     raw_candidates: list[RawNewsCandidate] = field(default_factory=list)
     processed_items: list[dict[str, Any]] = field(default_factory=list)
+    dedup_report: DeduplicationReport | None = None
     created_news: list[NewsItem] = field(default_factory=list)
     selection: ArticleSelectionResult | None = None
     selected_news: list[NewsItem] = field(default_factory=list)

@@ -16,6 +16,9 @@ class NewsItemRead(BaseModel):
     region: str
     importance_score: int
     selected: bool
+    dedup_status: str
+    duplicate_of_id: int | None
+    dedup_reason: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

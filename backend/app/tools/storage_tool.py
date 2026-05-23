@@ -50,6 +50,9 @@ def persist_processed_news(
             region=region,
             importance_score=importance_score,
             selected=importance_score >= 80,
+            dedup_key=str(item.get("_dedup_key") or "")[:200] or None,
+            dedup_status="unique",
+            dedup_reason="去重后保留",
         )
         db.add(news)
         created_items.append(news)

@@ -43,6 +43,10 @@ class NewsItem(Base):
     region: Mapped[str] = mapped_column(String(30), default="international", nullable=False)
     importance_score: Mapped[int] = mapped_column(Integer, default=70)
     selected: Mapped[bool] = mapped_column(default=False)
+    dedup_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    dedup_status: Mapped[str] = mapped_column(String(30), default="unique", nullable=False)
+    duplicate_of_id: Mapped[int | None] = mapped_column(ForeignKey("news_items.id"), nullable=True)
+    dedup_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     domestic_news_candidates: int = 40
     news_lookback_hours: int = 72
     max_news_candidates: int = 80
+    dedup_lookback_days: int = 7
+    dedup_direct_similarity: float = 0.82
+    dedup_review_similarity: float = 0.42
+    dedup_enable_llm_review: bool = True
     article_news_limit: int = 10
     article_news_lookback_hours: int = 72
     article_domestic_min: int = 1

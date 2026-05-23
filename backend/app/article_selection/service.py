@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.article_selection.models import ArticleSelectionResult, RegionSelectionRule
@@ -116,6 +116,7 @@ def fetch_region_pool(db: Session, region: str, cutoff: datetime, limit: int) ->
                 NewsItem.selected.is_(True),
                 NewsItem.region == region,
                 NewsItem.published_at >= cutoff,
+                or_(NewsItem.dedup_status.is_(None), NewsItem.dedup_status == "unique"),
             )
             .order_by(NewsItem.importance_score.desc(), NewsItem.published_at.desc())
             .limit(limit)

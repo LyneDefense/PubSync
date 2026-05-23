@@ -5,6 +5,7 @@ from app.harness.context import HarnessContext
 from app.harness.events import record_event
 from app.harness.steps import (
     ComposeArticleStep,
+    DeduplicateNewsStep,
     FetchNewsStep,
     GenerateCoverStep,
     GenerateImagesStep,
@@ -31,7 +32,7 @@ class PubSyncHarness:
     def run_news_fetch(self) -> list[NewsItem]:
         self._ensure_ai_enabled()
         record_event(self.context, "流程", "running", "新闻抓取流程开始")
-        self._run_steps([FetchNewsStep(), ProcessNewsStep(), PersistNewsStep()])
+        self._run_steps([FetchNewsStep(), ProcessNewsStep(), DeduplicateNewsStep(), PersistNewsStep()])
         record_event(
             self.context,
             "流程",
@@ -59,7 +60,7 @@ class PubSyncHarness:
         self._ensure_ai_enabled()
         self.context.should_publish = should_publish
         record_event(self.context, "流程", "running", "每日自动流程开始")
-        self._run_steps([FetchNewsStep(), ProcessNewsStep(), PersistNewsStep(), *self._article_steps()])
+        self._run_steps([FetchNewsStep(), ProcessNewsStep(), DeduplicateNewsStep(), PersistNewsStep(), *self._article_steps()])
         if self.context.article is None:
             raise RuntimeError("每日自动流程没有生成文章")
         if should_publish:
