@@ -29,14 +29,21 @@ PET_HEALTH_SOURCE_URLS = ",".join(
         "Pet Health Network|https://www.pethealthnetwork.com/rss.xml",
         "Preventive Vet Dogs|https://www.preventivevet.com/dogs/rss.xml",
         "Preventive Vet Cats|https://www.preventivevet.com/cats/rss.xml",
+        "Vet Help Direct|https://vethelpdirect.com/vetblog/feed/",
         "Veterinary Practice News|https://www.veterinarypracticenews.com/feed/",
     ]
 )
 PET_KNOWLEDGE_SOURCE_URLS = ",".join(
     [
         "AKC Expert Advice|https://www.akc.org/expert-advice/feed/",
-        "Catster|https://www.catster.com/feed/",
+        "Whole Dog Journal|https://www.whole-dog-journal.com/feed/",
+        "Animal Wellness Magazine|https://animalwellnessmagazine.com/feed/",
         "Fear Free Happy Homes|https://www.fearfreehappyhomes.com/feed/",
+        "Canine Journal|https://www.caninejournal.com/feed/",
+        "DogTime|https://dogtime.com/feed",
+        "Catster|https://www.catster.com/feed/",
+        "Cats.com|https://cats.com/feed",
+        "Modern Cat|https://moderncat.com/feed/",
     ]
 )
 PET_INDUSTRY_SOURCE_URLS = ",".join(
@@ -326,6 +333,20 @@ def ensure_runtime_schema() -> None:
         WHERE tenant_id = 2
           AND group_key IN ('pet-health', 'pet-knowledge', 'pet-industry')
           AND source_urls = ''
+        """,
+        f"""
+        UPDATE content_groups
+        SET source_urls = '{PET_HEALTH_SOURCE_URLS}'
+        WHERE tenant_id = 2
+          AND group_key = 'pet-health'
+          AND source_urls NOT LIKE '%Vet Help Direct|https://vethelpdirect.com/vetblog/feed/%'
+        """,
+        f"""
+        UPDATE content_groups
+        SET source_urls = '{PET_KNOWLEDGE_SOURCE_URLS}'
+        WHERE tenant_id = 2
+          AND group_key = 'pet-knowledge'
+          AND source_urls NOT LIKE '%Animal Wellness Magazine|https://animalwellnessmagazine.com/feed/%'
         """,
         """
         UPDATE content_groups
