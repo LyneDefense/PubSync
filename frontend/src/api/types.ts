@@ -44,13 +44,11 @@ export interface WeChatAccount {
   tenant_id: number
   app_id: string
   app_secret_configured: boolean
-  auto_send_draft: boolean
 }
 
 export interface WeChatAccountUpdate {
   app_id?: string
   app_secret?: string
-  auto_send_draft?: boolean
 }
 
 export interface LayoutSettings {
@@ -86,16 +84,51 @@ export interface LayoutSettingsUpdate {
   show_editor_note?: boolean
 }
 
+export interface PublishingSettings {
+  tenant_id: number
+  daily_publish_enabled: boolean
+  publish_time_hour: number
+  publish_time_minute: number
+  auto_send_wechat_draft: boolean
+  generate_article_images: boolean
+  max_article_images: number
+  min_article_images: number
+  news_source_urls: string
+  international_news_source_urls: string
+  domestic_news_source_urls: string
+  news_per_source_limit: number
+  international_news_candidates: number
+  domestic_news_candidates: number
+  news_lookback_hours: number
+  max_news_candidates: number
+  dedup_lookback_days: number
+  dedup_direct_similarity: string
+  dedup_review_similarity: string
+  dedup_enable_llm_review: boolean
+  article_news_limit: number
+  article_news_lookback_hours: number
+  article_domestic_min: number
+  article_domestic_target: number
+  article_domestic_max: number
+  article_international_min: number
+  article_international_target: number
+  article_international_max: number
+}
+
+export type PublishingSettingsUpdate = Partial<Omit<PublishingSettings, 'tenant_id'>>
+
 export interface WorkspaceConfig {
   profile: ContentProfile
   wechat: WeChatAccount
   layout: LayoutSettings
+  publishing: PublishingSettings
 }
 
 export interface WorkspaceConfigUpdate {
   profile?: ContentProfileUpdate
   wechat?: WeChatAccountUpdate
   layout?: LayoutSettingsUpdate
+  publishing?: PublishingSettingsUpdate
 }
 
 export interface NewsItem {

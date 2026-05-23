@@ -37,17 +37,19 @@ from app.services.task_service import (
     create_operation_task,
     run_article_generation_task,
     run_news_fetch_task,
-    scheduled_daily_publish,
+    scheduled_workspace_publish,
 )
 from app.services.tenant_service import (
     get_default_tenant,
-    get_profile,
-    get_tenant,
     get_layout_settings,
+    get_profile,
+    get_publishing_settings,
+    get_tenant,
     get_wechat_account,
     list_tenants,
     update_layout_settings,
     update_profile,
+    update_publishing_settings,
     update_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
@@ -78,11 +80,10 @@ class LoginResponse(BaseModel):
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     scheduler.add_job(
-        scheduled_daily_publish,
-        "cron",
-        hour=settings.publish_time_hour,
-        minute=settings.publish_time_minute,
-        id="daily_publish",
+        scheduled_workspace_publish,
+        "interval",
+        minutes=1,
+        id="workspace_daily_publish",
         replace_existing=True,
     )
     scheduler.start()
@@ -156,7 +157,6 @@ def read_wechat_account(account: WeChatAccount) -> WeChatAccountRead:
         tenant_id=account.tenant_id,
         app_id=account.app_id,
         app_secret_configured=bool(account.app_secret),
-        auto_send_draft=account.auto_send_draft,
     )
 
 
@@ -169,6 +169,7 @@ def get_workspace_config_endpoint(
         profile=get_profile(db, tenant),
         wechat=read_wechat_account(get_wechat_account(db, tenant)),
         layout=get_layout_settings(db, tenant),
+        publishing=get_publishing_settings(db, tenant),
     )
 
 
@@ -181,13 +182,16 @@ def update_workspace_config_endpoint(
     profile = get_profile(db, tenant)
     account = get_wechat_account(db, tenant)
     layout = get_layout_settings(db, tenant)
+    publishing = get_publishing_settings(db, tenant)
     if payload.profile:
         profile = update_profile(db, tenant, payload.profile)
     if payload.wechat:
         account = update_wechat_account(db, tenant, payload.wechat)
     if payload.layout:
         layout = update_layout_settings(db, tenant, payload.layout)
-    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account), layout=layout)
+    if payload.publishing:
+        publishing = update_publishing_settings(db, tenant, payload.publishing)
+    return WorkspaceConfigRead(profile=profile, wechat=read_wechat_account(account), layout=layout, publishing=publishing)
 
 
 @app.get("/dashboard", response_model=DashboardRead)
@@ -203,12 +207,13 @@ def get_dashboard(tenant: Tenant = Depends(current_tenant), db: Session = Depend
         select(Article).where(Article.tenant_id == tenant.id).order_by(Article.created_at.desc()).limit(1)
     )
     last_fetch_at = db.get(AppSetting, f"tenant:{tenant.id}:last_fetch_at")
+    publishing = get_publishing_settings(db, tenant)
     return DashboardRead(
         news_count=news_count,
         selected_count=selected_count,
         latest_article=latest_article,
         last_fetch_at=last_fetch_at.value if last_fetch_at else None,
-        scheduled_publish_time=f"{settings.publish_time_hour:02d}:{settings.publish_time_minute:02d}",
+        scheduled_publish_time=f"{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}",
     )
 
 

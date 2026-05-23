@@ -506,6 +506,22 @@ p {
   gap: 14px;
 }
 
+.config-subsection {
+  border-top: 1px solid rgba(125, 211, 252, 0.16);
+  padding-top: 18px;
+}
+
+.config-subsection:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.config-subsection h3 {
+  margin: 6px 0 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
 .toggle-row {
   display: flex;
   min-height: 44px;

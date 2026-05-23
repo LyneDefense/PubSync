@@ -95,8 +95,7 @@ const profileForm = reactive({
 const wechatForm = reactive({
   app_id: '',
   app_secret: '',
-  app_secret_configured: false,
-  auto_send_draft: false
+  app_secret_configured: false
 })
 
 const layoutForm = reactive({
@@ -113,6 +112,36 @@ const layoutForm = reactive({
   show_group_heading: true,
   show_source: true,
   show_editor_note: true
+})
+
+const publishingForm = reactive({
+  daily_publish_enabled: false,
+  publish_time_hour: 8,
+  publish_time_minute: 0,
+  auto_send_wechat_draft: false,
+  generate_article_images: true,
+  max_article_images: 3,
+  min_article_images: 1,
+  news_source_urls: '',
+  international_news_source_urls: '',
+  domestic_news_source_urls: '',
+  news_per_source_limit: 8,
+  international_news_candidates: 40,
+  domestic_news_candidates: 40,
+  news_lookback_hours: 72,
+  max_news_candidates: 80,
+  dedup_lookback_days: 7,
+  dedup_direct_similarity: '0.82',
+  dedup_review_similarity: '0.42',
+  dedup_enable_llm_review: true,
+  article_news_limit: 10,
+  article_news_lookback_hours: 72,
+  article_domestic_min: 1,
+  article_domestic_target: 3,
+  article_domestic_max: 4,
+  article_international_min: 3,
+  article_international_target: 6,
+  article_international_max: 7
 })
 
 const hasArticle = computed(() => Boolean(article.value))
@@ -287,7 +316,6 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   wechatForm.app_id = config.wechat.app_id
   wechatForm.app_secret = ''
   wechatForm.app_secret_configured = config.wechat.app_secret_configured
-  wechatForm.auto_send_draft = config.wechat.auto_send_draft
   layoutForm.template_name = config.layout.template_name
   layoutForm.primary_color = config.layout.primary_color
   layoutForm.accent_color = config.layout.accent_color
@@ -301,6 +329,7 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
   layoutForm.show_group_heading = config.layout.show_group_heading
   layoutForm.show_source = config.layout.show_source
   layoutForm.show_editor_note = config.layout.show_editor_note
+  Object.assign(publishingForm, config.publishing)
 }
 
 async function loadTenantOptions() {
@@ -433,10 +462,10 @@ async function handleSaveConfig() {
       },
       wechat: {
         app_id: wechatForm.app_id,
-        ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {}),
-        auto_send_draft: wechatForm.auto_send_draft
+        ...(wechatForm.app_secret.trim() ? { app_secret: wechatForm.app_secret.trim() } : {})
       },
-      layout: { ...layoutForm }
+      layout: { ...layoutForm },
+      publishing: { ...publishingForm }
     }
     const nextConfig = await updateWorkspaceConfig(payload)
     setWorkspaceConfig(nextConfig)
@@ -721,6 +750,10 @@ onUnmounted(() => {
           </div>
         </div>
         <form class="config-form" @submit.prevent="handleSaveConfig">
+          <div class="config-subsection">
+            <p class="eyebrow">基础信息</p>
+            <h3>工作空间与文章标题</h3>
+          </div>
           <div class="config-grid">
             <label>
               公众号/栏目名称
@@ -755,6 +788,10 @@ onUnmounted(() => {
             </label>
           </div>
 
+          <div class="config-subsection">
+            <p class="eyebrow">公众号</p>
+            <h3>微信草稿箱配置</h3>
+          </div>
           <label>
             微信 AppSecret
             <input
@@ -764,10 +801,140 @@ onUnmounted(() => {
               :placeholder="wechatForm.app_secret_configured ? '已配置，留空则不修改' : '未配置'"
             />
           </label>
-          <label class="toggle-row">
-            <input v-model="wechatForm.auto_send_draft" type="checkbox" />
-            定时任务完成后自动发送到公众号草稿箱
+          <div class="config-subsection">
+            <p class="eyebrow">自动化</p>
+            <h3>定时发布</h3>
+          </div>
+          <div class="config-grid">
+            <label class="toggle-row">
+              <input v-model="publishingForm.daily_publish_enabled" type="checkbox" />
+              启用每日定时任务
+            </label>
+            <label class="toggle-row">
+              <input v-model="publishingForm.auto_send_wechat_draft" type="checkbox" />
+              生成后自动发送草稿箱
+            </label>
+            <label>
+              发布时间：小时
+              <input v-model.number="publishingForm.publish_time_hour" type="number" min="0" max="23" />
+            </label>
+            <label>
+              发布时间：分钟
+              <input v-model.number="publishingForm.publish_time_minute" type="number" min="0" max="59" />
+            </label>
+          </div>
+
+          <div class="config-subsection">
+            <p class="eyebrow">新闻抓取</p>
+            <h3>来源与候选池</h3>
+          </div>
+          <div class="config-grid">
+            <label>
+              每个源最多抓取
+              <input v-model.number="publishingForm.news_per_source_limit" type="number" min="1" max="50" />
+            </label>
+            <label>
+              新闻回看小时
+              <input v-model.number="publishingForm.news_lookback_hours" type="number" min="1" max="168" />
+            </label>
+            <label>
+              国际候选数量
+              <input v-model.number="publishingForm.international_news_candidates" type="number" min="0" max="200" />
+            </label>
+            <label>
+              国内候选数量
+              <input v-model.number="publishingForm.domestic_news_candidates" type="number" min="0" max="200" />
+            </label>
+            <label>
+              总候选上限
+              <input v-model.number="publishingForm.max_news_candidates" type="number" min="1" max="300" />
+            </label>
+          </div>
+          <label>
+            通用新闻源
+            <textarea v-model="publishingForm.news_source_urls" rows="3"></textarea>
           </label>
+          <label>
+            国际新闻源
+            <textarea v-model="publishingForm.international_news_source_urls" rows="3"></textarea>
+          </label>
+          <label>
+            国内新闻源
+            <textarea v-model="publishingForm.domestic_news_source_urls" rows="3"></textarea>
+          </label>
+
+          <div class="config-subsection">
+            <p class="eyebrow">生成策略</p>
+            <h3>文章、图片与去重</h3>
+          </div>
+          <div class="config-grid">
+            <label class="toggle-row">
+              <input v-model="publishingForm.generate_article_images" type="checkbox" />
+              生成正文配图
+            </label>
+            <label class="toggle-row">
+              <input v-model="publishingForm.dedup_enable_llm_review" type="checkbox" />
+              启用大模型去重复核
+            </label>
+            <label>
+              最少正文图
+              <input v-model.number="publishingForm.min_article_images" type="number" min="0" max="10" />
+            </label>
+            <label>
+              最多正文图
+              <input v-model.number="publishingForm.max_article_images" type="number" min="0" max="10" />
+            </label>
+            <label>
+              文章新闻数量
+              <input v-model.number="publishingForm.article_news_limit" type="number" min="1" max="50" />
+            </label>
+            <label>
+              文章回看小时
+              <input v-model.number="publishingForm.article_news_lookback_hours" type="number" min="1" max="168" />
+            </label>
+            <label>
+              去重回看天数
+              <input v-model.number="publishingForm.dedup_lookback_days" type="number" min="1" max="30" />
+            </label>
+            <label>
+              直接判重阈值
+              <input v-model="publishingForm.dedup_direct_similarity" type="number" min="0" max="1" step="0.01" />
+            </label>
+            <label>
+              大模型复核阈值
+              <input v-model="publishingForm.dedup_review_similarity" type="number" min="0" max="1" step="0.01" />
+            </label>
+          </div>
+          <div v-if="usesRegionalGrouping" class="config-grid">
+            <label>
+              国内最少
+              <input v-model.number="publishingForm.article_domestic_min" type="number" min="0" max="50" />
+            </label>
+            <label>
+              国内目标
+              <input v-model.number="publishingForm.article_domestic_target" type="number" min="0" max="50" />
+            </label>
+            <label>
+              国内最多
+              <input v-model.number="publishingForm.article_domestic_max" type="number" min="0" max="50" />
+            </label>
+            <label>
+              国际最少
+              <input v-model.number="publishingForm.article_international_min" type="number" min="0" max="50" />
+            </label>
+            <label>
+              国际目标
+              <input v-model.number="publishingForm.article_international_target" type="number" min="0" max="50" />
+            </label>
+            <label>
+              国际最多
+              <input v-model.number="publishingForm.article_international_max" type="number" min="0" max="50" />
+            </label>
+          </div>
+          <div class="config-subsection">
+            <p class="eyebrow">排版</p>
+            <h3>视觉参数与实时预览</h3>
+          </div>
           <div class="layout-editor">
             <div class="layout-controls">
               <div class="config-grid">

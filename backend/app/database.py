@@ -102,6 +102,60 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        """
+        INSERT INTO publishing_settings (
+            tenant_id, daily_publish_enabled, publish_time_hour, publish_time_minute, auto_send_wechat_draft,
+            generate_article_images, max_article_images, min_article_images,
+            news_source_urls, international_news_source_urls, domestic_news_source_urls,
+            news_per_source_limit, international_news_candidates, domestic_news_candidates,
+            news_lookback_hours, max_news_candidates, dedup_lookback_days,
+            dedup_direct_similarity, dedup_review_similarity, dedup_enable_llm_review,
+            article_news_limit, article_news_lookback_hours,
+            article_domestic_min, article_domestic_target, article_domestic_max,
+            article_international_min, article_international_target, article_international_max,
+            updated_at
+        )
+        VALUES (
+            1, false, 8, 0, false,
+            true, 3, 1,
+            '', '', '',
+            8, 40, 40,
+            72, 80, 7,
+            '0.82', '0.42', true,
+            10, 72,
+            1, 3, 4,
+            3, 6, 7,
+            NOW()
+        )
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
+        """
+        INSERT INTO publishing_settings (
+            tenant_id, daily_publish_enabled, publish_time_hour, publish_time_minute, auto_send_wechat_draft,
+            generate_article_images, max_article_images, min_article_images,
+            news_source_urls, international_news_source_urls, domestic_news_source_urls,
+            news_per_source_limit, international_news_candidates, domestic_news_candidates,
+            news_lookback_hours, max_news_candidates, dedup_lookback_days,
+            dedup_direct_similarity, dedup_review_similarity, dedup_enable_llm_review,
+            article_news_limit, article_news_lookback_hours,
+            article_domestic_min, article_domestic_target, article_domestic_max,
+            article_international_min, article_international_target, article_international_max,
+            updated_at
+        )
+        VALUES (
+            2, false, 8, 0, false,
+            true, 2, 1,
+            '', '', '',
+            8, 20, 40,
+            72, 60, 7,
+            '0.82', '0.42', true,
+            8, 72,
+            0, 0, 0,
+            0, 8, 8,
+            NOW()
+        )
+        ON CONFLICT (tenant_id) DO NOTHING
+        """,
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(200)",
         "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_status VARCHAR(30) NOT NULL DEFAULT 'unique'",

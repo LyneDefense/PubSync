@@ -26,7 +26,7 @@ class WeChatAPIError(RuntimeError):
 def send_article_to_wechat_draft(db: Session, article: Article) -> Article:
     try:
         settings = get_settings()
-        app_id, app_secret = resolve_wechat_credentials(db, article, settings.wechat_app_id, settings.wechat_app_secret)
+        app_id, app_secret = resolve_wechat_credentials(db, article)
         access_token = get_access_token(app_id, app_secret)
         cover_bytes, content_type = get_cover_image(article.cover_image_url)
         thumb_media_id = upload_permanent_cover(access_token, cover_bytes, content_type)
@@ -50,13 +50,11 @@ def send_article_to_wechat_draft(db: Session, article: Article) -> Article:
 def resolve_wechat_credentials(
     db: Session,
     article: Article,
-    fallback_app_id: str,
-    fallback_app_secret: str,
 ) -> tuple[str, str]:
     account = db.scalar(select(WeChatAccount).where(WeChatAccount.tenant_id == article.tenant_id))
     if account and account.app_id and account.app_secret:
         return account.app_id, account.app_secret
-    return fallback_app_id, fallback_app_secret
+    raise WeChatAPIError("当前工作空间未配置微信公众号 AppID 或 AppSecret", status_code=400)
 
 
 def get_access_token(app_id: str, app_secret: str) -> str:

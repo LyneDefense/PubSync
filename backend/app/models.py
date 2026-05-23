@@ -104,6 +104,42 @@ class LayoutSettings(Base):
     tenant: Mapped[Tenant] = relationship()
 
 
+class PublishingSettings(Base):
+    __tablename__ = "publishing_settings"
+
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    daily_publish_enabled: Mapped[bool] = mapped_column(default=False)
+    publish_time_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    publish_time_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auto_send_wechat_draft: Mapped[bool] = mapped_column(default=False)
+    generate_article_images: Mapped[bool] = mapped_column(default=True)
+    max_article_images: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    min_article_images: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    news_source_urls: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    international_news_source_urls: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    domestic_news_source_urls: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    news_per_source_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    international_news_candidates: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
+    domestic_news_candidates: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
+    news_lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=72)
+    max_news_candidates: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    dedup_lookback_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    dedup_direct_similarity: Mapped[str] = mapped_column(String(20), nullable=False, default="0.82")
+    dedup_review_similarity: Mapped[str] = mapped_column(String(20), nullable=False, default="0.42")
+    dedup_enable_llm_review: Mapped[bool] = mapped_column(default=True)
+    article_news_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    article_news_lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=72)
+    article_domestic_min: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    article_domestic_target: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    article_domestic_max: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    article_international_min: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    article_international_target: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    article_international_max: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
 class NewsItem(Base):
     __tablename__ = "news_items"
     __table_args__ = (UniqueConstraint("tenant_id", "url", name="uq_news_items_tenant_url"),)

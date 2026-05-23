@@ -1,8 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ContentProfile, LayoutSettings, Tenant, TenantStatus, WeChatAccount
-from app.schemas import ContentProfileUpdate, LayoutSettingsUpdate, WeChatAccountUpdate
+from app.config import Settings
+from app.models import ContentProfile, LayoutSettings, PublishingSettings, Tenant, TenantStatus, WeChatAccount
+from app.schemas import ContentProfileUpdate, LayoutSettingsUpdate, PublishingSettingsUpdate, WeChatAccountUpdate
 
 
 DEFAULT_TENANT_ID = 1
@@ -65,6 +66,8 @@ def ensure_tenant_defaults(db: Session, tenant: Tenant) -> None:
                 show_group_heading=tenant.id == DEFAULT_TENANT_ID,
             )
         )
+    if not db.get(PublishingSettings, tenant.id):
+        db.add(PublishingSettings(tenant_id=tenant.id))
     db.commit()
 
 
@@ -92,6 +95,14 @@ def get_layout_settings(db: Session, tenant: Tenant) -> LayoutSettings:
     return layout
 
 
+def get_publishing_settings(db: Session, tenant: Tenant) -> PublishingSettings:
+    ensure_tenant_defaults(db, tenant)
+    publishing = db.get(PublishingSettings, tenant.id)
+    if not publishing:
+        raise RuntimeError("工作空间发布配置初始化失败")
+    return publishing
+
+
 def update_profile(db: Session, tenant: Tenant, payload: ContentProfileUpdate) -> ContentProfile:
     profile = get_profile(db, tenant)
     data = payload.model_dump(exclude_unset=True)
@@ -112,8 +123,6 @@ def update_wechat_account(db: Session, tenant: Tenant, payload: WeChatAccountUpd
         account.app_id = data["app_id"].strip()
     if "app_secret" in data and data["app_secret"]:
         account.app_secret = data["app_secret"].strip()
-    if "auto_send_draft" in data and data["auto_send_draft"] is not None:
-        account.auto_send_draft = data["auto_send_draft"]
     db.commit()
     db.refresh(account)
     return account
@@ -127,3 +136,46 @@ def update_layout_settings(db: Session, tenant: Tenant, payload: LayoutSettingsU
     db.commit()
     db.refresh(layout)
     return layout
+
+
+def update_publishing_settings(db: Session, tenant: Tenant, payload: PublishingSettingsUpdate) -> PublishingSettings:
+    publishing = get_publishing_settings(db, tenant)
+    data = payload.model_dump(exclude_unset=True)
+    if "max_article_images" in data and "min_article_images" in data:
+        data["min_article_images"] = min(data["min_article_images"], data["max_article_images"])
+    for key, value in data.items():
+        if value is not None:
+            setattr(publishing, key, normalize_publishing_value(key, value))
+    if publishing.min_article_images > publishing.max_article_images:
+        publishing.min_article_images = publishing.max_article_images
+    db.commit()
+    db.refresh(publishing)
+    return publishing
+
+
+def normalize_publishing_value(key: str, value: object) -> object:
+    if key in {"dedup_direct_similarity", "dedup_review_similarity"}:
+        try:
+            parsed = float(str(value))
+        except (TypeError, ValueError):
+            parsed = 0.0
+        return str(max(0.0, min(1.0, parsed)))
+    return value
+
+
+class EffectiveSettings:
+    def __init__(self, settings: Settings, publishing: PublishingSettings) -> None:
+        self._settings = settings
+        self._publishing = publishing
+
+    def __getattr__(self, name: str) -> object:
+        if hasattr(self._publishing, name):
+            value = getattr(self._publishing, name)
+            if name in {"dedup_direct_similarity", "dedup_review_similarity"}:
+                return float(value)
+            return value
+        return getattr(self._settings, name)
+
+
+def build_effective_settings(settings: Settings, publishing: PublishingSettings) -> EffectiveSettings:
+    return EffectiveSettings(settings, publishing)
