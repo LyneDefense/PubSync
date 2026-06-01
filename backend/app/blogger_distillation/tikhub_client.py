@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -34,6 +36,10 @@ class XhsPostCandidate:
     external_id: str
     xsec_token: str
     note_type: str
+    like_count: int
+    favorite_count: int
+    comment_count: int
+    share_count: int
     raw: dict[str, Any]
 
 
@@ -45,43 +51,70 @@ class TikHubXhsClient:
         self.usage = TikHubUsage()
         self.router = EndpointRouter(self._get)
         self.user_id = ""
+        self.profile_xsec_token = ""
 
     def get_user_info(self, homepage_url: str) -> dict[str, Any]:
-        payload = self.router.call("user_info", {"share_text": homepage_url, "user_id": self.user_id})
+        link = parse_xhs_profile_link(homepage_url)
+        self.user_id = self.user_id or link["user_id"]
+        self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
+        payload = self.router.call(
+            "user_info",
+            {"share_text": link["share_text"], "user_id": self.user_id, "xsec_token": self.profile_xsec_token},
+        )
         self.user_id = self.user_id or find_user_id(payload)
         return payload
 
     def get_user_notes(self, homepage_url: str, limit: int) -> list[XhsPostCandidate]:
+        link = parse_xhs_profile_link(homepage_url)
+        self.user_id = self.user_id or link["user_id"]
+        self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
         candidates: list[XhsPostCandidate] = []
         cursor = ""
         seen_ids: set[str] = set()
-        for _ in range(10):
+        for page in range(20):
             payload = self.router.call(
                 "user_notes",
                 {
-                    "share_text": homepage_url,
+                    "share_text": link["share_text"],
                     "user_id": self.user_id,
+                    "xsec_token": self.profile_xsec_token,
                     "cursor": cursor,
                     "num": min(20, max(limit, 1)),
                 },
             )
-            notes = find_note_candidates(payload)
+            page_data = extract_note_page(payload)
+            notes = page_data["notes"]
+            logger.info(
+                "小红书主页笔记分页：page=%s，cursor=%s，解析=%s，has_more=%s，next_cursor=%s",
+                page + 1,
+                cursor or "<empty>",
+                len(notes),
+                page_data["has_more"],
+                page_data["next_cursor"] or "<empty>",
+            )
             for note in notes:
                 external_id = first_str(note, ["note_id", "id", "noteId", "note_id_str"])
                 if not external_id or external_id in seen_ids:
                     continue
                 seen_ids.add(external_id)
+                counts = extract_interaction_counts(note)
                 candidates.append(
                     XhsPostCandidate(
                         external_id=external_id,
                         xsec_token=first_str(note, ["xsec_token", "xsecToken", "xsec_source"]) or "",
                         note_type=detect_note_type(note),
+                        like_count=counts["like_count"],
+                        favorite_count=counts["favorite_count"],
+                        comment_count=counts["comment_count"],
+                        share_count=counts["share_count"],
                         raw=note,
                     )
                 )
                 if len(candidates) >= limit:
                     return candidates
-            next_cursor = find_cursor(payload)
+            next_cursor = page_data["next_cursor"]
+            if not page_data["has_more"] and not next_cursor:
+                break
             if not next_cursor or next_cursor == cursor:
                 break
             cursor = next_cursor
@@ -221,18 +254,130 @@ def parse_count(value: str) -> int | None:
         return None
 
 
+def parse_xhs_profile_link(homepage_url: str) -> dict[str, str]:
+    raw = homepage_url.strip().rstrip("。.,，；;")
+    parsed = urlparse(raw)
+    path = parsed.path or raw
+    match = re.search(r"/user/profile/([^/?#]+)", path)
+    if not match:
+        raise TikHubError("请输入小红书博主主页链接，格式应为 https://www.xiaohongshu.com/user/profile/{user_id}")
+    query = parse_qs(parsed.query)
+    return {
+        "share_text": raw,
+        "user_id": match.group(1),
+        "xsec_token": (query.get("xsec_token") or [""])[0],
+    }
+
+
+def extract_note_page(payload: dict[str, Any]) -> dict[str, Any]:
+    page = find_best_note_container(payload)
+    if page is None:
+        return {"notes": [], "next_cursor": "", "has_more": False}
+    notes = [normalize_feed_item(item) for item in extract_container_items(page)]
+    notes = [item for item in notes if first_str(item, ["note_id", "id", "noteId", "display_title", "title"])]
+    return {
+        "notes": notes,
+        "next_cursor": find_container_cursor(page, notes),
+        "has_more": first_bool(page, ["has_more", "hasMore", "has_more_note"]),
+    }
+
+
+def find_best_note_container(value: Any) -> dict[str, Any] | None:
+    candidates: list[tuple[int, dict[str, Any]]] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            items = extract_container_items(node)
+            normalized = [normalize_feed_item(item) for item in items]
+            note_count = sum(1 for item in normalized if first_str(item, ["note_id", "id", "noteId", "display_title", "title"]))
+            if note_count:
+                cursor_bonus = 2 if any(key in node for key in ("cursor", "next_cursor", "nextCursor", "lastCursor", "has_more", "hasMore")) else 0
+                candidates.append((note_count * 10 + cursor_bonus, node))
+            for child in node.values():
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def extract_container_items(container: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("items", "notes", "feeds", "list"):
+        value = container.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def normalize_feed_item(item: dict[str, Any]) -> dict[str, Any]:
+    note = item.get("noteCard") or item.get("note_card") or item.get("note")
+    if isinstance(note, dict):
+        merged = dict(note)
+        for key in ("id", "note_id", "noteId", "xsecToken", "xsec_token", "cursor", "type"):
+            if item.get(key) not in (None, "", [], {}) and key not in merged:
+                merged[key] = item[key]
+        return merged
+    return item
+
+
+def find_container_cursor(container: dict[str, Any], notes: list[dict[str, Any]]) -> str:
+    for key in ("next_cursor", "nextCursor", "cursor", "lastCursor", "last_cursor"):
+        value = container.get(key)
+        if isinstance(value, (str, int)) and str(value).strip():
+            return str(value).strip()
+    for note in reversed(notes):
+        value = note.get("cursor")
+        if isinstance(value, (str, int)) and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def extract_interaction_counts(value: dict[str, Any]) -> dict[str, int]:
+    interact = recursive_find(value, "interact_info") or recursive_find(value, "interactInfo")
+    sources = [item for item in (interact, value) if isinstance(item, dict)]
+    return {
+        "like_count": first_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes"]),
+        "favorite_count": first_count(
+            sources,
+            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects"],
+        ),
+        "comment_count": first_count(sources, ["comment_count", "comment_count_str", "commentCount", "comments"]),
+        "share_count": first_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares"]),
+    }
+
+
+def first_count(sources: list[dict[str, Any]], keys: list[str]) -> int:
+    for source in sources:
+        count = first_int(source, keys)
+        if count > 0:
+            return count
+    return 0
+
+
+def first_bool(data: dict[str, Any], keys: list[str]) -> bool:
+    for key in keys:
+        value = data.get(key)
+        if value in (None, ""):
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y"}:
+                return True
+            if normalized in {"false", "0", "no", "n", ""}:
+                return False
+    return False
+
+
 def find_note_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    lists = find_lists(payload)
-    note_lists = [
-        items
-        for items in lists
-        if items
-        and isinstance(items[0], dict)
-        and any(key in items[0] for key in ("note_id", "noteId", "id", "display_title", "title", "desc"))
-    ]
-    if not note_lists:
-        return []
-    return max(note_lists, key=len)
+    return extract_note_page(payload)["notes"]
 
 
 def find_comment_items(payload: dict[str, Any]) -> list[dict[str, Any]]:

@@ -259,9 +259,7 @@ def collect_posts(
 def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) -> dict[str, Any]:
     payload = unwrap_payload(detail_payload)
     raw = normalize_detail_payload(payload, detail_payload)
-    interact = recursive_find(raw, "interact_info") or recursive_find(raw, "interactInfo")
-    if not isinstance(interact, dict):
-        interact = raw
+    counts = merge_interaction_counts(raw, candidate)
     hashtags = extract_hashtags(raw)
     media_urls = extract_media_urls(raw)
     video_url = extract_video_url(raw)
@@ -273,10 +271,10 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     published_at = parse_timestamp(
         recursive_find(raw, "time") or recursive_find(raw, "timestamp") or recursive_find(raw, "last_update_time")
     )
-    like_count = first_int(interact, ["liked_count", "likedCount", "like_count", "likeCount", "likes"])
-    favorite_count = first_int(interact, ["collected_count", "collectedCount", "favorite_count", "collect_count"])
-    comment_count = first_int(interact, ["comment_count", "commentCount", "comments"])
-    share_count = first_int(interact, ["share_count", "shareCount", "sharedCount", "shares"])
+    like_count = counts["like_count"]
+    favorite_count = counts["favorite_count"]
+    comment_count = counts["comment_count"]
+    share_count = counts["share_count"]
     score = like_count * 0.35 + favorite_count * 0.45 + comment_count * 0.2 + share_count * 0.05
     return {
         "external_id": candidate.external_id,
@@ -322,6 +320,38 @@ def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str
             return merged
         return payload
     return fallback
+
+
+def merge_interaction_counts(raw: dict[str, Any], candidate: XhsPostCandidate) -> dict[str, int]:
+    detail_counts = extract_counts_from_payload(raw)
+    return {
+        "like_count": detail_counts["like_count"] or candidate.like_count,
+        "favorite_count": detail_counts["favorite_count"] or candidate.favorite_count,
+        "comment_count": detail_counts["comment_count"] or candidate.comment_count,
+        "share_count": detail_counts["share_count"] or candidate.share_count,
+    }
+
+
+def extract_counts_from_payload(raw: dict[str, Any]) -> dict[str, int]:
+    interact = recursive_find(raw, "interact_info") or recursive_find(raw, "interactInfo")
+    sources = [item for item in (interact, raw) if isinstance(item, dict)]
+    return {
+        "like_count": first_positive_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes"]),
+        "favorite_count": first_positive_count(
+            sources,
+            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects"],
+        ),
+        "comment_count": first_positive_count(sources, ["comment_count", "comment_count_str", "commentCount", "comments"]),
+        "share_count": first_positive_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares"]),
+    }
+
+
+def first_positive_count(sources: list[dict[str, Any]], keys: list[str]) -> int:
+    for source in sources:
+        count = first_int(source, keys)
+        if count > 0:
+            return count
+    return 0
 
 
 def handle_video_asr(

@@ -17,13 +17,17 @@ class Endpoint:
 
 XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
     "user_info": [
-        Endpoint("app_v2_share", "/api/v1/xiaohongshu/app_v2/get_user_info", {"share_text": "${share_text}"}),
+        Endpoint("app_v2_share", "/api/v1/xiaohongshu/app_v2/get_user_info", {"share_text": "${share_text}", "xsec_token": "${xsec_token}"}),
         Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_user_info", {"user_id": "${user_id}"}),
         Endpoint("app", "/api/v1/xiaohongshu/app/get_user_info", {"user_id": "${user_id}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_user_info", {"user_id": "${user_id}"}),
     ],
     "user_notes": [
-        Endpoint("app_v2_share", "/api/v1/xiaohongshu/app_v2/get_user_posted_notes", {"share_text": "${share_text}", "cursor": "${cursor}", "num": "${num}"}),
+        Endpoint(
+            "app_v2_share",
+            "/api/v1/xiaohongshu/app_v2/get_user_posted_notes",
+            {"share_text": "${share_text}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"},
+        ),
         Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_user_notes", {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}"}),
         Endpoint("app", "/api/v1/xiaohongshu/app/get_user_notes", {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_user_posted_notes", {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}"}),

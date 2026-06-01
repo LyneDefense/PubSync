@@ -72,6 +72,7 @@ const isError = ref(false)
 const pendingAction = ref<string | null>(null)
 const taskEvents = ref<OperationTaskEvent[]>([])
 const taskEventsAction = ref<TaskActionName | null>(null)
+const showTaskEventDetails = ref(false)
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
@@ -215,6 +216,7 @@ const visibleTaskEvents = computed(() => {
   }
   return taskActionTab(taskEventsAction.value) === activeMainTab.value ? taskEvents.value : []
 })
+const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'distill')
 const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskActionTab(taskEventsAction.value) === activeMainTab.value
@@ -229,6 +231,25 @@ const runningTaskName = computed(() => {
   return '文章生成'
 })
 const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
+const taskSummaryStep = computed(() => {
+  if (latestTaskEvent.value) {
+    return latestTaskEvent.value.step_name
+  }
+  return runningTaskName.value
+})
+const taskSummaryMessage = computed(() => {
+  if (latestTaskEvent.value) {
+    return latestTaskEvent.value.message
+  }
+  return '等待任务事件同步'
+})
+const taskSummaryStatus = computed(() => {
+  if (isVisibleTaskRunning.value) {
+    return 'running'
+  }
+  return latestTaskEvent.value?.status || 'running'
+})
+const taskSummaryPayload = computed(() => (latestTaskEvent.value ? eventPayloadSummary(latestTaskEvent.value) : ''))
 const articleStateLabel = computed(() => {
   const status = article.value?.status
   return status ? statusText[status] || status : '未生成'
@@ -334,6 +355,7 @@ async function runTaskAction(
 ) {
   pendingAction.value = name
   taskEventsAction.value = name
+  showTaskEventDetails.value = false
   startFakeProgress(name)
   showMessage(label)
   try {
@@ -863,23 +885,28 @@ onUnmounted(() => {
           <div>
             <h2>流程执行进度</h2>
           </div>
+          <button type="button" class="ghost" @click="showTaskEventDetails = !showTaskEventDetails">
+            {{ showTaskEventDetails ? '收起详细日志' : `展开详细日志（${visibleTaskEvents.length}）` }}
+          </button>
         </div>
-        <ol>
+        <div class="task-summary" :class="`event-${taskSummaryStatus}`" aria-live="polite">
+          <span>{{ taskSummaryStep }}</span>
+          <strong>{{ taskSummaryMessage }}</strong>
+          <small v-if="taskSummaryPayload">{{ taskSummaryPayload }}</small>
+          <time>{{ latestTaskEvent ? formatDate(latestTaskEvent.created_at) : '同步中' }}</time>
+          <strong v-if="isVisibleTaskRunning" class="live-tail" aria-label="流程仍在执行">
+            <i aria-hidden="true"></i>
+            <i aria-hidden="true"></i>
+            <i aria-hidden="true"></i>
+            <b aria-hidden="true"></b>
+          </strong>
+        </div>
+        <ol v-if="showTaskEventDetails">
           <li v-for="event in visibleTaskEvents" :key="event.id" :class="`event-${event.status}`">
             <span>{{ event.step_name }}</span>
             <strong>{{ event.message }}</strong>
             <small v-if="eventPayloadSummary(event)">{{ eventPayloadSummary(event) }}</small>
             <time>{{ formatDate(event.created_at) }}</time>
-          </li>
-          <li v-if="isVisibleTaskRunning" class="event-live-tail" aria-live="polite">
-            <span>{{ runningTaskName }}</span>
-            <strong class="live-tail" aria-label="流程仍在执行">
-              <i aria-hidden="true"></i>
-              <i aria-hidden="true"></i>
-              <i aria-hidden="true"></i>
-              <b aria-hidden="true"></b>
-            </strong>
-            <time>同步中</time>
           </li>
         </ol>
       </section>
