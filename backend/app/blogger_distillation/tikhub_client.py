@@ -127,6 +127,14 @@ class TikHubXhsClient:
     def get_video_note_detail_variants(self, candidate: XhsPostCandidate) -> list[dict[str, Any]]:
         variants: list[dict[str, Any]] = []
         for endpoint in self.router.pools.get("video_detail", []):
+            if endpoint.group == "web_v3" and not candidate.xsec_token:
+                logger.info(
+                    "跳过需要 xsec_token 的视频详情端点：端点=%s:%s，note_id=%s",
+                    endpoint.group,
+                    endpoint.path,
+                    candidate.external_id,
+                )
+                continue
             params = EndpointRouter._render_params(
                 endpoint.params,
                 {"note_id": candidate.external_id, "xsec_token": candidate.xsec_token},

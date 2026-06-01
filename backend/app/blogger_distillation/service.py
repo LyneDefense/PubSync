@@ -323,7 +323,7 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     counts = merge_interaction_counts(raw, candidate)
     hashtags = extract_hashtags(raw)
     media_urls = extract_media_urls(raw)
-    video_url = extract_video_url(raw)
+    video_url = extract_video_url(raw) or extract_video_url(detail_payload)
     if video_url and video_url not in media_urls:
         media_urls.insert(0, video_url)
     title = first_str(raw, ["title", "display_title", "note_title"]) or first_str(candidate.raw, ["display_title", "title"])
