@@ -55,6 +55,13 @@ MINIMAX_API_KEY=...
 MINIMAX_TEXT_MODEL=MiniMax-M2.7
 MINIMAX_IMAGE_MODEL=image-01
 
+# Xiaohongshu blogger distillation via TikHub.
+TIKHUB_BASE_URL=https://api.tikhub.io
+TIKHUB_API_KEY=...
+TIKHUB_REQUEST_PRICE_USD=0.001
+TIKHUB_MIN_REQUEST_PRICE_USD=0.001
+TIKHUB_MAX_REQUEST_PRICE_USD=0.01
+
 # Optional OpenAI provider config.
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=

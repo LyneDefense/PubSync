@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -279,4 +279,98 @@ class OperationTaskEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     task: Mapped[OperationTask] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerProfile(Base):
+    __tablename__ = "blogger_profiles"
+    __table_args__ = (UniqueConstraint("tenant_id", "homepage_url", name="uq_blogger_profiles_tenant_homepage"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, default="xhs")
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    homepage_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    niche: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_distilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerPost(Base):
+    __tablename__ = "blogger_posts"
+    __table_args__ = (UniqueConstraint("tenant_id", "blogger_id", "external_id", name="uq_blogger_posts_external_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, default="xhs")
+    external_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    hashtags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    cover_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    media_urls_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    like_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    favorite_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    share_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    comments_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    raw_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    blogger: Mapped[BloggerProfile] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerDistillationRun(Base):
+    __tablename__ = "blogger_distillation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("operation_tasks.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hot_post_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tikhub_request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tikhub_estimated_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    tikhub_cost_min_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    tikhub_cost_max_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    report_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    report_html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    blogger: Mapped[BloggerProfile] = relationship()
+    task: Mapped[OperationTask | None] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerSkill(Base):
+    __tablename__ = "blogger_skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("blogger_distillation_runs.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    skill_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    blogger: Mapped[BloggerProfile] = relationship()
+    run: Mapped[BloggerDistillationRun] = relationship()
     tenant: Mapped[Tenant] = relationship()

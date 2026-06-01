@@ -584,6 +584,97 @@ p {
   text-underline-offset: 4px;
 }
 
+.distill-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-md);
+  align-items: start;
+  margin-top: var(--space-md);
+}
+
+.distill-card {
+  display: grid;
+  gap: var(--space-sm);
+  border: var(--rule-hair);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-2);
+  padding: var(--space-sm);
+}
+
+.distill-card h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+
+.blogger-list,
+.sample-list {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.blogger-list button {
+  display: grid;
+  height: auto;
+  min-height: 58px;
+  justify-items: start;
+  gap: 3px;
+  text-align: left;
+  white-space: normal;
+}
+
+.blogger-list button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.blogger-list span,
+.sample-list span {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+}
+
+.sample-list div {
+  display: grid;
+  gap: 4px;
+  border-bottom: var(--rule-hair);
+  padding: var(--space-xs) 0;
+}
+
+.sample-list div:last-child {
+  border-bottom: 0;
+}
+
+.distill-result {
+  display: grid;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.distill-report {
+  max-height: 520px;
+  overflow: auto;
+  line-height: 1.7;
+}
+
+.distill-report h1,
+.distill-report h2 {
+  font-family: var(--font-display);
+}
+
+.distill-report h1 {
+  font-size: var(--text-xl);
+}
+
+.distill-report h2 {
+  margin-top: var(--space-sm);
+  font-size: var(--text-lg);
+}
+
+.distill-report li {
+  margin-bottom: var(--space-2xs);
+}
+
 .meta {
   color: var(--color-ink-3);
   font-size: var(--text-sm);
@@ -879,7 +970,8 @@ dd {
   }
 
   .workspace-snapshot,
-  .config-grid {
+  .config-grid,
+  .distill-grid {
     grid-template-columns: 1fr;
   }
 

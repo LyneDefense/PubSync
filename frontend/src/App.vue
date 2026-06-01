@@ -4,6 +4,8 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   clearAuthToken,
   clearTenantId,
+  createBlogger,
+  distillBlogger,
   fetchNews,
   generateArticle,
   getAuthToken,
@@ -12,6 +14,10 @@ import {
   getTask,
   getTaskEvents,
   getWorkspaceConfig,
+  listBloggerPosts,
+  listBloggerRuns,
+  listBloggerSkills,
+  listBloggers,
   listTenants,
   listNews,
   login,
@@ -24,6 +30,10 @@ import {
 import type {
   Article,
   ArticleUpdate,
+  BloggerDistillationRun,
+  BloggerPost,
+  BloggerProfile,
+  BloggerSkill,
   ContentGroup,
   ContentProfile,
   NewsItem,
@@ -33,10 +43,10 @@ import type {
   WorkspaceConfig
 } from './api/types'
 
-type TaskActionName = 'fetch' | 'generate'
+type TaskActionName = 'fetch' | 'generate' | 'distill'
 type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
-type MainTab = 'news' | 'article' | 'settings'
+type MainTab = 'news' | 'article' | 'distill' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 
 const statusText: Record<string, string> = {
@@ -48,6 +58,11 @@ const statusText: Record<string, string> = {
 
 const news = ref<NewsItem[]>([])
 const article = ref<Article | null>(null)
+const bloggers = ref<BloggerProfile[]>([])
+const bloggerPosts = ref<BloggerPost[]>([])
+const bloggerRuns = ref<BloggerDistillationRun[]>([])
+const bloggerSkills = ref<BloggerSkill[]>([])
+const selectedBloggerId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
@@ -68,7 +83,8 @@ const newsPage = ref(1)
 const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
   fetch: 0,
-  generate: 0
+  generate: 0,
+  distill: 0
 })
 const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -82,6 +98,15 @@ const form = reactive<ArticleUpdate>({
   intro: '',
   cover_image_url: '',
   content_html: ''
+})
+
+const bloggerForm = reactive({
+  display_name: '',
+  homepage_url: '',
+  niche: '',
+  description: '',
+  sample_limit: 50,
+  comments_per_post: 20
 })
 
 const profileForm = reactive({
@@ -173,17 +198,35 @@ const pagedNews = computed(() => {
   const start = (newsPage.value - 1) * pageSize
   return activeNews.value.slice(start, start + pageSize)
 })
+const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
+const latestBloggerRun = computed(() => bloggerRuns.value[0] || null)
+const latestBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value) || null)
+const bloggerCostLabel = computed(() => {
+  const run = latestBloggerRun.value
+  if (!run) {
+    return '暂无'
+  }
+  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
+})
 const visibleTaskEvents = computed(() => {
   if (!taskEventsAction.value) {
     return []
   }
   return taskActionTab(taskEventsAction.value) === activeMainTab.value ? taskEvents.value : []
 })
-const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate')
+const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'distill')
 const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskActionTab(taskEventsAction.value) === activeMainTab.value
 )
-const runningTaskName = computed(() => (pendingAction.value === 'fetch' ? '新闻抓取' : '文章生成'))
+const runningTaskName = computed(() => {
+  if (pendingAction.value === 'fetch') {
+    return '新闻抓取'
+  }
+  if (pendingAction.value === 'distill') {
+    return '博主蒸馏'
+  }
+  return '文章生成'
+})
 const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
 const articleStateLabel = computed(() => {
   const status = article.value?.status
@@ -256,7 +299,13 @@ function taskButtonStyle(name: TaskActionName) {
 }
 
 function taskActionTab(name: TaskActionName): MainTab {
-  return name === 'fetch' ? 'news' : 'article'
+  if (name === 'fetch') {
+    return 'news'
+  }
+  if (name === 'distill') {
+    return 'distill'
+  }
+  return 'article'
 }
 
 async function runTaskAction(
@@ -318,11 +367,21 @@ function wait(ms: number) {
 }
 
 async function loadAll() {
-  const [nextConfig, nextNews, nextArticle] = await Promise.all([getWorkspaceConfig(), listNews(), getLatestArticle()])
+  const [nextConfig, nextNews, nextArticle, nextBloggers, nextSkills] = await Promise.all([
+    getWorkspaceConfig(),
+    listNews(),
+    getLatestArticle(),
+    listBloggers(),
+    listBloggerSkills()
+  ])
   setWorkspaceConfig(nextConfig)
   news.value = nextNews
   newsPage.value = 1
   setArticle(nextArticle)
+  bloggers.value = nextBloggers
+  bloggerSkills.value = nextSkills
+  selectedBloggerId.value = nextBloggers[0]?.id || null
+  await refreshSelectedBlogger()
 }
 
 function setWorkspaceConfig(config: WorkspaceConfig) {
@@ -391,6 +450,11 @@ function handleLogout() {
   clearTenantId()
   isAuthenticated.value = false
   news.value = []
+  bloggers.value = []
+  bloggerPosts.value = []
+  bloggerRuns.value = []
+  bloggerSkills.value = []
+  selectedBloggerId.value = null
   tenants.value = []
   profile.value = null
   contentGroups.value = []
@@ -420,6 +484,62 @@ async function handleTenantChange() {
 async function refreshArticle() {
   const nextArticle = await getLatestArticle()
   setArticle(nextArticle)
+}
+
+async function refreshBloggers() {
+  bloggers.value = await listBloggers()
+  bloggerSkills.value = await listBloggerSkills()
+  if (!selectedBloggerId.value || !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
+    selectedBloggerId.value = bloggers.value[0]?.id || null
+  }
+  await refreshSelectedBlogger()
+}
+
+async function refreshSelectedBlogger() {
+  if (!selectedBloggerId.value) {
+    bloggerPosts.value = []
+    bloggerRuns.value = []
+    return
+  }
+  const [posts, runs, skills] = await Promise.all([
+    listBloggerPosts(selectedBloggerId.value),
+    listBloggerRuns(selectedBloggerId.value),
+    listBloggerSkills()
+  ])
+  bloggerPosts.value = posts
+  bloggerRuns.value = runs
+  bloggerSkills.value = skills
+}
+
+async function handleCreateBlogger() {
+  await runAction('blogger', '正在保存博主档案', async () => {
+    const blogger = await createBlogger({
+      display_name: bloggerForm.display_name,
+      homepage_url: bloggerForm.homepage_url,
+      niche: bloggerForm.niche,
+      description: bloggerForm.description
+    })
+    selectedBloggerId.value = blogger.id
+    bloggerForm.display_name = ''
+    bloggerForm.homepage_url = ''
+    bloggerForm.niche = ''
+    bloggerForm.description = ''
+    await refreshBloggers()
+  })
+}
+
+async function handleDistillBlogger() {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    return
+  }
+  await runTaskAction(
+    'distill',
+    '已提交博主蒸馏任务',
+    () => distillBlogger(selectedBloggerId.value!, bloggerForm.sample_limit, bloggerForm.comments_per_post),
+    refreshSelectedBlogger,
+    '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
+  )
 }
 
 async function handleFetchNews() {
@@ -681,6 +801,15 @@ onUnmounted(() => {
       <button
         type="button"
         role="tab"
+        :aria-selected="activeMainTab === 'distill'"
+        :class="{ active: activeMainTab === 'distill' }"
+        @click="activeMainTab = 'distill'"
+      >
+        博主蒸馏
+      </button>
+      <button
+        type="button"
+        role="tab"
         :aria-selected="activeMainTab === 'settings'"
         :class="{ active: activeMainTab === 'settings' }"
         @click="activeMainTab = 'settings'"
@@ -872,6 +1001,126 @@ onUnmounted(() => {
             <p>生成文章后，这里会显示公众号图文预览。</p>
           </div>
         </article>
+      </section>
+
+      <section v-if="activeMainTab === 'distill'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>小红书博主蒸馏</h2>
+            <p class="toolbar-subtitle">通过 TikHub 采集图文笔记和 Top20 评论，生成报告与创作 Skill。</p>
+          </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="task-button"
+              :class="{ running: pendingAction === 'distill' }"
+              :style="taskButtonStyle('distill')"
+              :disabled="!selectedBloggerId || Boolean(pendingAction)"
+              @click="handleDistillBlogger"
+            >
+              <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '采集并蒸馏' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="distill-grid">
+          <form class="distill-card" @submit.prevent="handleCreateBlogger">
+            <h3>新增博主</h3>
+            <label>
+              博主名称
+              <input v-model="bloggerForm.display_name" type="text" required />
+            </label>
+            <label>
+              小红书主页链接
+              <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
+            </label>
+            <label>
+              领域/赛道
+              <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
+            </label>
+            <label>
+              备注
+              <textarea v-model="bloggerForm.description" rows="3"></textarea>
+            </label>
+            <div class="config-grid">
+              <label>
+                采样图文数
+                <input v-model.number="bloggerForm.sample_limit" type="number" min="5" max="200" />
+              </label>
+              <label>
+                每条评论数
+                <input v-model.number="bloggerForm.comments_per_post" type="number" min="0" max="100" />
+              </label>
+            </div>
+            <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+              {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
+            </button>
+          </form>
+
+          <div class="distill-card">
+            <h3>博主列表</h3>
+            <div v-if="bloggers.length" class="blogger-list">
+              <button
+                v-for="blogger in bloggers"
+                :key="blogger.id"
+                type="button"
+                :class="{ active: selectedBloggerId === blogger.id }"
+                @click="selectedBloggerId = blogger.id; refreshSelectedBlogger()"
+              >
+                <strong>{{ blogger.display_name }}</strong>
+                <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
+              </button>
+            </div>
+            <p v-else class="empty-region">还没有博主档案。</p>
+          </div>
+        </div>
+
+        <div v-if="selectedBlogger" class="distill-result">
+          <div class="workspace-snapshot">
+            <div>
+              <span>当前博主</span>
+              <strong>{{ selectedBlogger.display_name }}</strong>
+            </div>
+            <div>
+              <span>TikHub 请求</span>
+              <strong>{{ latestBloggerRun?.tikhub_request_count || 0 }}</strong>
+            </div>
+            <div>
+              <span>本次费用</span>
+              <strong>{{ bloggerCostLabel }}</strong>
+            </div>
+          </div>
+
+          <div class="distill-grid">
+            <article class="distill-card">
+              <h3>爆款样本</h3>
+              <div v-if="bloggerPosts.length" class="sample-list">
+                <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
+                  <strong>{{ post.title }}</strong>
+                  <span>收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / 评论 {{ post.comment_count }}</span>
+                </div>
+              </div>
+              <p v-else class="empty-region">完成蒸馏后会显示样本。</p>
+            </article>
+
+            <article class="distill-card">
+              <h3>蒸馏报告</h3>
+              <div v-if="latestBloggerRun?.report_html" class="distill-report" v-html="latestBloggerRun.report_html"></div>
+              <p v-else class="empty-region">完成蒸馏后会显示报告。</p>
+            </article>
+          </div>
+
+          <article class="distill-card">
+            <h3>Skill 输出</h3>
+            <textarea
+              v-if="latestBloggerSkill"
+              :value="latestBloggerSkill.skill_markdown"
+              readonly
+              rows="18"
+            ></textarea>
+            <p v-else class="empty-region">完成蒸馏后会生成 SKILL.md。</p>
+          </article>
+        </div>
       </section>
 
       <section v-if="activeMainTab === 'settings'" class="panel">

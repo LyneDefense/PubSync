@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.blogger_distillation.service import record_task_event, run_blogger_distillation
+from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
 from app.harness import PubSyncHarness
 from app.models import AppSetting, OperationTask, PublishingSettings, TaskStatus, Tenant, TenantStatus
@@ -29,6 +31,7 @@ TASK_MESSAGES = {
     "news_fetch": "已加入后台抓取任务",
     "article_generation": "已加入后台生成任务",
     "daily_publish": "已加入定时发布任务",
+    "blogger_distillation": "已加入博主蒸馏任务",
 }
 
 
@@ -89,6 +92,48 @@ def run_article_generation_task(task_id: str) -> None:
     except Exception as exc:
         logger.exception("任务异常：任务ID=%s，类型=文章生成", task_id)
         mark_task_failed_by_id(db, task_id, "文章生成失败", f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        db.close()
+
+
+def run_blogger_distillation_task(
+    task_id: str,
+    blogger_id: int,
+    sample_limit: int = 50,
+    comments_per_post: int = 20,
+) -> None:
+    db = SessionLocal()
+    try:
+        logger.info("任务开始：任务ID=%s，类型=博主蒸馏，博主ID=%s", task_id, blogger_id)
+        task = get_task(db, task_id)
+        if not task:
+            return
+
+        mark_task_running(db, task, "正在采集小红书图文内容并蒸馏 Skill")
+        result = run_blogger_distillation(
+            db=db,
+            settings=get_settings(),
+            task_id=task_id,
+            tenant_id=task.tenant_id,
+            blogger_id=blogger_id,
+            sample_limit=sample_limit,
+            comments_per_post=comments_per_post,
+        )
+        mark_task_succeeded(db, task, f"博主蒸馏完成，生成 Skill：{result.skill.name}")
+        logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)
+    except (ValueError, AIServiceError, TikHubError) as exc:
+        logger.warning("任务失败：任务ID=%s，类型=博主蒸馏，错误=%s", task_id, exc)
+        mark_task_failed_by_id(db, task_id, "博主蒸馏失败", str(exc))
+    except Exception as exc:
+        logger.exception("任务异常：任务ID=%s，类型=博主蒸馏", task_id)
+        try:
+            task = get_task(db, task_id)
+            if task:
+                record_task_event(db, task.tenant_id, task_id, "博主蒸馏", "failed", f"博主蒸馏失败：{type(exc).__name__}: {exc}")
+        except Exception:
+            logger.exception("记录博主蒸馏失败事件失败：任务ID=%s", task_id)
+        mark_task_failed_by_id(db, task_id, "博主蒸馏失败", f"{type(exc).__name__}: {exc}")
         raise
     finally:
         db.close()

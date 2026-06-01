@@ -203,3 +203,79 @@ export interface OperationTaskEvent {
   payload_json: string | null
   created_at: string
 }
+
+export interface BloggerProfile {
+  id: number
+  tenant_id: number
+  platform: string
+  display_name: string
+  homepage_url: string
+  niche: string
+  description: string
+  sample_count: number
+  last_distilled_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BloggerProfileCreate {
+  display_name: string
+  homepage_url: string
+  niche: string
+  description: string
+}
+
+export interface BloggerPost {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  platform: string
+  external_id: string
+  url: string
+  title: string
+  body_text: string
+  hashtags_json: string
+  cover_url: string
+  published_at: string | null
+  like_count: number
+  favorite_count: number
+  comment_count: number
+  share_count: number
+  score: number
+  comments_json: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BloggerDistillationRun {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  task_id: string | null
+  status: string
+  sample_count: number
+  hot_post_count: number
+  comment_count: number
+  tikhub_request_count: number
+  tikhub_estimated_cost_usd: number
+  tikhub_cost_min_usd: number
+  tikhub_cost_max_usd: number
+  report_json: string
+  report_html: string
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BloggerSkill {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  run_id: number
+  name: string
+  description: string
+  skill_markdown: string
+  status: string
+  created_at: string
+  updated_at: string
+}

@@ -13,10 +13,30 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
-from app.models import AppSetting, Article, ContentProfile, LayoutSettings, NewsItem, OperationTask, OperationTaskEvent, Tenant, WeChatAccount
+from app.models import (
+    AppSetting,
+    Article,
+    BloggerDistillationRun,
+    BloggerPost,
+    BloggerProfile,
+    BloggerSkill,
+    ContentProfile,
+    LayoutSettings,
+    NewsItem,
+    OperationTask,
+    OperationTaskEvent,
+    Tenant,
+    WeChatAccount,
+)
 from app.schemas import (
     ArticleRead,
     ArticleUpdate,
+    BloggerDistillRequest,
+    BloggerDistillationRunRead,
+    BloggerPostRead,
+    BloggerProfileCreate,
+    BloggerProfileRead,
+    BloggerSkillRead,
     ContentProfileRead,
     DashboardRead,
     NewsItemRead,
@@ -35,10 +55,12 @@ from app.services.auth_service import create_token, tenant_ids_for_user, token_u
 from app.services.news_service import list_news
 from app.services.task_service import (
     create_operation_task,
+    run_blogger_distillation_task,
     run_article_generation_task,
     run_news_fetch_task,
     scheduled_workspace_publish,
 )
+from app.blogger_distillation.service import create_blogger
 from app.services.tenant_service import (
     get_content_groups,
     get_default_tenant,
@@ -300,6 +322,95 @@ def generate_article_endpoint(
     task = create_operation_task(db, "article_generation", tenant_id=tenant.id)
     background_tasks.add_task(run_article_generation_task, task.id)
     return task
+
+
+@app.get("/bloggers", response_model=list[BloggerProfileRead])
+def list_bloggers_endpoint(
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerProfile]:
+    return list(
+        db.scalars(
+            select(BloggerProfile)
+            .where(BloggerProfile.tenant_id == tenant.id)
+            .order_by(BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
+        )
+    )
+
+
+@app.post("/bloggers", response_model=BloggerProfileRead)
+def create_blogger_endpoint(
+    payload: BloggerProfileCreate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerProfile:
+    return create_blogger(db, tenant.id, payload.display_name, payload.homepage_url, payload.niche, payload.description)
+
+
+@app.get("/bloggers/{blogger_id}/posts", response_model=list[BloggerPostRead])
+def list_blogger_posts_endpoint(
+    blogger_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerPost]:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    return list(
+        db.scalars(
+            select(BloggerPost)
+            .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id)
+            .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
+        )
+    )
+
+
+@app.post("/bloggers/{blogger_id}/distill", response_model=OperationTaskRead)
+def distill_blogger_endpoint(
+    blogger_id: int,
+    payload: BloggerDistillRequest,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    task = create_operation_task(db, "blogger_distillation", tenant_id=tenant.id)
+    background_tasks.add_task(run_blogger_distillation_task, task.id, blogger.id, payload.sample_limit, payload.comments_per_post)
+    return task
+
+
+@app.get("/bloggers/{blogger_id}/distillation-runs", response_model=list[BloggerDistillationRunRead])
+def list_blogger_runs_endpoint(
+    blogger_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerDistillationRun]:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    return list(
+        db.scalars(
+            select(BloggerDistillationRun)
+            .where(BloggerDistillationRun.tenant_id == tenant.id, BloggerDistillationRun.blogger_id == blogger_id)
+            .order_by(BloggerDistillationRun.created_at.desc())
+        )
+    )
+
+
+@app.get("/blogger-skills", response_model=list[BloggerSkillRead])
+def list_blogger_skills_endpoint(
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerSkill]:
+    return list(
+        db.scalars(
+            select(BloggerSkill)
+            .where(BloggerSkill.tenant_id == tenant.id)
+            .order_by(BloggerSkill.created_at.desc())
+        )
+    )
 
 
 @app.get("/tasks/{task_id}", response_model=OperationTaskRead)

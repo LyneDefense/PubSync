@@ -1,6 +1,11 @@
 import type {
   Article,
   ArticleUpdate,
+  BloggerDistillationRun,
+  BloggerPost,
+  BloggerProfile,
+  BloggerProfileCreate,
+  BloggerSkill,
   ContentProfile,
   LoginResponse,
   NewsItem,
@@ -134,4 +139,34 @@ export function updateArticle(id: number, payload: ArticleUpdate) {
 
 export function sendArticleToWechat(id: number) {
   return request<Article>(`/articles/${id}/send-to-wechat`, { method: 'POST' })
+}
+
+export function listBloggers() {
+  return request<BloggerProfile[]>('/bloggers')
+}
+
+export function createBlogger(payload: BloggerProfileCreate) {
+  return request<BloggerProfile>('/bloggers', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function listBloggerPosts(id: number) {
+  return request<BloggerPost[]>(`/bloggers/${id}/posts`)
+}
+
+export function distillBlogger(id: number, sampleLimit = 50, commentsPerPost = 20) {
+  return request<OperationTask>(`/bloggers/${id}/distill`, {
+    method: 'POST',
+    body: JSON.stringify({ sample_limit: sampleLimit, comments_per_post: commentsPerPost })
+  })
+}
+
+export function listBloggerRuns(id: number) {
+  return request<BloggerDistillationRun[]>(`/bloggers/${id}/distillation-runs`)
+}
+
+export function listBloggerSkills() {
+  return request<BloggerSkill[]>('/blogger-skills')
 }

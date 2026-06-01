@@ -377,6 +377,13 @@ def ensure_runtime_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_articles_tenant_id ON articles(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_operation_tasks_tenant_id ON operation_tasks(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_operation_task_events_tenant_id ON operation_task_events(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_tenant_id ON blogger_profiles(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_posts_tenant_id ON blogger_posts(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_posts_blogger_id ON blogger_posts(blogger_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_tenant_id ON blogger_distillation_runs(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_blogger_id ON blogger_distillation_runs(blogger_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_skills_tenant_id ON blogger_skills(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_skills_blogger_id ON blogger_skills(blogger_id)",
     ]
     with engine.begin() as connection:
         for statement in statements:

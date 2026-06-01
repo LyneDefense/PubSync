@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     minimax_api_key: str = ""
     minimax_text_model: str = "MiniMax-M2.7"
     minimax_image_model: str = "image-01"
+    tikhub_base_url: str = "https://api.tikhub.io"
+    tikhub_api_key: str = ""
+    tikhub_request_price_usd: float = 0.001
+    tikhub_min_request_price_usd: float = 0.001
+    tikhub_max_request_price_usd: float = 0.01
     public_api_base_url: str = ""
     static_dir: str = "static"
 
