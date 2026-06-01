@@ -124,6 +124,23 @@ class TikHubXhsClient:
         pool = "video_detail" if candidate.note_type == "video" else "image_detail"
         return self.router.call(pool, {"note_id": candidate.external_id, "xsec_token": candidate.xsec_token})
 
+    def get_video_note_detail_variants(self, candidate: XhsPostCandidate) -> list[dict[str, Any]]:
+        variants: list[dict[str, Any]] = []
+        for endpoint in self.router.pools.get("video_detail", []):
+            params = EndpointRouter._render_params(
+                endpoint.params,
+                {"note_id": candidate.external_id, "xsec_token": candidate.xsec_token},
+            )
+            try:
+                payload = self._get(endpoint.path, params)
+            except Exception as exc:
+                logger.warning("TikHub 视频详情补取失败：端点=%s:%s，note_id=%s，错误=%s", endpoint.group, endpoint.path, candidate.external_id, exc)
+                continue
+            payload["_endpoint_used"] = f"{endpoint.group}:{endpoint.path}"
+            payload["_endpoint_group"] = endpoint.group
+            variants.append(payload)
+        return variants
+
     def get_note_comments(self, candidate: XhsPostCandidate, limit: int) -> list[dict[str, Any]]:
         if limit <= 0:
             return []

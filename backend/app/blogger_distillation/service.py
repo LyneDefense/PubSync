@@ -277,6 +277,8 @@ def collect_posts(
             logger.warning("图文详情采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "笔记详情", "failed", f"详情采集失败：note_id={candidate.external_id}，错误={exc}")
             continue
+        if candidate.note_type == "video" and not extract_video_url(detail_payload):
+            detail_payload = supplement_video_detail_with_url(client, candidate, detail_payload)
         normalized = normalize_post(candidate, detail_payload)
         if not normalized["title"] and not normalized["body_text"]:
             record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
@@ -378,6 +380,14 @@ def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str
                     merged[key] = payload[key]
             return merged
         return payload
+    return fallback
+
+
+def supplement_video_detail_with_url(client: TikHubXhsClient, candidate: XhsPostCandidate, fallback: dict[str, Any]) -> dict[str, Any]:
+    for detail in client.get_video_note_detail_variants(candidate):
+        if extract_video_url(detail):
+            logger.info("视频 URL 补取成功：note_id=%s，端点=%s", candidate.external_id, detail.get("_endpoint_used", "<unknown>"))
+            return detail
     return fallback
 
 
