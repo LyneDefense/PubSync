@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -441,6 +442,33 @@ def handle_video_asr(
         media_urls = json.loads(normalized.get("media_urls_json") or "[]")
     except json.JSONDecodeError:
         media_urls = []
+    raw_payload = {}
+    try:
+        raw_payload = json.loads(normalized.get("raw_json") or "{}")
+    except json.JSONDecodeError:
+        raw_payload = {}
+    subtitle_url = extract_subtitle_url(candidate.raw) or extract_subtitle_url(raw_payload)
+    if subtitle_url:
+        try:
+            subtitle_text = fetch_subtitle_text(subtitle_url)
+            if subtitle_text:
+                normalized["transcript_text"] = subtitle_text
+                normalized["asr_status"] = "subtitle"
+                normalized["asr_error"] = ""
+                normalized["body_text"] = "\n\n".join(
+                    part for part in [normalized.get("body_text", ""), f"视频字幕：{subtitle_text}"] if part
+                )
+                record_task_event(
+                    db,
+                    tenant_id,
+                    task_id,
+                    "视频字幕",
+                    "succeeded",
+                    f"已使用视频字幕，跳过 ASR：note_id={candidate.external_id}，字数={len(subtitle_text)}",
+                )
+                return
+        except Exception as exc:
+            record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", f"字幕解析失败，继续尝试 ASR：note_id={candidate.external_id}，原因={exc}")
     candidate_video_url = extract_video_url(candidate.raw)
     candidate_urls = [candidate_video_url, *media_urls]
     video_url = next((url for url in candidate_urls if is_video_url_candidate(url)), "")
@@ -547,28 +575,49 @@ def extract_media_urls(raw: dict[str, Any]) -> list[str]:
 def extract_video_url(raw: dict[str, Any]) -> str:
     video = recursive_find(raw, "video")
     if isinstance(video, dict):
-        for key in ("videoUrl", "video_url", "masterUrl", "master_url", "play_url", "playUrl"):
+        for url in extract_stream_urls(video):
+            if is_likely_video_url(url):
+                return url
+        for key in ("videoUrl", "video_url", "play_url", "playUrl"):
             value = recursive_find(video, key)
             if is_likely_video_url(value):
                 return value
-        stream = ((video.get("media") or {}).get("stream") or video.get("stream") or {})
-        for codec in ("h264", "h265"):
-            items = stream.get(codec)
-            if isinstance(items, list) and items:
-                url = items[0].get("masterUrl") or items[0].get("master_url") or items[0].get("url")
-                if is_likely_video_url(url):
-                    return url
     candidates = collect_video_url_candidates(raw)
     if candidates:
         return candidates[0]
     return ""
 
 
+def extract_stream_urls(video: dict[str, Any]) -> list[str]:
+    stream = ((video.get("media") or {}).get("stream") or video.get("stream") or {})
+    if not isinstance(stream, dict):
+        return []
+    urls: list[str] = []
+    for codec in ("h264", "h265", "av1"):
+        items = stream.get(codec)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for key in ("masterUrl", "master_url", "main_url", "mainUrl", "url"):
+                value = item.get(key)
+                if isinstance(value, str):
+                    urls.append(value)
+            for key in ("backupUrls", "backup_urls", "backupUrl", "backup_url"):
+                value = item.get(key)
+                if isinstance(value, list):
+                    urls.extend(url for url in value if isinstance(url, str))
+                elif isinstance(value, str):
+                    urls.append(value)
+    return urls
+
+
 def is_likely_video_url(value: Any) -> bool:
     if not isinstance(value, str) or not value.startswith("http"):
         return False
     lowered = value.lower()
-    if is_image_url(lowered):
+    if is_non_video_media_url(lowered):
         return False
     video_markers = (".mp4", ".mov", ".m3u8", ".ts", "video", "stream", "play", "sns-video")
     return any(marker in lowered for marker in video_markers)
@@ -577,7 +626,7 @@ def is_likely_video_url(value: Any) -> bool:
 def is_video_url_candidate(value: Any) -> bool:
     if not isinstance(value, str) or not value.startswith("http"):
         return False
-    return not is_image_url(value.lower())
+    return not is_non_video_media_url(value.lower())
 
 
 def collect_video_url_candidates(raw: dict[str, Any]) -> list[str]:
@@ -596,21 +645,114 @@ def collect_video_url_candidates(raw: dict[str, Any]) -> list[str]:
         if not isinstance(value, str) or not value.startswith("http"):
             return
         lowered = value.lower()
-        if is_image_url(lowered):
+        if is_non_video_media_url(lowered):
             return
         path_text = ".".join(path).lower()
+        if is_subtitle_path(path_text):
+            return
         if any(marker in path_text for marker in ("video", "stream", "play", "master", "m3u8", "h264", "h265")):
             if value not in seen:
                 seen.add(value)
                 candidates.append(value)
 
     visit(raw, ())
-    return candidates
+    return sorted(candidates, key=video_url_score, reverse=True)
 
 
-def is_image_url(lowered_url: str) -> bool:
+def extract_subtitle_url(raw: dict[str, Any]) -> str:
+    candidates: list[str] = []
+
+    def visit(value: Any, path: tuple[str, ...]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit(child, (*path, str(key)))
+            return
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, (*path, str(index)))
+            return
+        if not isinstance(value, str) or not value.startswith("http"):
+            return
+        path_text = ".".join(path).lower()
+        lowered = value.lower()
+        if is_subtitle_path(path_text) or any(marker in lowered for marker in (".srt", ".vtt", "subtitle", "caption")):
+            candidates.append(value)
+
+    visit(raw, ())
+    return candidates[0] if candidates else ""
+
+
+def fetch_subtitle_text(subtitle_url: str) -> str:
+    with httpx.Client(timeout=60, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 PubSync/1.0"}) as client:
+        response = client.get(subtitle_url)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").lower()
+        text = response.text
+    if "json" in content_type:
+        try:
+            return extract_text_from_subtitle_json(response.json())
+        except ValueError:
+            pass
+    return parse_subtitle_text(text)
+
+
+def extract_text_from_subtitle_json(value: Any) -> str:
+    fragments: list[str] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key.lower() in {"text", "content", "sentence", "word"} and isinstance(child, str):
+                    fragments.append(child.strip())
+                else:
+                    visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value)
+    return normalize_transcript_text("\n".join(fragment for fragment in fragments if fragment))
+
+
+def parse_subtitle_text(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.upper().startswith("WEBVTT"):
+            continue
+        if stripped.isdigit() or "-->" in stripped:
+            continue
+        if re.match(r"^(NOTE|STYLE|REGION)\b", stripped, flags=re.IGNORECASE):
+            continue
+        lines.append(re.sub(r"<[^>]+>", "", stripped))
+    return normalize_transcript_text("\n".join(lines))
+
+
+def normalize_transcript_text(text: str) -> str:
+    cleaned = re.sub(r"[ \t]+", " ", text)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def is_non_video_media_url(lowered_url: str) -> bool:
     image_markers = (".jpg", ".jpeg", ".png", ".webp", ".gif", "imageview", "image")
-    return any(marker in lowered_url for marker in image_markers)
+    subtitle_markers = (".srt", ".vtt", "subtitle", "caption", "subrip", "danmaku")
+    return any(marker in lowered_url for marker in (*image_markers, *subtitle_markers))
+
+
+def is_subtitle_path(path_text: str) -> bool:
+    return any(marker in path_text for marker in ("subtitle", "caption", "subrip", "srt", "vtt", "danmaku"))
+
+
+def video_url_score(url: str) -> int:
+    lowered = url.lower()
+    score = 0
+    for marker in (".mp4", ".m3u8", "h264", "h265", "video", "stream", "play"):
+        if marker in lowered:
+            score += 10
+    if "sns-video" in lowered:
+        score += 20
+    return score
 
 
 def is_expected_asr_skip(exc: Exception) -> bool:
