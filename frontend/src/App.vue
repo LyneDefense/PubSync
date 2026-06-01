@@ -619,7 +619,7 @@ onUnmounted(() => {
   <main v-if="!isAuthenticated" class="login-shell">
     <form class="login-panel" @submit.prevent="handleLogin">
       <div>
-        <p class="eyebrow">PubSync</p>
+        <p class="brand-context">PubSync</p>
         <h1>登录工作台</h1>
       </div>
       <label>
@@ -642,7 +642,7 @@ onUnmounted(() => {
       <div class="brand-block">
         <div class="brand-mark" aria-hidden="true">PS</div>
         <div>
-          <p class="eyebrow">PubSync</p>
+          <p class="brand-context">内容自动化工作台</p>
           <h1>{{ workspaceTitle }}</h1>
         </div>
       </div>
@@ -692,10 +692,24 @@ onUnmounted(() => {
     <main class="workspace">
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
 
+      <div class="workspace-snapshot" aria-label="工作台摘要">
+        <div>
+          <span>候选内容</span>
+          <strong>{{ news.length }}</strong>
+        </div>
+        <div>
+          <span>当前文章</span>
+          <strong>{{ articleStateLabel }}</strong>
+        </div>
+        <div>
+          <span>工作区</span>
+          <strong>{{ publicationName }}</strong>
+        </div>
+      </div>
+
       <section v-if="hasTaskEvents" class="panel task-events" aria-label="任务执行日志">
         <div class="section-header">
           <div>
-            <p class="eyebrow">流程日志</p>
             <h2>流程执行进度</h2>
           </div>
         </div>
@@ -721,7 +735,6 @@ onUnmounted(() => {
       <section v-if="activeMainTab === 'news'" class="panel">
         <div class="section-header">
           <div>
-            <p class="eyebrow">候选池</p>
             <h2>{{ workspaceTitle }}候选新闻</h2>
           </div>
           <div class="actions">
@@ -786,7 +799,6 @@ onUnmounted(() => {
       <section v-if="activeMainTab === 'article'" class="panel">
         <div class="section-header">
           <div>
-            <p class="eyebrow">文章草稿</p>
             <h2>公众号文章</h2>
             <p class="toolbar-subtitle">当前文章状态：{{ articleStateLabel }}</p>
           </div>
@@ -865,7 +877,6 @@ onUnmounted(() => {
       <section v-if="activeMainTab === 'settings'" class="panel">
         <div class="section-header">
           <div>
-            <p class="eyebrow">配置中心</p>
             <h2>工作空间配置</h2>
           </div>
           <button type="submit" form="workspace-config-form" class="primary" :disabled="Boolean(pendingAction)">
