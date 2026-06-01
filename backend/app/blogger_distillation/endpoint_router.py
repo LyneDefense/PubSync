@@ -36,11 +36,14 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
         Endpoint("app", "/api/v1/xiaohongshu/app/get_note_info", {"note_id": "${note_id}"}),
         Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_note_detail", {"note_id": "${note_id}", "xsec_token": "${xsec_token}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_image_note_detail", {"note_id": "${note_id}", "xsec_token": "${xsec_token}"}),
+        Endpoint("app_v2_no_token", "/api/v1/xiaohongshu/app_v2/get_image_note_detail", {"note_id": "${note_id}"}),
     ],
     "video_detail": [
         Endpoint("app", "/api/v1/xiaohongshu/app/get_note_info", {"note_id": "${note_id}", "xsec_token": "${xsec_token}"}),
+        Endpoint("app_no_token", "/api/v1/xiaohongshu/app/get_note_info", {"note_id": "${note_id}"}),
         Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_note_detail", {"note_id": "${note_id}", "xsec_token": "${xsec_token}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_video_note_detail", {"note_id": "${note_id}", "xsec_token": "${xsec_token}"}),
+        Endpoint("app_v2_no_token", "/api/v1/xiaohongshu/app_v2/get_video_note_detail", {"note_id": "${note_id}"}),
     ],
     "comments": [
         Endpoint("app", "/api/v1/xiaohongshu/app/get_note_comments", {"note_id": "${note_id}", "cursor": "${cursor}", "num": "${num}"}),

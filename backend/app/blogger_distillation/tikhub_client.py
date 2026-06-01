@@ -101,7 +101,7 @@ class TikHubXhsClient:
                 candidates.append(
                     XhsPostCandidate(
                         external_id=external_id,
-                        xsec_token=first_str(note, ["xsec_token", "xsecToken", "xsec_source"]) or "",
+                        xsec_token=extract_xsec_token(note) or self.profile_xsec_token,
                         note_type=detect_note_type(note),
                         like_count=counts["like_count"],
                         favorite_count=counts["favorite_count"],
@@ -342,11 +342,29 @@ def normalize_feed_item(item: dict[str, Any]) -> dict[str, Any]:
     note = item.get("noteCard") or item.get("note_card") or item.get("note")
     if isinstance(note, dict):
         merged = dict(note)
-        for key in ("id", "note_id", "noteId", "xsecToken", "xsec_token", "cursor", "type"):
+        for key in ("id", "note_id", "noteId", "xsecToken", "xsec_token", "xsec_source", "cursor", "type"):
             if item.get(key) not in (None, "", [], {}) and key not in merged:
                 merged[key] = item[key]
+        xsec_token = extract_xsec_token(item)
+        if xsec_token and not extract_xsec_token(merged):
+            merged["xsecToken"] = xsec_token
         return merged
     return item
+
+
+def extract_xsec_token(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    direct = first_str(value, ["xsec_token", "xsecToken", "xsec_source"])
+    if direct:
+        return direct
+    for key in ("noteCard", "note_card", "note", "user", "user_info"):
+        nested = value.get(key)
+        if isinstance(nested, dict):
+            token = extract_xsec_token(nested)
+            if token:
+                return token
+    return ""
 
 
 def find_container_cursor(container: dict[str, Any], notes: list[dict[str, Any]]) -> str:
