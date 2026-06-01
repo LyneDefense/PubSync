@@ -431,11 +431,13 @@ def handle_video_asr(
         media_urls = json.loads(normalized.get("media_urls_json") or "[]")
     except json.JSONDecodeError:
         media_urls = []
-    video_url = next((url for url in media_urls if is_likely_video_url(url)), "")
+    candidate_video_url = extract_video_url(candidate.raw)
+    candidate_urls = [candidate_video_url, *media_urls]
+    video_url = next((url for url in candidate_urls if is_likely_video_url(url)), "")
     if not video_url:
-        normalized["asr_status"] = "failed"
-        normalized["asr_error"] = "未提取到视频 URL"
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"未提取到视频 URL：note_id={candidate.external_id}")
+        normalized["asr_status"] = "skipped"
+        normalized["asr_error"] = "未提取到可转写的视频 URL"
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", f"未拿到视频直链，跳过转写并降级分析：note_id={candidate.external_id}")
         return
     try:
         record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"开始转写视频：note_id={candidate.external_id}")
@@ -455,9 +457,10 @@ def handle_video_asr(
             {"task_id": result.task_id, "duration_seconds": result.duration_seconds},
         )
     except Exception as exc:
-        normalized["asr_status"] = "failed"
+        normalized["asr_status"] = "skipped" if is_expected_asr_skip(exc) else "failed"
         normalized["asr_error"] = str(exc)
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"视频转写失败，降级分析：note_id={candidate.external_id}，错误={exc}")
+        event_status = "succeeded" if normalized["asr_status"] == "skipped" else "failed"
+        record_task_event(db, tenant_id, task_id, "视频 ASR", event_status, f"视频转写未执行，降级分析：note_id={candidate.external_id}，原因={exc}")
 
 
 def normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
@@ -545,6 +548,9 @@ def extract_video_url(raw: dict[str, Any]) -> str:
                 url = items[0].get("masterUrl") or items[0].get("master_url") or items[0].get("url")
                 if is_likely_video_url(url):
                     return url
+    candidates = collect_video_url_candidates(raw)
+    if candidates:
+        return candidates[0]
     return ""
 
 
@@ -552,11 +558,49 @@ def is_likely_video_url(value: Any) -> bool:
     if not isinstance(value, str) or not value.startswith("http"):
         return False
     lowered = value.lower()
-    image_markers = (".jpg", ".jpeg", ".png", ".webp", ".gif", "imageview", "image")
-    if any(marker in lowered for marker in image_markers):
+    if is_image_url(lowered):
         return False
     video_markers = (".mp4", ".mov", ".m3u8", ".ts", "video", "stream", "play", "sns-video")
     return any(marker in lowered for marker in video_markers)
+
+
+def collect_video_url_candidates(raw: dict[str, Any]) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def visit(value: Any, path: tuple[str, ...]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit(child, (*path, str(key)))
+            return
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, (*path, str(index)))
+            return
+        if not isinstance(value, str) or not value.startswith("http"):
+            return
+        lowered = value.lower()
+        if is_image_url(lowered):
+            return
+        path_text = ".".join(path).lower()
+        if any(marker in path_text for marker in ("video", "stream", "play", "master", "m3u8", "h264", "h265")):
+            if value not in seen:
+                seen.add(value)
+                candidates.append(value)
+
+    visit(raw, ())
+    return candidates
+
+
+def is_image_url(lowered_url: str) -> bool:
+    image_markers = (".jpg", ".jpeg", ".png", ".webp", ".gif", "imageview", "image")
+    return any(marker in lowered_url for marker in image_markers)
+
+
+def is_expected_asr_skip(exc: Exception) -> bool:
+    message = str(exc)
+    expected_markers = ("不包含音频流", "可能是图片封面", "未提取到视频 URL", "Invalid data found when processing input")
+    return any(marker in message for marker in expected_markers)
 
 
 def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
