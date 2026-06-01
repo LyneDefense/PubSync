@@ -11,6 +11,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.blogger_distillation import analysis
+from app.blogger_distillation import artifacts
+from app.blogger_distillation.asr import ASRError, build_asr_provider
+from app.blogger_distillation.privacy import anonymize_comments
+from app.blogger_distillation.quality import evaluate_post_quality, quality_report
 from app.blogger_distillation.tikhub_client import (
     TikHubError,
     TikHubUsage,
@@ -92,6 +97,7 @@ def run_blogger_distillation(
     blogger_id: int,
     sample_limit: int = 50,
     comments_per_post: int = 20,
+    asr_enabled: bool | None = None,
 ) -> DistillationResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -101,40 +107,48 @@ def run_blogger_distillation(
     db.add(run)
     db.commit()
     db.refresh(run)
+    effective_settings = settings.model_copy(update={"asr_enabled": asr_enabled}) if asr_enabled is not None else settings
 
     try:
         record_task_event(db, tenant_id, task_id, "博主采集", "running", "开始通过 TikHub 采集小红书图文笔记")
-        client = TikHubXhsClient(settings)
+        client = TikHubXhsClient(effective_settings)
         user_info = client.get_user_info(blogger.homepage_url)
         candidates = client.get_user_notes(blogger.homepage_url, sample_limit)
         record_task_event(db, tenant_id, task_id, "博主采集", "running", f"已获取笔记候选 {len(candidates)} 条")
 
-        posts = collect_posts(db, tenant_id, blogger, client, candidates[:sample_limit], comments_per_post)
+        posts = collect_posts(db, tenant_id, task_id, blogger, client, effective_settings, candidates[:sample_limit], comments_per_post)
         if not posts:
             raise TikHubError("没有采集到可用于蒸馏的图文笔记，请检查主页链接或 TikHub 接口返回")
         blogger.sample_count = len(posts)
         db.commit()
         record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条图文笔记")
 
-        stats = analyze_posts(posts)
+        quality = quality_report(posts, sample_limit)
+        if quality["warnings"]:
+            record_task_event(db, tenant_id, task_id, "样本质量", "running", "；".join(quality["warnings"]), quality)
+        else:
+            record_task_event(db, tenant_id, task_id, "样本质量", "succeeded", "样本质量校验通过", quality)
+
+        stats = analysis.analyze_posts(posts)
+        stats["quality_report"] = quality
         record_task_event(
             db,
             tenant_id,
             task_id,
             "基础统计",
             "succeeded",
-            f"基础统计完成：爆款={len(stats['hot_posts'])}，评论={stats['comment_total']}",
+            f"基础统计完成：爆款={len(stats['hot_posts'])}，评论={stats['comment_total']}，标题模式={len(stats['title_patterns'])}",
         )
 
         record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
-        distillation = distill_with_llm(settings, blogger, user_info, stats)
-        report_html = render_report_html(blogger, stats, distillation, client.usage)
-        skill_markdown = build_skill_markdown(blogger, stats, distillation)
+        distillation = distill_with_llm(effective_settings, blogger, user_info, stats)
+        report_html = artifacts.render_report_html(blogger, stats, distillation, client.usage)
+        skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation)
         skill = BloggerSkill(
             tenant_id=tenant_id,
             blogger_id=blogger.id,
             run_id=run.id,
-            name=slug_skill_name(blogger.display_name),
+            name=artifacts.slug_skill_name(blogger.display_name),
             description=f"基于小红书博主 {blogger.display_name} 公开图文内容蒸馏出的创作方法论",
             skill_markdown=skill_markdown,
             status="active",
@@ -172,60 +186,110 @@ def run_blogger_distillation(
 def collect_posts(
     db: Session,
     tenant_id: int,
+    task_id: str,
     blogger: BloggerProfile,
     client: TikHubXhsClient,
+    settings: Settings,
     candidates: list[XhsPostCandidate],
     comments_per_post: int,
 ) -> list[BloggerPost]:
     posts: list[BloggerPost] = []
-    for candidate in candidates:
+    asr_provider = None
+    if settings.asr_enabled:
+        try:
+            asr_provider = build_asr_provider(settings)
+            record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"ASR 已开启：provider={settings.asr_provider}")
+        except ASRError as exc:
+            record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"ASR 初始化失败，将降级分析视频：{exc}")
+            asr_provider = None
+    else:
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频笔记将使用标题、描述、评论和互动数据参与蒸馏")
+
+    total = len(candidates)
+    for index, candidate in enumerate(candidates, 1):
+        record_task_event(
+            db,
+            tenant_id,
+            task_id,
+            "笔记详情",
+            "running",
+            f"采集第 {index}/{total} 条：类型={candidate.note_type}，note_id={candidate.external_id}",
+        )
         try:
             detail_payload = client.get_image_note_detail(candidate)
         except TikHubError as exc:
             logger.warning("图文详情采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
+            record_task_event(db, tenant_id, task_id, "笔记详情", "failed", f"详情采集失败：note_id={candidate.external_id}，错误={exc}")
             continue
         normalized = normalize_post(candidate, detail_payload)
         if not normalized["title"] and not normalized["body_text"]:
+            record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
             continue
+        if normalized["content_type"] == "video":
+            handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider)
         comments = []
         try:
-            comments = [normalize_comment(item) for item in client.get_note_comments(candidate, comments_per_post)]
+            raw_comments = anonymize_comments(client.get_note_comments(candidate, comments_per_post))
+            comments = [normalize_comment(item) for item in raw_comments]
         except TikHubError as exc:
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
+            record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
         normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
+        post_quality = evaluate_post_quality(normalized)
+        if post_quality.level == "failed":
+            logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
+            continue
+        if post_quality.level == "partial":
+            logger.info("笔记质量部分可用：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
         post = upsert_post(db, tenant_id, blogger, normalized)
         posts.append(post)
+        record_task_event(
+            db,
+            tenant_id,
+            task_id,
+            "样本入库",
+            "succeeded",
+            f"已保存样本：类型={normalized['content_type']}，标题={normalized['title'][:40]}，ASR={normalized['asr_status']}",
+            {"post_id": post.id, "note_id": candidate.external_id},
+        )
     db.commit()
     return posts
 
 
 def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) -> dict[str, Any]:
     payload = unwrap_payload(detail_payload)
-    raw = payload if isinstance(payload, dict) else detail_payload
-    interact = recursive_find(raw, "interact_info")
+    raw = normalize_detail_payload(payload, detail_payload)
+    interact = recursive_find(raw, "interact_info") or recursive_find(raw, "interactInfo")
     if not isinstance(interact, dict):
         interact = raw
     hashtags = extract_hashtags(raw)
     media_urls = extract_media_urls(raw)
+    video_url = extract_video_url(raw)
+    if video_url and video_url not in media_urls:
+        media_urls.insert(0, video_url)
     title = first_str(raw, ["title", "display_title", "note_title"]) or first_str(candidate.raw, ["display_title", "title"])
     body = first_str(raw, ["desc", "description", "content", "note_desc", "text"])
     url = first_str(raw, ["share_url", "url", "web_url"]) or first_str(candidate.raw, ["share_url", "url"])
     published_at = parse_timestamp(
         recursive_find(raw, "time") or recursive_find(raw, "timestamp") or recursive_find(raw, "last_update_time")
     )
-    like_count = first_int(interact, ["liked_count", "like_count", "likes"])
-    favorite_count = first_int(interact, ["collected_count", "favorite_count", "collect_count"])
-    comment_count = first_int(interact, ["comment_count", "comments"])
-    share_count = first_int(interact, ["share_count", "shares"])
+    like_count = first_int(interact, ["liked_count", "likedCount", "like_count", "likeCount", "likes"])
+    favorite_count = first_int(interact, ["collected_count", "collectedCount", "favorite_count", "collect_count"])
+    comment_count = first_int(interact, ["comment_count", "commentCount", "comments"])
+    share_count = first_int(interact, ["share_count", "shareCount", "sharedCount", "shares"])
     score = like_count * 0.35 + favorite_count * 0.45 + comment_count * 0.2 + share_count * 0.05
     return {
         "external_id": candidate.external_id,
         "url": url,
         "title": title[:500] or "未命名笔记",
         "body_text": body,
+        "content_type": "video" if candidate.note_type == "video" or video_url else "image",
         "hashtags_json": json.dumps(hashtags, ensure_ascii=False),
         "cover_url": media_urls[0] if media_urls else "",
         "media_urls_json": json.dumps(media_urls, ensure_ascii=False),
+        "transcript_text": "",
+        "asr_status": "pending" if candidate.note_type == "video" else "not_required",
+        "asr_error": "",
         "published_at": published_at,
         "like_count": like_count,
         "favorite_count": favorite_count,
@@ -234,6 +298,77 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
         "score": score,
         "raw_json": json.dumps(detail_payload, ensure_ascii=False, default=str),
     }
+
+
+def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(payload, list) and payload:
+        first = payload[0]
+        if isinstance(first, dict):
+            note_card = first.get("noteCard") or first.get("note_card") or first.get("note")
+            if isinstance(note_card, dict):
+                merged = dict(note_card)
+                for key in ("id", "note_id", "xsecToken", "xsec_token"):
+                    if key in first and key not in merged:
+                        merged[key] = first[key]
+                return merged
+            return first
+    if isinstance(payload, dict):
+        note_card = payload.get("noteCard") or payload.get("note_card") or payload.get("note")
+        if isinstance(note_card, dict):
+            merged = dict(note_card)
+            for key in ("id", "note_id", "xsecToken", "xsec_token"):
+                if key in payload and key not in merged:
+                    merged[key] = payload[key]
+            return merged
+        return payload
+    return fallback
+
+
+def handle_video_asr(
+    db: Session,
+    tenant_id: int,
+    task_id: str,
+    candidate: XhsPostCandidate,
+    normalized: dict[str, Any],
+    asr_provider: Any,
+) -> None:
+    if asr_provider is None:
+        normalized["asr_status"] = "skipped"
+        normalized["asr_error"] = "ASR 未开启或初始化失败"
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", f"跳过视频转写：note_id={candidate.external_id}")
+        return
+    media_urls = []
+    try:
+        media_urls = json.loads(normalized.get("media_urls_json") or "[]")
+    except json.JSONDecodeError:
+        media_urls = []
+    video_url = next((url for url in media_urls if isinstance(url, str) and url.startswith("http")), "")
+    if not video_url:
+        normalized["asr_status"] = "failed"
+        normalized["asr_error"] = "未提取到视频 URL"
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"未提取到视频 URL：note_id={candidate.external_id}")
+        return
+    try:
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"开始转写视频：note_id={candidate.external_id}")
+        result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id)
+        normalized["transcript_text"] = result.text
+        normalized["asr_status"] = "succeeded"
+        normalized["asr_error"] = ""
+        if result.text:
+            normalized["body_text"] = "\n\n".join(part for part in [normalized.get("body_text", ""), f"视频口播转写：{result.text}"] if part)
+        record_task_event(
+            db,
+            tenant_id,
+            task_id,
+            "视频 ASR",
+            "succeeded",
+            f"视频转写完成：note_id={candidate.external_id}，字数={len(result.text)}，腾讯任务={result.task_id}",
+            {"task_id": result.task_id, "duration_seconds": result.duration_seconds},
+        )
+    except Exception as exc:
+        normalized["asr_status"] = "failed"
+        normalized["asr_error"] = str(exc)
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"视频转写失败，降级分析：note_id={candidate.external_id}，错误={exc}")
 
 
 def normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
@@ -305,6 +440,23 @@ def extract_media_urls(raw: dict[str, Any]) -> list[str]:
             seen.add(url)
             deduped.append(url)
     return deduped[:12]
+
+
+def extract_video_url(raw: dict[str, Any]) -> str:
+    for key in ("videoUrl", "video_url", "masterUrl", "master_url", "play_url", "playUrl"):
+        value = recursive_find(raw, key)
+        if isinstance(value, str) and value.startswith("http"):
+            return value
+    video = recursive_find(raw, "video")
+    if isinstance(video, dict):
+        stream = ((video.get("media") or {}).get("stream") or video.get("stream") or {})
+        for codec in ("h264", "h265"):
+            items = stream.get(codec)
+            if isinstance(items, list) and items:
+                url = items[0].get("masterUrl") or items[0].get("master_url")
+                if isinstance(url, str) and url.startswith("http"):
+                    return url
+    return ""
 
 
 def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
@@ -389,7 +541,8 @@ def distill_with_llm(settings: Settings, blogger: BloggerProfile, user_info: dic
 - 不能冒充原博主。
 - 不能复制原文、标题、图片或个人经历。
 - 只能提炼公开内容中的选题、结构、表达策略、评论需求和创作边界。
-- 输出必须是合法 JSON。
+- 输出必须是合法 JSON，不要 Markdown，不要 HTML，不要解释过程。
+- 你必须优先基于“代码统计与代表样本”，不要泛泛而谈。
 
 博主：
 {json.dumps({"display_name": blogger.display_name, "homepage_url": blogger.homepage_url, "niche": blogger.niche, "description": blogger.description}, ensure_ascii=False)}
@@ -402,18 +555,25 @@ TikHub 用户信息摘要：
 
 输出 JSON：
 {{
+  "one_glance": "一句话说清这个账号的内容价值和爆款原因",
   "positioning": "这个博主公开内容呈现出的账号定位",
+  "persona": ["人设拆解：身份感、表达姿态、信任来源"],
   "audience": "目标读者画像",
   "cognitive_model": ["认知层方法论"],
   "topic_strategy": ["选题策略"],
   "title_patterns": ["标题规律"],
   "opening_patterns": ["开头规律"],
   "body_structures": ["正文结构"],
+  "content_formula": ["可复用的内容公式"],
+  "language_dna": ["语言风格、情绪节奏、常用表达方式"],
   "cover_text_rules": ["封面文案规律"],
   "hashtag_strategy": ["标签策略"],
   "comment_strategy": ["评论区洞察和互动策略"],
+  "growth_insights": ["基于数据面板的发展趋势和机会"],
   "sample_topics": ["可迁移的新选题示例"],
-  "do_not_do": ["禁止事项和不应模仿的部分"]
+  "contrast_examples": ["对比示例：普通写法 -> 更贴近该方法论的写法"],
+  "do_not_do": ["禁止事项和不应模仿的部分"],
+  "core_conclusion": "最后给用户的核心使用建议"
 }}
 """
     data = create_json_response(settings, prompt)
@@ -421,6 +581,13 @@ TikHub 用户信息摘要：
     for key in required:
         if key not in data:
             raise AIServiceError(f"博主蒸馏结果缺少字段：{key}")
+    data.setdefault("one_glance", data.get("positioning", ""))
+    data.setdefault("persona", [])
+    data.setdefault("content_formula", data.get("body_structures", []))
+    data.setdefault("language_dna", [])
+    data.setdefault("growth_insights", [])
+    data.setdefault("contrast_examples", [])
+    data.setdefault("core_conclusion", data.get("positioning", ""))
     return data
 
 

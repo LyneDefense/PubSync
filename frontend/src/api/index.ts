@@ -2,6 +2,7 @@ import type {
   Article,
   ArticleUpdate,
   BloggerDistillationRun,
+  BloggerDistillRequest,
   BloggerPost,
   BloggerProfile,
   BloggerProfileCreate,
@@ -156,10 +157,10 @@ export function listBloggerPosts(id: number) {
   return request<BloggerPost[]>(`/bloggers/${id}/posts`)
 }
 
-export function distillBlogger(id: number, sampleLimit = 50, commentsPerPost = 20) {
+export function distillBlogger(id: number, payload: BloggerDistillRequest) {
   return request<OperationTask>(`/bloggers/${id}/distill`, {
     method: 'POST',
-    body: JSON.stringify({ sample_limit: sampleLimit, comments_per_post: commentsPerPost })
+    body: JSON.stringify(payload)
   })
 }
 

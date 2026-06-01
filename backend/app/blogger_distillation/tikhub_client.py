@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -8,13 +9,16 @@ from typing import Any
 import httpx
 
 from app.config import Settings
+from app.blogger_distillation.endpoint_router import EndpointRouter
 
 
 logger = logging.getLogger(__name__)
 
 
 class TikHubError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 @dataclass
@@ -29,32 +33,37 @@ class TikHubUsage:
 class XhsPostCandidate:
     external_id: str
     xsec_token: str
+    note_type: str
     raw: dict[str, Any]
 
 
 class TikHubXhsClient:
-    USER_INFO_PATH = "/api/v1/xiaohongshu/app_v2/get_user_info"
-    USER_NOTES_PATH = "/api/v1/xiaohongshu/app_v2/get_user_posted_notes"
-    IMAGE_NOTE_DETAIL_PATH = "/api/v1/xiaohongshu/app_v2/get_image_note_detail"
-    NOTE_COMMENTS_PATH = "/api/v1/xiaohongshu/app_v2/get_note_comments"
-
     def __init__(self, settings: Settings) -> None:
         if not settings.tikhub_api_key:
             raise TikHubError("未配置 TIKHUB_API_KEY，无法采集小红书博主内容")
         self.settings = settings
         self.usage = TikHubUsage()
+        self.router = EndpointRouter(self._get)
+        self.user_id = ""
 
     def get_user_info(self, homepage_url: str) -> dict[str, Any]:
-        return self._get(self.USER_INFO_PATH, {"share_text": homepage_url})
+        payload = self.router.call("user_info", {"share_text": homepage_url, "user_id": self.user_id})
+        self.user_id = self.user_id or find_user_id(payload)
+        return payload
 
     def get_user_notes(self, homepage_url: str, limit: int) -> list[XhsPostCandidate]:
         candidates: list[XhsPostCandidate] = []
         cursor = ""
         seen_ids: set[str] = set()
         for _ in range(10):
-            payload = self._get(
-                self.USER_NOTES_PATH,
-                {"share_text": homepage_url, "cursor": cursor, "num": min(20, max(limit, 1))},
+            payload = self.router.call(
+                "user_notes",
+                {
+                    "share_text": homepage_url,
+                    "user_id": self.user_id,
+                    "cursor": cursor,
+                    "num": min(20, max(limit, 1)),
+                },
             )
             notes = find_note_candidates(payload)
             for note in notes:
@@ -66,6 +75,7 @@ class TikHubXhsClient:
                     XhsPostCandidate(
                         external_id=external_id,
                         xsec_token=first_str(note, ["xsec_token", "xsecToken", "xsec_source"]) or "",
+                        note_type=detect_note_type(note),
                         raw=note,
                     )
                 )
@@ -78,10 +88,8 @@ class TikHubXhsClient:
         return candidates[:limit]
 
     def get_image_note_detail(self, candidate: XhsPostCandidate) -> dict[str, Any]:
-        params = {"note_id": candidate.external_id}
-        if candidate.xsec_token:
-            params["xsec_token"] = candidate.xsec_token
-        return self._get(self.IMAGE_NOTE_DETAIL_PATH, params)
+        pool = "video_detail" if candidate.note_type == "video" else "image_detail"
+        return self.router.call(pool, {"note_id": candidate.external_id, "xsec_token": candidate.xsec_token})
 
     def get_note_comments(self, candidate: XhsPostCandidate, limit: int) -> list[dict[str, Any]]:
         if limit <= 0:
@@ -101,7 +109,7 @@ class TikHubXhsClient:
             }
             if candidate.xsec_token:
                 params["xsec_token"] = candidate.xsec_token
-            payload = self._get(self.NOTE_COMMENTS_PATH, params)
+            payload = self.router.call("comments", params, allow_empty=True)
             for comment in find_comment_items(payload):
                 comments.append(comment)
                 if len(comments) >= limit:
@@ -116,22 +124,34 @@ class TikHubXhsClient:
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
-        headers = {"Authorization": f"Bearer {self.settings.tikhub_api_key}", "Accept": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {self.settings.tikhub_api_key}",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 PubSync/1.0",
+        }
+        last_error: TikHubError | None = None
         with httpx.Client(timeout=60) as client:
-            response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
-        self.record_request(response)
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}") from exc
-        if response.status_code >= 400:
-            raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}")
-        if not isinstance(data, dict):
-            raise TikHubError("TikHub 返回格式不正确")
-        status_code = data.get("code")
-        if status_code not in (None, 0, 200):
-            raise TikHubError(f"TikHub 业务错误：{data}")
-        return data
+            for attempt in range(3):
+                if attempt:
+                    time.sleep(1.5 * attempt)
+                response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
+                self.record_request(response)
+                try:
+                    data = response.json()
+                except ValueError as exc:
+                    raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
+                if response.status_code == 429:
+                    last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
+                    continue
+                if response.status_code >= 400:
+                    raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
+                if not isinstance(data, dict):
+                    raise TikHubError("TikHub 返回格式不正确")
+                status_code = data.get("code")
+                if status_code not in (None, 0, 200):
+                    raise TikHubError(f"TikHub 业务错误：{data}")
+                return data
+        raise last_error or TikHubError("TikHub 请求失败")
 
     def record_request(self, response: httpx.Response) -> None:
         self.usage.request_count += 1
@@ -178,10 +198,27 @@ def first_int(data: dict[str, Any], keys: list[str]) -> int:
         if isinstance(value, int):
             return value
         if isinstance(value, str):
-            digits = value.replace(",", "").strip()
-            if digits.isdigit():
-                return int(digits)
+            normalized = parse_count(value)
+            if normalized is not None:
+                return normalized
     return 0
+
+
+def parse_count(value: str) -> int | None:
+    text = value.replace(",", "").strip()
+    if not text:
+        return None
+    multiplier = 1
+    if text.endswith("万"):
+        multiplier = 10_000
+        text = text[:-1]
+    elif text.endswith("亿"):
+        multiplier = 100_000_000
+        text = text[:-1]
+    try:
+        return int(float(text) * multiplier)
+    except ValueError:
+        return None
 
 
 def find_note_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -264,6 +301,24 @@ def recursive_find(value: Any, target_key: str) -> Any:
             if result not in (None, "", []):
                 return result
     return None
+
+
+def find_user_id(payload: dict[str, Any]) -> str:
+    for key in ("user_id", "userId", "userid", "id"):
+        value = recursive_find(payload, key)
+        if isinstance(value, (str, int)) and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def detect_note_type(note: dict[str, Any]) -> str:
+    value = first_str(note, ["type", "note_type", "noteType", "modelType"]).lower()
+    if "video" in value:
+        return "video"
+    nested = recursive_find(note, "type")
+    if isinstance(nested, str) and "video" in nested.lower():
+        return "video"
+    return "image"
 
 
 def parse_timestamp(value: Any) -> datetime | None:

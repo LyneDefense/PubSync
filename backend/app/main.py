@@ -377,7 +377,14 @@ def distill_blogger_endpoint(
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
     task = create_operation_task(db, "blogger_distillation", tenant_id=tenant.id)
-    background_tasks.add_task(run_blogger_distillation_task, task.id, blogger.id, payload.sample_limit, payload.comments_per_post)
+    background_tasks.add_task(
+        run_blogger_distillation_task,
+        task.id,
+        blogger.id,
+        payload.sample_limit,
+        payload.comments_per_post,
+        payload.asr_enabled,
+    )
     return task
 
 

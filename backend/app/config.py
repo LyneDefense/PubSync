@@ -25,6 +25,21 @@ class Settings(BaseSettings):
     tikhub_request_price_usd: float = 0.001
     tikhub_min_request_price_usd: float = 0.001
     tikhub_max_request_price_usd: float = 0.01
+    asr_enabled: bool = False
+    asr_provider: str = "tencent_rec_task"
+    asr_max_duration_seconds: int = 1800
+    asr_poll_interval_seconds: int = 10
+    asr_timeout_seconds: int = 1800
+    tencent_asr_secret_id: str = ""
+    tencent_asr_secret_key: str = ""
+    tencent_asr_region: str = "ap-shanghai"
+    tencent_asr_engine_model_type: str = "16k_zh"
+    tencent_asr_res_text_format: int = 0
+    tencent_cos_secret_id: str = ""
+    tencent_cos_secret_key: str = ""
+    tencent_cos_region: str = "ap-guangzhou"
+    tencent_cos_bucket: str = ""
+    tencent_cos_prefix: str = "pubsync/asr"
     public_api_base_url: str = ""
     static_dir: str = "static"
 

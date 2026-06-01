@@ -466,7 +466,17 @@ p {
   overflow-wrap: anywhere;
 }
 
+.task-events small {
+  grid-column: 2 / 3;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .task-events time {
+  grid-column: 3;
+  grid-row: 1;
   color: var(--color-ink-3);
   font-size: var(--text-xs);
   white-space: nowrap;
@@ -605,6 +615,27 @@ p {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-lg);
+}
+
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  color: var(--color-ink-1);
+  font-size: var(--text-sm);
+}
+
+.checkbox-line input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+}
+
+.form-hint {
+  margin: calc(var(--space-2xs) * -1) 0 0;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  line-height: 1.6;
 }
 
 .blogger-list,

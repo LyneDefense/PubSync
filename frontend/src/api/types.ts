@@ -225,6 +225,12 @@ export interface BloggerProfileCreate {
   description: string
 }
 
+export interface BloggerDistillRequest {
+  sample_limit: number
+  comments_per_post: number
+  asr_enabled?: boolean | null
+}
+
 export interface BloggerPost {
   id: number
   tenant_id: number
@@ -234,8 +240,13 @@ export interface BloggerPost {
   url: string
   title: string
   body_text: string
+  content_type: string
   hashtags_json: string
   cover_url: string
+  media_urls_json: string
+  transcript_text: string
+  asr_status: string
+  asr_error: string
   published_at: string | null
   like_count: number
   favorite_count: number

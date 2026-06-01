@@ -315,6 +315,7 @@ class BloggerProfileRead(BaseModel):
 class BloggerDistillRequest(BaseModel):
     sample_limit: int = Field(default=50, ge=5, le=200)
     comments_per_post: int = Field(default=20, ge=0, le=100)
+    asr_enabled: bool | None = None
 
 
 class BloggerPostRead(BaseModel):
@@ -326,8 +327,13 @@ class BloggerPostRead(BaseModel):
     url: str
     title: str
     body_text: str
+    content_type: str
     hashtags_json: str
     cover_url: str
+    media_urls_json: str
+    transcript_text: str
+    asr_status: str
+    asr_error: str
     published_at: datetime | None
     like_count: int
     favorite_count: int

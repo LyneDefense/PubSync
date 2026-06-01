@@ -106,7 +106,8 @@ const bloggerForm = reactive({
   niche: '',
   description: '',
   sample_limit: 50,
-  comments_per_post: 20
+  comments_per_post: 20,
+  asr_enabled: false
 })
 
 const profileForm = reactive({
@@ -306,6 +307,22 @@ function taskActionTab(name: TaskActionName): MainTab {
     return 'distill'
   }
   return 'article'
+}
+
+function eventPayloadSummary(event: OperationTaskEvent) {
+  if (!event.payload_json) {
+    return ''
+  }
+  try {
+    const payload = JSON.parse(event.payload_json) as Record<string, unknown>
+    const entries = Object.entries(payload)
+      .filter(([, value]) => value !== null && value !== '' && value !== undefined)
+      .slice(0, 6)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+    return entries.join(' · ')
+  } catch {
+    return event.payload_json
+  }
 }
 
 async function runTaskAction(
@@ -536,7 +553,12 @@ async function handleDistillBlogger() {
   await runTaskAction(
     'distill',
     '已提交博主蒸馏任务',
-    () => distillBlogger(selectedBloggerId.value!, bloggerForm.sample_limit, bloggerForm.comments_per_post),
+    () =>
+      distillBlogger(selectedBloggerId.value!, {
+        sample_limit: bloggerForm.sample_limit,
+        comments_per_post: bloggerForm.comments_per_post,
+        asr_enabled: bloggerForm.asr_enabled
+      }),
     refreshSelectedBlogger,
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
   )
@@ -846,6 +868,7 @@ onUnmounted(() => {
           <li v-for="event in visibleTaskEvents" :key="event.id" :class="`event-${event.status}`">
             <span>{{ event.step_name }}</span>
             <strong>{{ event.message }}</strong>
+            <small v-if="eventPayloadSummary(event)">{{ eventPayloadSummary(event) }}</small>
             <time>{{ formatDate(event.created_at) }}</time>
           </li>
           <li v-if="isVisibleTaskRunning" class="event-live-tail" aria-live="polite">
@@ -1044,7 +1067,7 @@ onUnmounted(() => {
             </label>
             <div class="config-grid">
               <label>
-                采样图文数
+                采样笔记数
                 <input v-model.number="bloggerForm.sample_limit" type="number" min="5" max="200" />
               </label>
               <label>
@@ -1052,6 +1075,11 @@ onUnmounted(() => {
                 <input v-model.number="bloggerForm.comments_per_post" type="number" min="0" max="100" />
               </label>
             </div>
+            <label class="checkbox-line">
+              <input v-model="bloggerForm.asr_enabled" type="checkbox" />
+              <span>开启视频 ASR 转写</span>
+            </label>
+            <p class="form-hint">开启后，视频笔记会尝试走腾讯云长音频识别；失败时自动降级为标题、描述、评论和互动数据分析。</p>
             <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
               {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
             </button>
@@ -1097,7 +1125,10 @@ onUnmounted(() => {
               <div v-if="bloggerPosts.length" class="sample-list">
                 <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
                   <strong>{{ post.title }}</strong>
-                  <span>收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / 评论 {{ post.comment_count }}</span>
+                  <span>
+                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / 评论 {{ post.comment_count }}
+                    <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
+                  </span>
                 </div>
               </div>
               <p v-else class="empty-region">完成蒸馏后会显示样本。</p>
