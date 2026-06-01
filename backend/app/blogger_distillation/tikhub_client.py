@@ -72,17 +72,7 @@ class TikHubXhsClient:
         cursor = ""
         seen_ids: set[str] = set()
         for page in range(20):
-            payload = self.router.call(
-                "user_notes",
-                {
-                    "share_text": link["share_text"],
-                    "user_id": self.user_id,
-                    "xsec_token": self.profile_xsec_token,
-                    "cursor": cursor,
-                    "num": min(20, max(limit, 1)),
-                },
-            )
-            page_data = extract_note_page(payload)
+            page_data = self.fetch_user_notes_page(link, cursor, min(20, max(limit, 1)))
             notes = page_data["notes"]
             logger.info(
                 "小红书主页笔记分页：page=%s，cursor=%s，解析=%s，has_more=%s，next_cursor=%s",
@@ -119,6 +109,31 @@ class TikHubXhsClient:
                 break
             cursor = next_cursor
         return candidates[:limit]
+
+    def fetch_user_notes_page(self, link: dict[str, str], cursor: str, num: int) -> dict[str, Any]:
+        errors: list[str] = []
+        args = {
+            "share_text": link["share_text"],
+            "user_id": self.user_id,
+            "xsec_token": self.profile_xsec_token,
+            "cursor": cursor,
+            "num": num,
+        }
+        for endpoint in self.router.pools.get("user_notes", []):
+            params = EndpointRouter._render_params(endpoint.params, args)
+            try:
+                payload = self._get(endpoint.path, params)
+            except Exception as exc:
+                errors.append(f"{endpoint.group}: {exc}")
+                logger.warning("TikHub 用户笔记端点失败：端点=%s:%s，错误=%s", endpoint.group, endpoint.path, exc)
+                continue
+            page_data = extract_note_page(payload)
+            if page_data["notes"]:
+                payload["_endpoint_used"] = f"{endpoint.group}:{endpoint.path}"
+                logger.info("TikHub 用户笔记端点命中：端点=%s，解析=%s", payload["_endpoint_used"], len(page_data["notes"]))
+                return page_data
+            logger.warning("TikHub 用户笔记端点返回空：端点=%s:%s", endpoint.group, endpoint.path)
+        raise TikHubError(f"TikHub 用户笔记列表为空或全部失败：{'；'.join(errors[-5:])}")
 
     def get_image_note_detail(self, candidate: XhsPostCandidate) -> dict[str, Any]:
         pool = "video_detail" if candidate.note_type == "video" else "image_detail"
