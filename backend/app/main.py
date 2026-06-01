@@ -88,6 +88,17 @@ logging.addLevelName(logging.WARNING, "警告")
 logging.addLevelName(logging.ERROR, "错误")
 logging.addLevelName(logging.CRITICAL, "严重")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+
+
+class HealthAccessLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3:
+            return str(args[2]).split("?", 1)[0] != "/health"
+        return "/health" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthAccessLogFilter())
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 

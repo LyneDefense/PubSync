@@ -112,6 +112,9 @@ class TikHubXhsClient:
 
     def fetch_user_notes_page(self, link: dict[str, str], cursor: str, num: int) -> dict[str, Any]:
         errors: list[str] = []
+        best_page: dict[str, Any] | None = None
+        best_endpoint = ""
+        best_score = -1
         args = {
             "share_text": link["share_text"],
             "user_id": self.user_id,
@@ -130,9 +133,30 @@ class TikHubXhsClient:
             page_data = extract_note_page(payload)
             if page_data["notes"]:
                 payload["_endpoint_used"] = f"{endpoint.group}:{endpoint.path}"
-                logger.info("TikHub 用户笔记端点命中：端点=%s，解析=%s", payload["_endpoint_used"], len(page_data["notes"]))
-                return page_data
+                score = score_note_page(page_data, num)
+                logger.info(
+                    "TikHub 用户笔记端点候选：端点=%s，解析=%s，has_more=%s，next_cursor=%s，评分=%s",
+                    payload["_endpoint_used"],
+                    len(page_data["notes"]),
+                    page_data["has_more"],
+                    page_data["next_cursor"] or "<empty>",
+                    score,
+                )
+                if score > best_score:
+                    best_page = page_data
+                    best_endpoint = payload["_endpoint_used"]
+                    best_score = score
+                continue
             logger.warning("TikHub 用户笔记端点返回空：端点=%s:%s", endpoint.group, endpoint.path)
+        if best_page is not None:
+            logger.info(
+                "TikHub 用户笔记端点选用：端点=%s，解析=%s，has_more=%s，next_cursor=%s",
+                best_endpoint,
+                len(best_page["notes"]),
+                best_page["has_more"],
+                best_page["next_cursor"] or "<empty>",
+            )
+            return best_page
         raise TikHubError(f"TikHub 用户笔记列表为空或全部失败：{'；'.join(errors[-5:])}")
 
     def get_image_note_detail(self, candidate: XhsPostCandidate) -> dict[str, Any]:
@@ -317,9 +341,35 @@ def extract_note_page(payload: dict[str, Any]) -> dict[str, Any]:
     notes = [item for item in notes if first_str(item, ["note_id", "id", "noteId", "display_title", "title"])]
     return {
         "notes": notes,
-        "next_cursor": find_container_cursor(page, notes),
-        "has_more": first_bool(page, ["has_more", "hasMore", "has_more_note"]),
+        "next_cursor": find_container_cursor(page, notes) or find_cursor(payload),
+        "has_more": first_bool(page, HAS_MORE_KEYS) or first_bool_recursive(payload, HAS_MORE_KEYS),
     }
+
+
+HAS_MORE_KEYS = ("has_more", "hasMore", "has_more_note", "hasMoreNote", "has_next", "hasNext")
+CURSOR_KEYS = (
+    "next_cursor",
+    "nextCursor",
+    "next_page_cursor",
+    "nextPageCursor",
+    "cursor",
+    "lastCursor",
+    "last_cursor",
+    "cursor_id",
+    "cursorId",
+)
+
+
+def score_note_page(page_data: dict[str, Any], requested_count: int) -> int:
+    note_count = len(page_data["notes"])
+    score = note_count
+    if note_count >= requested_count:
+        score += 100
+    if page_data["has_more"]:
+        score += 500
+    if page_data["next_cursor"]:
+        score += 1000
+    return score
 
 
 def find_best_note_container(value: Any) -> dict[str, Any] | None:
@@ -383,7 +433,7 @@ def extract_xsec_token(value: Any) -> str:
 
 
 def find_container_cursor(container: dict[str, Any], notes: list[dict[str, Any]]) -> str:
-    for key in ("next_cursor", "nextCursor", "cursor", "lastCursor", "last_cursor"):
+    for key in CURSOR_KEYS:
         value = container.get(key)
         if isinstance(value, (str, int)) and str(value).strip():
             return str(value).strip()
@@ -434,6 +484,16 @@ def first_bool(data: dict[str, Any], keys: list[str]) -> bool:
     return False
 
 
+def first_bool_recursive(data: Any, keys: tuple[str, ...]) -> bool:
+    if isinstance(data, dict):
+        if first_bool(data, list(keys)):
+            return True
+        return any(first_bool_recursive(child, keys) for child in data.values())
+    if isinstance(data, list):
+        return any(first_bool_recursive(child, keys) for child in data)
+    return False
+
+
 def find_note_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return extract_note_page(payload)["notes"]
 
@@ -467,7 +527,7 @@ def find_lists(value: Any) -> list[list[dict[str, Any]]]:
 
 
 def find_cursor(payload: dict[str, Any]) -> str:
-    for key in ("cursor", "next_cursor", "nextCursor", "last_cursor"):
+    for key in CURSOR_KEYS:
         value = recursive_find(payload, key)
         if isinstance(value, (str, int)) and str(value).strip():
             return str(value).strip()

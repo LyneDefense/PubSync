@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import json
 import logging
 import re
@@ -152,7 +151,7 @@ def run_blogger_distillation(
     client: TikHubXhsClient | None = None
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        record_task_event(db, tenant_id, task_id, "博主采集", "running", "开始通过 TikHub 采集小红书图文笔记")
+        record_task_event(db, tenant_id, task_id, "博主采集", "running", "开始通过 TikHub 采集小红书公开笔记")
         client = TikHubXhsClient(effective_settings)
         user_info = client.get_user_info(blogger.homepage_url)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
@@ -162,10 +161,10 @@ def run_blogger_distillation(
         posts = collect_posts(db, tenant_id, task_id, blogger, client, effective_settings, candidates[:sample_limit], comments_per_post)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         if not posts:
-            raise TikHubError("没有采集到可用于蒸馏的图文笔记，请检查主页链接或 TikHub 接口返回")
+            raise TikHubError("没有采集到可用于蒸馏的小红书笔记，请检查主页链接或 TikHub 接口返回")
         blogger.sample_count = len(posts)
         db.commit()
-        record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条图文笔记")
+        record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条笔记")
 
         quality = quality_report(posts, sample_limit)
         if quality["warnings"]:
@@ -196,7 +195,7 @@ def run_blogger_distillation(
             blogger_id=blogger.id,
             run_id=run.id,
             name=artifacts.slug_skill_name(blogger.display_name),
-            description=f"基于小红书博主 {blogger.display_name} 公开图文内容蒸馏出的创作方法论",
+            description=f"基于小红书博主 {blogger.display_name} 公开内容蒸馏出的创作方法论",
             skill_markdown=skill_markdown,
             status="active",
         )
@@ -455,9 +454,6 @@ def handle_video_asr(
                 normalized["transcript_text"] = subtitle_text
                 normalized["asr_status"] = "subtitle"
                 normalized["asr_error"] = ""
-                normalized["body_text"] = "\n\n".join(
-                    part for part in [normalized.get("body_text", ""), f"视频字幕：{subtitle_text}"] if part
-                )
                 record_task_event(
                     db,
                     tenant_id,
@@ -483,8 +479,6 @@ def handle_video_asr(
         normalized["transcript_text"] = result.text
         normalized["asr_status"] = "succeeded"
         normalized["asr_error"] = ""
-        if result.text:
-            normalized["body_text"] = "\n\n".join(part for part in [normalized.get("body_text", ""), f"视频口播转写：{result.text}"] if part)
         record_task_event(
             db,
             tenant_id,
@@ -761,83 +755,9 @@ def is_expected_asr_skip(exc: Exception) -> bool:
     return any(marker in message for marker in expected_markers)
 
 
-def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
-    sorted_posts = sorted(posts, key=lambda item: item.score, reverse=True)
-    hot_count = min(10, max(3, int(len(sorted_posts) * 0.2))) if sorted_posts else 0
-    hot_posts = sorted_posts[:hot_count]
-    comments = []
-    for post in posts:
-        try:
-            comments.extend(json.loads(post.comments_json or "[]"))
-        except json.JSONDecodeError:
-            continue
-    return {
-        "sample_count": len(posts),
-        "comment_total": len(comments),
-        "average_like": round(sum(item.like_count for item in posts) / max(len(posts), 1), 2),
-        "average_favorite": round(sum(item.favorite_count for item in posts) / max(len(posts), 1), 2),
-        "average_comment": round(sum(item.comment_count for item in posts) / max(len(posts), 1), 2),
-        "favorite_like_ratio": round(sum(item.favorite_count for item in posts) / max(sum(item.like_count for item in posts), 1), 4),
-        "title_patterns": detect_title_patterns(posts),
-        "frequent_hashtags": frequent_hashtags(posts),
-        "hot_posts": [post_summary(item) for item in hot_posts],
-        "representative_posts": [post_summary(item) for item in sorted_posts[: min(20, len(sorted_posts))]],
-        "comment_insights_source": comments[:100],
-    }
-
-
-def detect_title_patterns(posts: list[BloggerPost]) -> dict[str, int]:
-    patterns = {
-        "避坑型": r"别|不要|千万|踩坑|避坑|不建议",
-        "数字清单型": r"\d+|一|二|三|四|五|六|七|八|九|十|几个|种|条",
-        "问题型": r"为什么|怎么办|是不是|如何|怎么",
-        "反常识型": r"其实|不是|反而|错了|真相",
-        "人群定位型": r"新手|第一次|养猫人|养狗人|铲屎官|宝妈|打工人",
-    }
-    result = {key: 0 for key in patterns}
-    for post in posts:
-        for name, pattern in patterns.items():
-            if re.search(pattern, post.title):
-                result[name] += 1
-    return result
-
-
-def frequent_hashtags(posts: list[BloggerPost]) -> list[dict[str, Any]]:
-    counts: dict[str, int] = {}
-    for post in posts:
-        try:
-            tags = json.loads(post.hashtags_json or "[]")
-        except json.JSONDecodeError:
-            tags = []
-        for tag in tags:
-            counts[str(tag)] = counts.get(str(tag), 0) + 1
-    return [{"tag": tag, "count": count} for tag, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:20]]
-
-
-def post_summary(post: BloggerPost) -> dict[str, Any]:
-    comments = []
-    try:
-        comments = json.loads(post.comments_json or "[]")
-    except json.JSONDecodeError:
-        pass
-    return {
-        "id": post.id,
-        "external_id": post.external_id,
-        "title": post.title,
-        "body_excerpt": post.body_text[:500],
-        "hashtags": json.loads(post.hashtags_json or "[]"),
-        "like_count": post.like_count,
-        "favorite_count": post.favorite_count,
-        "comment_count": post.comment_count,
-        "score": round(post.score, 2),
-        "url": post.url,
-        "top_comments": comments[:10],
-    }
-
-
 def distill_with_llm(settings: Settings, blogger: BloggerProfile, user_info: dict[str, Any], stats: dict[str, Any]) -> dict[str, Any]:
     prompt = f"""
-你是“博主蒸馏 skill”的分析器。请参考 blogger-distiller 的方法：脚本负责事实统计，你负责把公开图文内容提炼成可迁移的创作方法论。
+你是“博主蒸馏 skill”的分析器。请参考 blogger-distiller 的方法：脚本负责事实统计，你负责把公开内容提炼成可迁移的创作方法论。
 
 边界：
 - 不能冒充原博主。
@@ -855,6 +775,13 @@ TikHub 用户信息摘要：
 代码统计与代表样本：
 {json.dumps(stats, ensure_ascii=False, default=str)[:18000]}
 
+重要口径：
+- body_text / body_excerpt 只代表小红书笔记原始文字描述，不能混入视频字幕或 ASR 转写。
+- transcript_text / transcript_excerpt 代表视频字幕或视频口播转写，属于“视频口播素材”，不是图文长文正文。
+- structure_info 只描述图文正文结构；transcript_info 只描述视频口播/字幕结构。
+- 如果样本以视频为主，必须分析“视频口播结构、切入方式、结尾方式、信息密度”，不要写成“长文模式”或“正文平均几千字”。
+- 可以说“视频口播/字幕平均长度约 X 字”，但不能把这个数字当成图文正文长度。
+
 输出 JSON：
 {{
   "one_glance": "一句话说清这个账号的内容价值和爆款原因",
@@ -865,7 +792,8 @@ TikHub 用户信息摘要：
   "topic_strategy": ["选题策略"],
   "title_patterns": ["标题规律"],
   "opening_patterns": ["开头规律"],
-  "body_structures": ["正文结构"],
+  "body_structures": ["图文正文/笔记描述结构，只能基于 body_text/body_excerpt"],
+  "video_script_structures": ["视频口播/字幕结构，只能基于 transcript_text/transcript_excerpt；如果没有视频转写则返回空数组"],
   "content_formula": ["可复用的内容公式"],
   "language_dna": ["语言风格、情绪节奏、常用表达方式"],
   "cover_text_rules": ["封面文案规律"],
@@ -886,140 +814,12 @@ TikHub 用户信息摘要：
     data.setdefault("one_glance", data.get("positioning", ""))
     data.setdefault("persona", [])
     data.setdefault("content_formula", data.get("body_structures", []))
+    data.setdefault("video_script_structures", [])
     data.setdefault("language_dna", [])
     data.setdefault("growth_insights", [])
     data.setdefault("contrast_examples", [])
     data.setdefault("core_conclusion", data.get("positioning", ""))
     return data
-
-
-def render_report_html(blogger: BloggerProfile, stats: dict[str, Any], distillation: dict[str, Any], usage: TikHubUsage) -> str:
-    sections = [
-        ("账号定位", distillation.get("positioning")),
-        ("目标读者", distillation.get("audience")),
-        ("认知模型", distillation.get("cognitive_model")),
-        ("选题策略", distillation.get("topic_strategy")),
-        ("标题规律", distillation.get("title_patterns")),
-        ("正文结构", distillation.get("body_structures")),
-        ("评论洞察", distillation.get("comment_strategy")),
-        ("禁止事项", distillation.get("do_not_do")),
-    ]
-    hot_items = "".join(
-        f"<li><strong>{html.escape(item['title'])}</strong><span> 收藏 {item['favorite_count']} / 点赞 {item['like_count']} / 评论 {item['comment_count']}</span></li>"
-        for item in stats.get("hot_posts", [])
-    )
-    body = [
-        f"<h1>{html.escape(blogger.display_name)} 小红书图文蒸馏报告</h1>",
-        f"<p>样本 {stats['sample_count']} 条，评论 {stats['comment_total']} 条，TikHub 请求 {usage.request_count} 次，估算费用 ${usage.estimated_cost_usd:.4f}（区间 ${usage.cost_min_usd:.4f} - ${usage.cost_max_usd:.4f}）。</p>",
-        "<h2>爆款样本</h2>",
-        f"<ol>{hot_items}</ol>",
-    ]
-    for title, value in sections:
-        body.append(f"<h2>{html.escape(title)}</h2>")
-        if isinstance(value, list):
-            body.append("<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in value) + "</ul>")
-        else:
-            body.append(f"<p>{html.escape(str(value or ''))}</p>")
-    return "\n".join(body)
-
-
-def build_skill_markdown(blogger: BloggerProfile, stats: dict[str, Any], distillation: dict[str, Any]) -> str:
-    name = slug_skill_name(blogger.display_name)
-    return f"""---
-name: {name}
-description: 基于小红书博主 {blogger.display_name} 公开图文内容蒸馏出的创作方法论。不要冒充原博主，不要复制原文。
----
-
-# {blogger.display_name} 图文创作方法论 Skill
-
-## 角色定位
-
-你不是原博主本人，不要冒充原博主。你是学习了该博主公开图文内容方法论的创作助手，只迁移选题、结构、表达策略和读者洞察。
-
-## 适用范围
-
-- 平台：小红书图文笔记，也可迁移到公众号短内容选题。
-- 领域：{blogger.niche or "与样本内容相近的垂直领域"}。
-- 样本规模：{stats["sample_count"]} 条图文笔记，{stats["comment_total"]} 条评论。
-
-## 账号定位
-
-{distillation.get("positioning", "")}
-
-## 目标读者
-
-{distillation.get("audience", "")}
-
-## 认知模型
-
-{markdown_list(distillation.get("cognitive_model"))}
-
-## 选题策略
-
-{markdown_list(distillation.get("topic_strategy"))}
-
-## 标题规则
-
-{markdown_list(distillation.get("title_patterns"))}
-
-## 开头规则
-
-{markdown_list(distillation.get("opening_patterns"))}
-
-## 正文结构
-
-{markdown_list(distillation.get("body_structures"))}
-
-## 封面文案
-
-{markdown_list(distillation.get("cover_text_rules"))}
-
-## 话题标签
-
-{markdown_list(distillation.get("hashtag_strategy"))}
-
-## 评论区策略
-
-{markdown_list(distillation.get("comment_strategy"))}
-
-## 当用户不知道发什么时
-
-1. 先询问账号定位、目标用户、发布目标和禁区。
-2. 生成 20 个候选选题。
-3. 按收藏潜力、评论潜力、账号匹配度评分。
-4. 推荐前 5 个，并说明为什么适合。
-
-## 当用户已有主题时
-
-1. 判断主题是否适合该方法论。
-2. 输出 3 个标题方案。
-3. 输出正文、封面文案、话题标签、配图建议和评论引导。
-
-## 可迁移选题示例
-
-{markdown_list(distillation.get("sample_topics"))}
-
-## 禁止事项
-
-{markdown_list(distillation.get("do_not_do"))}
-- 不复制原博主原文。
-- 不复用原博主图片。
-- 不冒充原博主身份。
-- 不虚构个人经历、病例、数据或用户反馈。
-"""
-
-
-def markdown_list(value: Any) -> str:
-    if isinstance(value, list):
-        return "\n".join(f"- {item}" for item in value) or "- 暂无"
-    if value:
-        return f"- {value}"
-    return "- 暂无"
-
-
-def slug_skill_name(name: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff_-]+", "-", name.strip()).strip("-").lower()
-    return f"xhs-{slug or 'blogger'}-distilled"
 
 
 def apply_usage(run: BloggerDistillationRun, usage: TikHubUsage) -> None:

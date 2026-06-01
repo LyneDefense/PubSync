@@ -47,9 +47,11 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
     category_stats = classify_posts(posts)
     frequency_info = analyze_posting_frequency(posts)
     structure_info = analyze_body_structure(posts)
+    transcript_info = analyze_transcript_structure(posts)
     title_patterns = detect_title_patterns(posts)
     cta_patterns = detect_text_patterns(posts, CTA_PATTERNS, body=True)
     opening_patterns = detect_opening_patterns(posts)
+    transcript_opening_patterns = detect_transcript_opening_patterns(posts)
     emoji_info = analyze_emoji_usage(posts)
     trend_info = analyze_growth_trend(posts)
     hot_post_summaries = [post_summary(item) for item in hot_posts]
@@ -64,7 +66,9 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
         "opening_patterns": opening_patterns,
         "cta_patterns": cta_patterns,
         "structure_info": structure_info,
+        "transcript_info": transcript_info,
         "emoji_info": emoji_info,
+        "transcript_opening_patterns": transcript_opening_patterns,
         "frequent_hashtags": frequent_hashtags(posts),
         "category_stats": category_stats,
         "frequency_info": frequency_info,
@@ -111,6 +115,19 @@ def detect_opening_patterns(posts: list[BloggerPost]) -> dict[str, dict[str, Any
     return with_pct(result, len(posts))
 
 
+def detect_transcript_opening_patterns(posts: list[BloggerPost]) -> dict[str, dict[str, Any]]:
+    transcript_posts = [post for post in posts if (post.transcript_text or "").strip()]
+    result: dict[str, dict[str, Any]] = {key: {"count": 0, "examples": []} for key in OPENING_PATTERNS}
+    for post in transcript_posts:
+        opening = post.transcript_text.strip()[:120]
+        for name, pattern in OPENING_PATTERNS.items():
+            if re.search(pattern, opening, re.IGNORECASE):
+                result[name]["count"] += 1
+                if len(result[name]["examples"]) < 3:
+                    result[name]["examples"].append(opening[:80])
+    return with_pct(result, len(transcript_posts))
+
+
 def with_pct(result: dict[str, dict[str, Any]], total: int) -> dict[str, dict[str, Any]]:
     for data in result.values():
         data["pct"] = round(data["count"] / max(total, 1) * 100, 1)
@@ -128,6 +145,31 @@ def analyze_body_structure(posts: list[BloggerPost]) -> dict[str, Any]:
         "long_count": sum(1 for value in lengths if value > 500),
         "list_format_count": list_count,
         "number_heading_count": number_heading_count,
+    }
+
+
+def analyze_transcript_structure(posts: list[BloggerPost]) -> dict[str, Any]:
+    video_posts = [item for item in posts if item.content_type == "video"]
+    transcript_posts = [item for item in video_posts if (item.transcript_text or "").strip()]
+    lengths = [len(item.transcript_text or "") for item in transcript_posts]
+    subtitle_count = sum(1 for item in transcript_posts if item.asr_status == "subtitle")
+    asr_count = sum(1 for item in transcript_posts if item.asr_status == "succeeded")
+    skipped_count = sum(1 for item in video_posts if item.asr_status in {"skipped", "failed", "pending"})
+    opening_examples = [item.transcript_text.strip()[:120] for item in transcript_posts[:5] if item.transcript_text.strip()]
+    ending_examples = [item.transcript_text.strip()[-120:] for item in transcript_posts[:5] if item.transcript_text.strip()]
+    return {
+        "video_count": len(video_posts),
+        "transcript_count": len(transcript_posts),
+        "subtitle_count": subtitle_count,
+        "asr_count": asr_count,
+        "skipped_count": skipped_count,
+        "avg_transcript_length": round(sum(lengths) / max(len(lengths), 1), 1),
+        "short_transcript_count": sum(1 for value in lengths if value < 500),
+        "medium_transcript_count": sum(1 for value in lengths if 500 <= value <= 2000),
+        "long_transcript_count": sum(1 for value in lengths if value > 2000),
+        "opening_examples": opening_examples,
+        "ending_examples": ending_examples,
+        "note": "以上长度只代表视频字幕/口播转写，不代表图文正文长度。",
     }
 
 
@@ -239,7 +281,8 @@ def extract_opinion_sentences(posts: list[BloggerPost]) -> list[str]:
     candidates: list[str] = []
     keywords = r"我觉得|我发现|其实|真正|关键|不要|一定|最好|建议|核心|本质"
     for post in posts:
-        sentences = re.split(r"[。！？!?]\s*", post.body_text or "")
+        source_text = "\n".join(part for part in [post.body_text or "", post.transcript_text or ""] if part)
+        sentences = re.split(r"[。！？!?]\s*", source_text)
         for sentence in sentences:
             clean = sentence.strip()
             if 12 <= len(clean) <= 120 and re.search(keywords, clean):
@@ -258,6 +301,10 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         "external_id": post.external_id,
         "title": post.title,
         "body_excerpt": post.body_text[:500],
+        "content_type": post.content_type,
+        "has_transcript": bool((post.transcript_text or "").strip()),
+        "transcript_excerpt": (post.transcript_text or "")[:500],
+        "asr_status": post.asr_status,
         "hashtags": json.loads(post.hashtags_json or "[]"),
         "like_count": post.like_count,
         "favorite_count": post.favorite_count,
