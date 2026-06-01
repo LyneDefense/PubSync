@@ -68,6 +68,10 @@ class TencentRecTaskASRProvider(ASRProvider):
             video_path = tmp_path / "source-video"
             audio_path = tmp_path / "audio.mp3"
             download_file(video_url, video_path)
+            streams = probe_media_streams(video_path)
+            if "audio" not in streams["types"]:
+                codecs = ", ".join(streams["codecs"][:6]) or "unknown"
+                raise ASRError(f"下载内容不包含音频流，可能是图片封面或无声视频：codecs={codecs}")
             duration = probe_duration(video_path)
             if duration and duration > self.settings.asr_max_duration_seconds:
                 raise ASRError(f"视频时长 {int(duration)} 秒，超过 ASR 上限 {self.settings.asr_max_duration_seconds} 秒")
@@ -215,6 +219,45 @@ def probe_duration(input_path: Path) -> float | None:
         return float(result.stdout.strip())
     except ValueError:
         return None
+
+
+def probe_media_streams(input_path: Path) -> dict[str, list[str]]:
+    if not shutil.which("ffprobe"):
+        return {"types": [], "codecs": []}
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type,codec_name",
+            "-of",
+            "json",
+            str(input_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return {"types": [], "codecs": []}
+    streams = payload.get("streams")
+    if not isinstance(streams, list):
+        return {"types": [], "codecs": []}
+    types = []
+    codecs = []
+    for stream in streams:
+        if not isinstance(stream, dict):
+            continue
+        codec_type = stream.get("codec_type")
+        codec_name = stream.get("codec_name")
+        if isinstance(codec_type, str) and codec_type:
+            types.append(codec_type)
+        if isinstance(codec_name, str) and codec_name:
+            codecs.append(codec_name)
+    return {"types": types, "codecs": codecs}
 
 
 def extract_audio(video_path: Path, audio_path: Path) -> None:

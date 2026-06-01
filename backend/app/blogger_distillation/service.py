@@ -431,7 +431,7 @@ def handle_video_asr(
         media_urls = json.loads(normalized.get("media_urls_json") or "[]")
     except json.JSONDecodeError:
         media_urls = []
-    video_url = next((url for url in media_urls if isinstance(url, str) and url.startswith("http")), "")
+    video_url = next((url for url in media_urls if is_likely_video_url(url)), "")
     if not video_url:
         normalized["asr_status"] = "failed"
         normalized["asr_error"] = "未提取到视频 URL"
@@ -532,20 +532,31 @@ def extract_media_urls(raw: dict[str, Any]) -> list[str]:
 
 
 def extract_video_url(raw: dict[str, Any]) -> str:
-    for key in ("videoUrl", "video_url", "masterUrl", "master_url", "play_url", "playUrl"):
-        value = recursive_find(raw, key)
-        if isinstance(value, str) and value.startswith("http"):
-            return value
     video = recursive_find(raw, "video")
     if isinstance(video, dict):
+        for key in ("videoUrl", "video_url", "masterUrl", "master_url", "play_url", "playUrl"):
+            value = recursive_find(video, key)
+            if is_likely_video_url(value):
+                return value
         stream = ((video.get("media") or {}).get("stream") or video.get("stream") or {})
         for codec in ("h264", "h265"):
             items = stream.get(codec)
             if isinstance(items, list) and items:
-                url = items[0].get("masterUrl") or items[0].get("master_url")
-                if isinstance(url, str) and url.startswith("http"):
+                url = items[0].get("masterUrl") or items[0].get("master_url") or items[0].get("url")
+                if is_likely_video_url(url):
                     return url
     return ""
+
+
+def is_likely_video_url(value: Any) -> bool:
+    if not isinstance(value, str) or not value.startswith("http"):
+        return False
+    lowered = value.lower()
+    image_markers = (".jpg", ".jpeg", ".png", ".webp", ".gif", "imageview", "image")
+    if any(marker in lowered for marker in image_markers):
+        return False
+    video_markers = (".mp4", ".mov", ".m3u8", ".ts", "video", "stream", "play", "sns-video")
+    return any(marker in lowered for marker in video_markers)
 
 
 def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
