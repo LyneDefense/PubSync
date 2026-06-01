@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.blogger_distillation.service import record_task_event, run_blogger_distillation
+from app.blogger_distillation.service import DistillationCancelled, record_task_event, run_blogger_distillation
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
 from app.harness import PubSyncHarness
@@ -111,6 +111,9 @@ def run_blogger_distillation_task(
         if not task:
             return
 
+        if task.status == TaskStatus.cancel_requested:
+            mark_task_cancelled(db, task, "博主蒸馏已停止")
+            return
         mark_task_running(db, task, "正在采集小红书图文内容并蒸馏 Skill")
         result = run_blogger_distillation(
             db=db,
@@ -124,6 +127,9 @@ def run_blogger_distillation_task(
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，生成 Skill：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)
+    except DistillationCancelled as exc:
+        logger.info("任务停止：任务ID=%s，类型=博主蒸馏，原因=%s", task_id, exc)
+        mark_task_cancelled_by_id(db, task_id, "博主蒸馏已停止", str(exc))
     except (ValueError, AIServiceError, TikHubError) as exc:
         logger.warning("任务失败：任务ID=%s，类型=博主蒸馏，错误=%s", task_id, exc)
         mark_task_failed_by_id(db, task_id, "博主蒸馏失败", str(exc))
@@ -257,6 +263,29 @@ def mark_task_succeeded(db: Session, task: OperationTask, message: str, article_
     task.article_id = article_id
     task.error_message = None
     db.commit()
+
+
+def request_task_cancel(db: Session, task: OperationTask) -> None:
+    if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.cancelled}:
+        return
+    task.status = TaskStatus.cancel_requested
+    task.message = "正在请求停止任务，当前步骤结束后会安全退出"
+    db.commit()
+
+
+def mark_task_cancelled(db: Session, task: OperationTask, message: str, error_message: str | None = None) -> None:
+    task.status = TaskStatus.cancelled
+    task.message = message
+    task.error_message = error_message
+    db.commit()
+
+
+def mark_task_cancelled_by_id(db: Session, task_id: str, message: str, error_message: str | None = None) -> None:
+    db.rollback()
+    task = get_task(db, task_id)
+    if not task:
+        return
+    mark_task_cancelled(db, task, message, error_message)
 
 
 def mark_task_failed_by_id(db: Session, task_id: str, message: str, error_message: str) -> None:

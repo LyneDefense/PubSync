@@ -127,6 +127,10 @@ export function getTaskEvents(id: string) {
   return request<OperationTaskEvent[]>(`/tasks/${id}/events`)
 }
 
+export function cancelTask(id: string) {
+  return request<OperationTask>(`/tasks/${id}/cancel`, { method: 'POST' })
+}
+
 export function getLatestArticle() {
   return request<Article | null>('/articles/latest')
 }

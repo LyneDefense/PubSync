@@ -126,6 +126,16 @@ button.primary:hover {
   background: var(--color-accent-ink);
 }
 
+button.danger {
+  border-color: color-mix(in oklab, var(--color-danger), var(--color-rule) 35%);
+  color: var(--color-danger);
+}
+
+button.danger:hover {
+  background: color-mix(in oklab, var(--color-danger), transparent 88%);
+  border-color: var(--color-danger);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -452,7 +462,9 @@ p {
 }
 
 .task-summary.event-running::before,
+.task-summary.event-cancel_requested::before,
 .task-events li.event-running::before,
+.task-events li.event-cancel_requested::before,
 .task-events li.event-live-tail::before {
   background: var(--color-blue);
 }
@@ -463,7 +475,9 @@ p {
 }
 
 .task-summary.event-failed::before,
-.task-events li.event-failed::before {
+.task-summary.event-cancelled::before,
+.task-events li.event-failed::before,
+.task-events li.event-cancelled::before {
   background: var(--color-danger);
 }
 

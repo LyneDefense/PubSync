@@ -1,5 +1,5 @@
 export type ArticleStatus = 'draft' | 'generated' | 'sent_to_wechat' | 'failed'
-export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type TaskStatus = 'queued' | 'running' | 'cancel_requested' | 'cancelled' | 'succeeded' | 'failed'
 export type TenantStatus = 'active' | 'disabled'
 
 export interface Tenant {

@@ -16,18 +16,30 @@ def record_event(
     message: str,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    logger.info("流程事件：任务ID=%s，步骤=%s，状态=%s，%s", context.task_id, step_name, status_label(status), message)
-    context.db.add(
-        OperationTaskEvent(
-            task_id=context.task_id,
-            tenant_id=context.tenant.id,
-            step_name=step_name,
-            status=status,
-            message=message,
-            payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None,
+    safe_message = truncate_event_message(message)
+    logger.info("流程事件：任务ID=%s，步骤=%s，状态=%s，%s", context.task_id, step_name, status_label(status), safe_message)
+    try:
+        context.db.add(
+            OperationTaskEvent(
+                task_id=context.task_id,
+                tenant_id=context.tenant.id,
+                step_name=step_name,
+                status=status,
+                message=safe_message,
+                payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None,
+            )
         )
-    )
-    context.db.commit()
+        context.db.commit()
+    except Exception:
+        context.db.rollback()
+        logger.exception("记录流程事件失败：任务ID=%s，步骤=%s，状态=%s", context.task_id, step_name, status)
+
+
+def truncate_event_message(message: str, limit: int = 480) -> str:
+    normalized = " ".join(str(message).split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
 
 
 def status_label(status: str) -> str:

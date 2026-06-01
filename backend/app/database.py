@@ -68,6 +68,34 @@ def create_db_and_tables() -> None:
 
 
 def ensure_runtime_schema() -> None:
+    enum_statements = [
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum
+                WHERE enumlabel = 'cancel_requested'
+                  AND enumtypid = 'task_status'::regtype
+            ) THEN
+                ALTER TYPE task_status ADD VALUE 'cancel_requested';
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum
+                WHERE enumlabel = 'cancelled'
+                  AND enumtypid = 'task_status'::regtype
+            ) THEN
+                ALTER TYPE task_status ADD VALUE 'cancelled';
+            END IF;
+        END $$;
+        """,
+    ]
     statements = [
         """
         INSERT INTO tenants (id, name, slug, status, created_at)
@@ -389,6 +417,9 @@ def ensure_runtime_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_blogger_skills_tenant_id ON blogger_skills(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_skills_blogger_id ON blogger_skills(blogger_id)",
     ]
+    with engine.begin() as connection:
+        for statement in enum_statements:
+            connection.execute(text(statement))
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))

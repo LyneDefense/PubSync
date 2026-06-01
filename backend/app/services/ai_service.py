@@ -103,11 +103,23 @@ def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
         parsed = parse_json_object_text(text)
     except json.JSONDecodeError as exc:
         logger.warning("AI 首次返回不是合法 JSON，开始尝试修复：错误=%s，片段=%s", exc, text[:240])
+        normalized_text = normalize_unescaped_json_quotes(text)
+        if normalized_text != text:
+            try:
+                parsed = parse_json_object_text(normalized_text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
         repaired_text = repair_json_response(settings, text)
         try:
             parsed = parse_json_object_text(repaired_text)
         except json.JSONDecodeError as repaired_exc:
-            raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from repaired_exc
+            normalized_repaired_text = normalize_unescaped_json_quotes(repaired_text)
+            try:
+                parsed = parse_json_object_text(normalized_repaired_text)
+            except json.JSONDecodeError:
+                raise AIServiceError(f"AI 返回不是合法 JSON：{text[:500]}") from repaired_exc
     if not isinstance(parsed, dict):
         raise AIServiceError("AI 返回 JSON 不是对象")
     return parsed
@@ -355,6 +367,43 @@ def extract_json_object(text: str) -> str:
     if start >= 0 and end > start:
         return stripped[start : end + 1]
     return stripped
+
+
+def normalize_unescaped_json_quotes(text: str) -> str:
+    try:
+        source = extract_json_object(text)
+    except Exception:
+        source = text
+    result: list[str] = []
+    in_string = False
+    escaped = False
+    length = len(source)
+    for index, char in enumerate(source):
+        if not in_string:
+            result.append(char)
+            if char == '"':
+                in_string = True
+            continue
+        if escaped:
+            result.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            result.append(char)
+            escaped = True
+            continue
+        if char == '"':
+            next_index = index + 1
+            while next_index < length and source[next_index].isspace():
+                next_index += 1
+            if next_index >= length or source[next_index] in {":", ",", "}", "]"}:
+                result.append(char)
+                in_string = False
+            else:
+                result.append('\\"')
+            continue
+        result.append(char)
+    return "".join(result)
 
 
 def remove_reasoning_text(text: str) -> str:

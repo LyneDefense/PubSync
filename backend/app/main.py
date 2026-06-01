@@ -55,6 +55,7 @@ from app.services.auth_service import create_token, tenant_ids_for_user, token_u
 from app.services.news_service import list_news
 from app.services.task_service import (
     create_operation_task,
+    request_task_cancel,
     run_blogger_distillation_task,
     run_article_generation_task,
     run_news_fetch_task,
@@ -425,6 +426,18 @@ def get_task_endpoint(task_id: str, tenant: Tenant = Depends(current_tenant), db
     task = db.get(OperationTask, task_id)
     if not task or task.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@app.post("/tasks/{task_id}/cancel", response_model=OperationTaskRead)
+def cancel_task_endpoint(task_id: str, tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> OperationTask:
+    task = db.get(OperationTask, task_id)
+    if not task or task.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.task_type != "blogger_distillation":
+        raise HTTPException(status_code=400, detail="Only blogger distillation tasks can be stopped")
+    request_task_cancel(db, task)
+    db.refresh(task)
     return task
 
 

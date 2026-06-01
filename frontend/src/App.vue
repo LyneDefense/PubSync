@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 
 import {
+  cancelTask,
   clearAuthToken,
   clearTenantId,
   createBlogger,
@@ -70,6 +71,7 @@ const selectedTenantId = ref(getTenantId())
 const message = ref('')
 const isError = ref(false)
 const pendingAction = ref<string | null>(null)
+const runningTaskId = ref<string | null>(null)
 const taskEvents = ref<OperationTaskEvent[]>([])
 const taskEventsAction = ref<TaskActionName | null>(null)
 const showTaskEventDetails = ref(false)
@@ -202,7 +204,12 @@ const pagedNews = computed(() => {
 })
 const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
 const latestBloggerRun = computed(() => bloggerRuns.value[0] || null)
-const latestBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value) || null)
+const latestBloggerSkill = computed(
+  () =>
+    bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value && skill.status === 'active') ||
+    bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value) ||
+    null
+)
 const bloggerCostLabel = computed(() => {
   const run = latestBloggerRun.value
   if (!run) {
@@ -360,6 +367,7 @@ async function runTaskAction(
   showMessage(label)
   try {
     const task = await startTask()
+    runningTaskId.value = task.id
     showMessage(task.message)
     taskEvents.value = await getTaskEvents(task.id)
 
@@ -377,6 +385,17 @@ async function runTaskAction(
         return
       }
 
+      if (latestTask.status === 'cancel_requested') {
+        showMessage(latestTask.message)
+      }
+
+      if (latestTask.status === 'cancelled') {
+        stopFakeProgress(name, false)
+        await onSuccess()
+        showMessage(latestTask.message || '任务已停止')
+        return
+      }
+
       if (latestTask.status === 'failed') {
         throw new Error(latestTask.error_message || latestTask.message || '任务失败')
       }
@@ -389,7 +408,20 @@ async function runTaskAction(
     showMessage(error instanceof Error ? error.message : '操作失败', true)
   } finally {
     pendingAction.value = null
+    runningTaskId.value = null
     window.setTimeout(() => resetFakeProgress(name), 300)
+  }
+}
+
+async function handleCancelDistillation() {
+  if (!runningTaskId.value || pendingAction.value !== 'distill') {
+    return
+  }
+  try {
+    const task = await cancelTask(runningTaskId.value)
+    showMessage(task.message || '已请求停止蒸馏')
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '停止蒸馏失败', true)
   }
 }
 
@@ -1069,6 +1101,15 @@ onUnmounted(() => {
               @click="handleDistillBlogger"
             >
               <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '采集并蒸馏' }}</span>
+            </button>
+            <button
+              v-if="pendingAction === 'distill'"
+              type="button"
+              class="ghost danger"
+              :disabled="!runningTaskId"
+              @click="handleCancelDistillation"
+            >
+              停止蒸馏
             </button>
           </div>
         </div>

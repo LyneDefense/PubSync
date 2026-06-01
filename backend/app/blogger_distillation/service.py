@@ -28,7 +28,7 @@ from app.blogger_distillation.tikhub_client import (
     unwrap_payload,
 )
 from app.config import Settings
-from app.models import BloggerDistillationRun, BloggerPost, BloggerProfile, BloggerSkill, OperationTaskEvent
+from app.models import BloggerDistillationRun, BloggerPost, BloggerProfile, BloggerSkill, OperationTask, OperationTaskEvent, TaskStatus
 from app.services.ai_service import AIServiceError, create_json_response
 
 
@@ -41,6 +41,10 @@ class DistillationResult:
     skill: BloggerSkill
 
 
+class DistillationCancelled(Exception):
+    pass
+
+
 def record_task_event(
     db: Session,
     tenant_id: int,
@@ -50,18 +54,53 @@ def record_task_event(
     message: str,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    logger.info("博主蒸馏事件：任务ID=%s，步骤=%s，状态=%s，%s", task_id, step_name, status, message)
-    db.add(
-        OperationTaskEvent(
-            tenant_id=tenant_id,
-            task_id=task_id,
-            step_name=step_name,
-            status=status,
-            message=message,
-            payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None,
+    safe_message = truncate_task_event_message(message)
+    logger.info("博主蒸馏事件：任务ID=%s，步骤=%s，状态=%s，%s", task_id, step_name, status, safe_message)
+    try:
+        db.add(
+            OperationTaskEvent(
+                tenant_id=tenant_id,
+                task_id=task_id,
+                step_name=step_name,
+                status=status,
+                message=safe_message,
+                payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("记录博主蒸馏事件失败：任务ID=%s，步骤=%s，状态=%s", task_id, step_name, status)
+
+
+def truncate_task_event_message(message: str, limit: int = 480) -> str:
+    normalized = " ".join(str(message).split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
+
+
+def ensure_distillation_not_cancelled(db: Session, tenant_id: int, task_id: str) -> None:
+    task = db.get(OperationTask, task_id)
+    if not task or task.tenant_id != tenant_id:
+        return
+    db.refresh(task)
+    if task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+        message = "用户已请求停止蒸馏，流程安全退出；已采集样本会保留，未发布新的 Skill"
+        record_task_event(db, tenant_id, task_id, "停止蒸馏", "cancelled", message)
+        raise DistillationCancelled(message)
+
+
+def archive_active_skills(db: Session, tenant_id: int, blogger_id: int) -> None:
+    active_skills = db.scalars(
+        select(BloggerSkill).where(
+            BloggerSkill.tenant_id == tenant_id,
+            BloggerSkill.blogger_id == blogger_id,
+            BloggerSkill.status == "active",
         )
     )
-    db.commit()
+    for skill in active_skills:
+        skill.status = "archived"
 
 
 def create_blogger(db: Session, tenant_id: int, display_name: str, homepage_url: str, niche: str, description: str) -> BloggerProfile:
@@ -109,14 +148,18 @@ def run_blogger_distillation(
     db.refresh(run)
     effective_settings = settings.model_copy(update={"asr_enabled": asr_enabled}) if asr_enabled is not None else settings
 
+    client: TikHubXhsClient | None = None
     try:
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         record_task_event(db, tenant_id, task_id, "博主采集", "running", "开始通过 TikHub 采集小红书图文笔记")
         client = TikHubXhsClient(effective_settings)
         user_info = client.get_user_info(blogger.homepage_url)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         candidates = client.get_user_notes(blogger.homepage_url, sample_limit)
         record_task_event(db, tenant_id, task_id, "博主采集", "running", f"已获取笔记候选 {len(candidates)} 条")
 
         posts = collect_posts(db, tenant_id, task_id, blogger, client, effective_settings, candidates[:sample_limit], comments_per_post)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         if not posts:
             raise TikHubError("没有采集到可用于蒸馏的图文笔记，请检查主页链接或 TikHub 接口返回")
         blogger.sample_count = len(posts)
@@ -141,9 +184,12 @@ def run_blogger_distillation(
         )
 
         record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         distillation = distill_with_llm(effective_settings, blogger, user_info, stats)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         report_html = artifacts.render_report_html(blogger, stats, distillation, client.usage)
         skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation)
+        archive_active_skills(db, tenant_id, blogger.id)
         skill = BloggerSkill(
             tenant_id=tenant_id,
             blogger_id=blogger.id,
@@ -176,9 +222,18 @@ def run_blogger_distillation(
             {"run_id": run.id, "skill_id": skill.id},
         )
         return DistillationResult(run=run, skill=skill)
+    except DistillationCancelled as exc:
+        run.status = "cancelled"
+        run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
+        db.commit()
+        raise
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
         db.commit()
         raise
 
@@ -207,6 +262,7 @@ def collect_posts(
 
     total = len(candidates)
     for index, candidate in enumerate(candidates, 1):
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         record_task_event(
             db,
             tenant_id,
@@ -226,9 +282,12 @@ def collect_posts(
             record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
             continue
         if normalized["content_type"] == "video":
+            ensure_distillation_not_cancelled(db, tenant_id, task_id)
             handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider)
+            ensure_distillation_not_cancelled(db, tenant_id, task_id)
         comments = []
         try:
+            ensure_distillation_not_cancelled(db, tenant_id, task_id)
             raw_comments = anonymize_comments(client.get_note_comments(candidate, comments_per_post))
             comments = [normalize_comment(item) for item in raw_comments]
         except TikHubError as exc:
