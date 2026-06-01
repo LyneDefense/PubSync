@@ -443,7 +443,7 @@ def handle_video_asr(
         media_urls = []
     candidate_video_url = extract_video_url(candidate.raw)
     candidate_urls = [candidate_video_url, *media_urls]
-    video_url = next((url for url in candidate_urls if is_likely_video_url(url)), "")
+    video_url = next((url for url in candidate_urls if is_video_url_candidate(url)), "")
     if not video_url:
         normalized["asr_status"] = "skipped"
         normalized["asr_error"] = "未提取到可转写的视频 URL"
@@ -572,6 +572,12 @@ def is_likely_video_url(value: Any) -> bool:
         return False
     video_markers = (".mp4", ".mov", ".m3u8", ".ts", "video", "stream", "play", "sns-video")
     return any(marker in lowered for marker in video_markers)
+
+
+def is_video_url_candidate(value: Any) -> bool:
+    if not isinstance(value, str) or not value.startswith("http"):
+        return False
+    return not is_image_url(value.lower())
 
 
 def collect_video_url_candidates(raw: dict[str, Any]) -> list[str]:
