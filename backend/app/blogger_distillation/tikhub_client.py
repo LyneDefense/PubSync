@@ -33,10 +33,10 @@ class XhsPostCandidate:
 
 
 class TikHubXhsClient:
-    USER_INFO_PATH = "/api/v1/xiaohongshu/app/v2/get_user_info"
-    USER_NOTES_PATH = "/api/v1/xiaohongshu/app/v2/get_user_posted_notes"
-    IMAGE_NOTE_DETAIL_PATH = "/api/v1/xiaohongshu/app/v2/get_image_note_detail"
-    NOTE_COMMENTS_PATH = "/api/v1/xiaohongshu/app/v2/get_note_comments"
+    USER_INFO_PATH = "/api/v1/xiaohongshu/app_v2/get_user_info"
+    USER_NOTES_PATH = "/api/v1/xiaohongshu/app_v2/get_user_posted_notes"
+    IMAGE_NOTE_DETAIL_PATH = "/api/v1/xiaohongshu/app_v2/get_image_note_detail"
+    NOTE_COMMENTS_PATH = "/api/v1/xiaohongshu/app_v2/get_note_comments"
 
     def __init__(self, settings: Settings) -> None:
         if not settings.tikhub_api_key:
@@ -88,10 +88,14 @@ class TikHubXhsClient:
             return []
         comments: list[dict[str, Any]] = []
         cursor = ""
+        index = 0
+        page_area = "UNFOLDED"
         for _ in range(6):
             params: dict[str, Any] = {
                 "note_id": candidate.external_id,
                 "cursor": cursor,
+                "index": index,
+                "pageArea": page_area,
                 "sort_strategy": "like_count",
                 "num": min(20, max(limit, 1)),
             }
@@ -103,6 +107,8 @@ class TikHubXhsClient:
                 if len(comments) >= limit:
                     return comments
             next_cursor = find_cursor(payload)
+            index = find_index(payload) or len(comments)
+            page_area = find_page_area(payload) or page_area
             if not next_cursor or next_cursor == cursor:
                 break
             cursor = next_cursor
@@ -225,6 +231,22 @@ def find_cursor(payload: dict[str, Any]) -> str:
         value = recursive_find(payload, key)
         if isinstance(value, (str, int)) and str(value).strip():
             return str(value).strip()
+    return ""
+
+
+def find_index(payload: dict[str, Any]) -> int:
+    value = recursive_find(payload, "index")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
+
+
+def find_page_area(payload: dict[str, Any]) -> str:
+    value = recursive_find(payload, "pageArea") or recursive_find(payload, "page_area")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
     return ""
 
 
