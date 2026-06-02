@@ -295,7 +295,9 @@ def collect_posts(
         except TikHubError as exc:
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
-        normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
+        collected_comments = [item for item in comments if item["content"]]
+        normalized["comments_json"] = json.dumps(collected_comments, ensure_ascii=False)
+        apply_collected_comment_fallback(normalized, len(collected_comments))
         post_quality = evaluate_post_quality(normalized)
         if post_quality.level == "failed":
             logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
@@ -357,6 +359,18 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
         "score": score,
         "raw_json": json.dumps(detail_payload, ensure_ascii=False, default=str),
     }
+
+
+def apply_collected_comment_fallback(data: dict[str, Any], collected_comment_count: int) -> None:
+    if collected_comment_count <= 0 or int(data.get("comment_count") or 0) > 0:
+        return
+    data["comment_count"] = collected_comment_count
+    data["score"] = (
+        int(data.get("like_count") or 0) * 0.35
+        + int(data.get("favorite_count") or 0) * 0.45
+        + collected_comment_count * 0.2
+        + int(data.get("share_count") or 0) * 0.05
+    )
 
 
 def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str, Any]:
