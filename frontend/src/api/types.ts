@@ -9,6 +9,30 @@ export interface Tenant {
   status: TenantStatus
 }
 
+export interface CurrentUser {
+  username: string
+  is_admin: boolean
+  tenant_id: number | null
+}
+
+export interface AdminUser {
+  id: number
+  username: string
+  is_admin: boolean
+  tenant_id: number | null
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminUserCreate {
+  username: string
+  password: string
+  tenant_name: string
+  tenant_slug?: string
+  is_admin: boolean
+}
+
 export interface ContentProfile {
   tenant_id: number
   publication_name: string

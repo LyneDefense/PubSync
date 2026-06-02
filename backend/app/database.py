@@ -54,6 +54,10 @@ PET_INDUSTRY_SOURCE_URLS = ",".join(
 )
 
 
+def sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -106,6 +110,34 @@ def ensure_runtime_schema() -> None:
         INSERT INTO tenants (id, name, slug, status, created_at)
         VALUES (2, 'EyangPet 宠物内容', 'eyangpet', 'active', NOW())
         ON CONFLICT (id) DO NOTHING
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(80) UNIQUE NOT NULL,
+            password_hash VARCHAR(200) NOT NULL,
+            is_admin BOOLEAN NOT NULL DEFAULT false,
+            tenant_id INTEGER REFERENCES tenants(id),
+            status VARCHAR(30) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'active'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        "CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)",
+        "CREATE INDEX IF NOT EXISTS ix_users_tenant_id ON users(tenant_id)",
+        f"""
+        INSERT INTO users (username, password_hash, is_admin, tenant_id, status, created_at, updated_at)
+        VALUES ({sql_literal(get_settings().admin_username)}, {sql_literal(get_settings().admin_password)}, true, 1, 'active', NOW(), NOW())
+        ON CONFLICT (username) DO NOTHING
+        """,
+        """
+        INSERT INTO users (username, password_hash, is_admin, tenant_id, status, created_at, updated_at)
+        VALUES ('eyangpet', '123456', false, 2, 'active', NOW(), NOW())
+        ON CONFLICT (username) DO NOTHING
         """,
         "ALTER TABLE content_profiles ADD COLUMN IF NOT EXISTS grouping_mode VARCHAR(30) NOT NULL DEFAULT 'regional'",
         """

@@ -26,9 +26,13 @@ from app.models import (
     OperationTask,
     OperationTaskEvent,
     Tenant,
+    TenantStatus,
+    User,
     WeChatAccount,
 )
 from app.schemas import (
+    AdminUserCreate,
+    AdminUserRead,
     ArticleRead,
     ArticleUpdate,
     BloggerDistillRequest,
@@ -38,6 +42,7 @@ from app.schemas import (
     BloggerProfileRead,
     BloggerSkillRead,
     ContentProfileRead,
+    CurrentUserRead,
     DashboardRead,
     NewsItemRead,
     NewsItemUpdate,
@@ -51,7 +56,16 @@ from app.schemas import (
     WorkspaceConfigUpdate,
 )
 from app.services.article_service import update_article
-from app.services.auth_service import create_token, tenant_ids_for_user, token_username, verify_credentials, verify_token
+from app.services.auth_service import (
+    create_token,
+    get_user_by_username,
+    hash_password,
+    is_admin_user,
+    tenant_ids_for_user,
+    token_username,
+    verify_credentials,
+    verify_token,
+)
 from app.services.news_service import list_news
 from app.services.task_service import (
     create_operation_task,
@@ -63,6 +77,7 @@ from app.services.task_service import (
 )
 from app.blogger_distillation.service import create_blogger
 from app.services.tenant_service import (
+    ensure_tenant_defaults,
     get_content_groups,
     get_default_tenant,
     get_layout_settings,
@@ -158,8 +173,8 @@ def health() -> dict[str, str]:
 
 
 @app.post("/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
-    if not verify_credentials(payload.username, payload.password, settings):
+def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+    if not verify_credentials(payload.username, payload.password, settings, db):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     return LoginResponse(access_token=create_token(settings, payload.username))
 
@@ -177,7 +192,7 @@ def current_username(request: Request) -> str:
 
 def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
     username = current_username(request)
-    allowed_tenant_ids = tenant_ids_for_user(username, settings)
+    allowed_tenant_ids = tenant_ids_for_user(username, settings, db)
     if not allowed_tenant_ids:
         raise HTTPException(status_code=403, detail="当前账号没有可访问的工作空间")
 
@@ -197,14 +212,79 @@ def current_tenant(request: Request, db: Session = Depends(get_db)) -> Tenant:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
+    username = current_username(request)
+    if not is_admin_user(username, settings, db):
+        raise HTTPException(status_code=403, detail="只有管理员可以访问后台管理")
+    return username
+
+
+@app.get("/auth/me", response_model=CurrentUserRead)
+def me_endpoint(request: Request, db: Session = Depends(get_db)) -> CurrentUserRead:
+    username = current_username(request)
+    user = get_user_by_username(db, username)
+    if user:
+        return CurrentUserRead(username=user.username, is_admin=user.is_admin, tenant_id=user.tenant_id)
+    tenant_ids = tenant_ids_for_user(username, settings, db)
+    return CurrentUserRead(
+        username=username,
+        is_admin=is_admin_user(username, settings, db),
+        tenant_id=tenant_ids[0] if tenant_ids else None,
+    )
+
+
 @app.get("/tenants", response_model=list[TenantRead])
 def list_tenants_endpoint(request: Request, db: Session = Depends(get_db)) -> list[Tenant]:
     username = current_username(request)
-    allowed_tenant_ids = tenant_ids_for_user(username, settings)
+    allowed_tenant_ids = tenant_ids_for_user(username, settings, db)
     tenants = [tenant for tenant in list_tenants(db) if tenant.id in allowed_tenant_ids]
     if not tenants:
         raise HTTPException(status_code=403, detail="当前账号没有可访问的工作空间")
     return tenants
+
+
+@app.get("/admin/users", response_model=list[AdminUserRead])
+def admin_list_users_endpoint(
+    _: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[User]:
+    return list(db.scalars(select(User).order_by(User.created_at.desc(), User.id.desc())))
+
+
+@app.post("/admin/users", response_model=AdminUserRead)
+def admin_create_user_endpoint(
+    payload: AdminUserCreate,
+    _: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> User:
+    username = payload.username.strip()
+    if get_user_by_username(db, username):
+        raise HTTPException(status_code=409, detail="账号已存在")
+    slug = normalize_tenant_slug(payload.tenant_slug or username)
+    if db.scalar(select(Tenant).where(Tenant.slug == slug)):
+        raise HTTPException(status_code=409, detail="工作空间标识已存在")
+    tenant = Tenant(name=payload.tenant_name.strip(), slug=slug, status=TenantStatus.active)
+    db.add(tenant)
+    db.flush()
+    ensure_tenant_defaults(db, tenant)
+    user = User(
+        username=username,
+        password_hash=hash_password(payload.password, settings),
+        is_admin=payload.is_admin,
+        tenant_id=tenant.id,
+        status="active",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def normalize_tenant_slug(value: str) -> str:
+    import re
+
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip()).strip("-_").lower()
+    return slug[:80] or "workspace"
 
 
 @app.get("/profile", response_model=ContentProfileRead)
@@ -504,12 +584,17 @@ def send_to_wechat_endpoint(
 
 
 @app.get("/settings", response_model=list[SettingRead])
-def list_settings_endpoint(db: Session = Depends(get_db)) -> list[AppSetting]:
+def list_settings_endpoint(_: str = Depends(require_admin), db: Session = Depends(get_db)) -> list[AppSetting]:
     return list(db.scalars(select(AppSetting).order_by(AppSetting.key.asc())))
 
 
 @app.put("/settings/{key}", response_model=SettingRead)
-def upsert_setting_endpoint(key: str, payload: SettingUpdate, db: Session = Depends(get_db)) -> AppSetting:
+def upsert_setting_endpoint(
+    key: str,
+    payload: SettingUpdate,
+    _: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AppSetting:
     setting = db.merge(AppSetting(key=key, value=payload.value))
     db.commit()
     db.refresh(setting)

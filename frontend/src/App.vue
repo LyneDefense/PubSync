@@ -5,16 +5,19 @@ import {
   cancelTask,
   clearAuthToken,
   clearTenantId,
+  createAdminUser,
   createBlogger,
   distillBlogger,
   fetchNews,
   generateArticle,
   getAuthToken,
+  getCurrentUser,
   getLatestArticle,
   getTenantId,
   getTask,
   getTaskEvents,
   getWorkspaceConfig,
+  listAdminUsers,
   listBloggerPosts,
   listBloggerRuns,
   listBloggerSkills,
@@ -29,6 +32,8 @@ import {
   updateWorkspaceConfig
 } from './api'
 import type {
+  AdminUser,
+  AdminUserCreate,
   Article,
   ArticleUpdate,
   BloggerDistillationRun,
@@ -37,6 +42,7 @@ import type {
   BloggerSkill,
   ContentGroup,
   ContentProfile,
+  CurrentUser,
   NewsItem,
   OperationTask,
   OperationTaskEvent,
@@ -47,7 +53,10 @@ import type {
 type TaskActionName = 'fetch' | 'generate' | 'distill'
 type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
-type MainTab = 'news' | 'article' | 'distill' | 'settings'
+type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
+type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
+type XhsTab = 'ai' | 'packages' | 'records' | 'settings'
+type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 
 const statusText: Record<string, string> = {
@@ -63,6 +72,8 @@ const bloggers = ref<BloggerProfile[]>([])
 const bloggerPosts = ref<BloggerPost[]>([])
 const bloggerRuns = ref<BloggerDistillationRun[]>([])
 const bloggerSkills = ref<BloggerSkill[]>([])
+const adminUsers = ref<AdminUser[]>([])
+const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
@@ -78,7 +89,10 @@ const showTaskEventDetails = ref(false)
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
 const loginMessage = ref('')
-const activeMainTab = ref<MainTab>('news')
+const activeMainTab = ref<MainTab>('wechat')
+const activeWechatTab = ref<WeChatTab>('brief')
+const activeXhsTab = ref<XhsTab>('ai')
+const activeDouyinTab = ref<DouyinTab>('ai')
 const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
@@ -94,6 +108,14 @@ const progressTimers: Partial<Record<TaskActionName, number>> = {}
 const loginForm = reactive({
   username: '',
   password: ''
+})
+
+const adminUserForm = reactive<AdminUserCreate>({
+  username: '',
+  password: '',
+  tenant_name: '',
+  tenant_slug: '',
+  is_admin: false
 })
 
 const form = reactive<ArticleUpdate>({
@@ -177,6 +199,9 @@ const contentGroupForms = ref<ContentGroup[]>([])
 const hasArticle = computed(() => Boolean(article.value))
 const workspaceTitle = computed(() => profile.value?.workspace_title || 'AI 早报')
 const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
+const isAdmin = computed(() => Boolean(currentUser.value?.is_admin))
+const currentTenantName = computed(() => tenants.value.find((tenant) => String(tenant.id) === selectedTenantId.value)?.name || publicationName.value)
+const canSwitchTenant = computed(() => isAdmin.value && tenants.value.length > 1)
 const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -346,13 +371,10 @@ function taskButtonStyle(name: TaskActionName) {
 }
 
 function taskActionTab(name: TaskActionName): MainTab {
-  if (name === 'fetch') {
-    return 'news'
-  }
   if (name === 'distill') {
-    return 'distill'
+    return 'xhs'
   }
-  return 'article'
+  return 'wechat'
 }
 
 function eventPayloadSummary(event: OperationTaskEvent) {
@@ -471,6 +493,9 @@ async function loadAll() {
   bloggerSkills.value = nextSkills
   selectedBloggerId.value = nextBloggers[0]?.id || null
   await refreshSelectedBlogger()
+  if (isAdmin.value) {
+    adminUsers.value = await listAdminUsers()
+  }
 }
 
 function setWorkspaceConfig(config: WorkspaceConfig) {
@@ -509,7 +534,8 @@ function setWorkspaceConfig(config: WorkspaceConfig) {
 }
 
 async function loadTenantOptions() {
-  const nextTenants = await listTenants()
+  const [nextUser, nextTenants] = await Promise.all([getCurrentUser(), listTenants()])
+  currentUser.value = nextUser
   tenants.value = nextTenants
   const current = selectedTenantId.value
   const selected = nextTenants.find((tenant) => String(tenant.id) === current) || nextTenants[0]
@@ -544,6 +570,8 @@ function handleLogout() {
   bloggerRuns.value = []
   bloggerSkills.value = []
   selectedBloggerId.value = null
+  currentUser.value = null
+  adminUsers.value = []
   tenants.value = []
   profile.value = null
   contentGroups.value = []
@@ -614,6 +642,26 @@ async function handleCreateBlogger() {
     bloggerForm.niche = ''
     bloggerForm.description = ''
     await refreshBloggers()
+  })
+}
+
+async function handleCreateAdminUser() {
+  await runAction('admin-user', '正在创建账号和工作空间', async () => {
+    const user = await createAdminUser({
+      username: adminUserForm.username,
+      password: adminUserForm.password,
+      tenant_name: adminUserForm.tenant_name,
+      tenant_slug: adminUserForm.tenant_slug || undefined,
+      is_admin: adminUserForm.is_admin
+    })
+    adminUsers.value = await listAdminUsers()
+    tenants.value = await listTenants()
+    adminUserForm.username = ''
+    adminUserForm.password = ''
+    adminUserForm.tenant_name = ''
+    adminUserForm.tenant_slug = ''
+    adminUserForm.is_admin = false
+    showMessage(`账号 ${user.username} 已创建`)
   })
 }
 
@@ -861,7 +909,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="topbar-controls">
-        <label class="tenant-switcher">
+        <label v-if="canSwitchTenant" class="tenant-switcher">
           工作空间
           <select v-model="selectedTenantId" @change="handleTenantChange">
             <option v-for="tenant in tenants" :key="tenant.id" :value="String(tenant.id)">
@@ -869,46 +917,51 @@ onUnmounted(() => {
             </option>
           </select>
         </label>
+        <div v-else class="tenant-badge">
+          <span>工作空间</span>
+          <strong>{{ currentTenantName }}</strong>
+        </div>
         <button type="button" @click="handleLogout">退出登录</button>
       </div>
     </header>
 
-    <nav class="main-tabs" role="tablist" aria-label="主模块">
+    <nav class="main-tabs" role="tablist" aria-label="媒体平台">
       <button
         type="button"
         role="tab"
-        :aria-selected="activeMainTab === 'news'"
-        :class="{ active: activeMainTab === 'news' }"
-        @click="activeMainTab = 'news'"
+        :aria-selected="activeMainTab === 'wechat'"
+        :class="{ active: activeMainTab === 'wechat' }"
+        @click="activeMainTab = 'wechat'"
       >
-        候选新闻
+        公众号
       </button>
       <button
         type="button"
         role="tab"
-        :aria-selected="activeMainTab === 'article'"
-        :class="{ active: activeMainTab === 'article' }"
-        @click="activeMainTab = 'article'"
+        :aria-selected="activeMainTab === 'xhs'"
+        :class="{ active: activeMainTab === 'xhs' }"
+        @click="activeMainTab = 'xhs'"
       >
-        文章预览
+        小红书
       </button>
       <button
         type="button"
         role="tab"
-        :aria-selected="activeMainTab === 'distill'"
-        :class="{ active: activeMainTab === 'distill' }"
-        @click="activeMainTab = 'distill'"
+        :aria-selected="activeMainTab === 'douyin'"
+        :class="{ active: activeMainTab === 'douyin' }"
+        @click="activeMainTab = 'douyin'"
       >
-        博主蒸馏
+        抖音
       </button>
       <button
+        v-if="isAdmin"
         type="button"
         role="tab"
-        :aria-selected="activeMainTab === 'settings'"
-        :class="{ active: activeMainTab === 'settings' }"
-        @click="activeMainTab = 'settings'"
+        :aria-selected="activeMainTab === 'admin'"
+        :class="{ active: activeMainTab === 'admin' }"
+        @click="activeMainTab = 'admin'"
       >
-        设置
+        后台管理
       </button>
     </nav>
 
@@ -927,6 +980,34 @@ onUnmounted(() => {
         <div>
           <span>工作区</span>
           <strong>{{ publicationName }}</strong>
+        </div>
+      </div>
+
+      <div v-if="activeMainTab === 'wechat'" class="module-subnav platform-subnav">
+        <div class="tabs" role="tablist" aria-label="公众号模块">
+          <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>
+          <button type="button" :class="{ active: activeWechatTab === 'ai' }" @click="activeWechatTab = 'ai'">AI 创作</button>
+          <button type="button" :class="{ active: activeWechatTab === 'drafts' }" @click="activeWechatTab = 'drafts'">文章草稿</button>
+          <button type="button" :class="{ active: activeWechatTab === 'records' }" @click="activeWechatTab = 'records'">发布记录</button>
+          <button type="button" :class="{ active: activeWechatTab === 'settings' }" @click="activeWechatTab = 'settings'">设置</button>
+        </div>
+      </div>
+
+      <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav">
+        <div class="tabs" role="tablist" aria-label="小红书模块">
+          <button type="button" :class="{ active: activeXhsTab === 'ai' }" @click="activeXhsTab = 'ai'">AI 创作</button>
+          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">发布包</button>
+          <button type="button" :class="{ active: activeXhsTab === 'records' }" @click="activeXhsTab = 'records'">发布记录</button>
+          <button type="button" :class="{ active: activeXhsTab === 'settings' }" @click="activeXhsTab = 'settings'">设置</button>
+        </div>
+      </div>
+
+      <div v-if="activeMainTab === 'douyin'" class="module-subnav platform-subnav">
+        <div class="tabs" role="tablist" aria-label="抖音模块">
+          <button type="button" :class="{ active: activeDouyinTab === 'ai' }" @click="activeDouyinTab = 'ai'">AI 创作</button>
+          <button type="button" :class="{ active: activeDouyinTab === 'packages' }" @click="activeDouyinTab = 'packages'">发布包</button>
+          <button type="button" :class="{ active: activeDouyinTab === 'records' }" @click="activeDouyinTab = 'records'">发布记录</button>
+          <button type="button" :class="{ active: activeDouyinTab === 'settings' }" @click="activeDouyinTab = 'settings'">设置</button>
         </div>
       </div>
 
@@ -961,10 +1042,11 @@ onUnmounted(() => {
         </ol>
       </section>
 
-      <section v-if="activeMainTab === 'news'" class="panel">
+      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'brief'" class="panel">
         <div class="section-header">
           <div>
-            <h2>{{ workspaceTitle }}候选新闻</h2>
+            <h2>{{ workspaceTitle }}每日早报</h2>
+            <p class="toolbar-subtitle">新闻采集、候选筛选和早报生成是独立链路，最终进入公众号文章草稿。</p>
           </div>
           <div class="actions">
             <button
@@ -1025,7 +1107,30 @@ onUnmounted(() => {
         <p v-else class="empty-region">当前分类还没有候选新闻。</p>
       </section>
 
-      <section v-if="activeMainTab === 'article'" class="panel">
+      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'ai'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>公众号 AI 创作</h2>
+            <p class="toolbar-subtitle">博主风格创作和自主 AI 创作会生成公众号文章，并复用预览与草稿箱发布能力。</p>
+          </div>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card locked">
+            <span>博主风格创作</span>
+            <h3>公众号博主蒸馏</h3>
+            <p>未来流程：采集公众号文章样本，蒸馏风格资产，再应用风格生成公众号文章。</p>
+            <strong>暂未开放</strong>
+          </article>
+          <article class="feature-card locked">
+            <span>自主 AI 创作</span>
+            <h3>输入主题生成文章</h3>
+            <p>未来流程：输入主题、目标读者和内容目标，由 AI 自主规划并生成公众号文章。</p>
+            <strong>暂未开放</strong>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'drafts'" class="panel">
         <div class="section-header">
           <div>
             <h2>公众号文章</h2>
@@ -1103,11 +1208,21 @@ onUnmounted(() => {
         </article>
       </section>
 
-      <section v-if="activeMainTab === 'distill'" class="panel">
+      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'records'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书博主蒸馏</h2>
-            <p class="toolbar-subtitle">通过 TikHub 采集图文笔记和 Top20 评论，生成报告与创作 Skill。</p>
+            <h2>公众号发布记录</h2>
+            <p class="toolbar-subtitle">这里会汇总每日早报和 AI 创作文章的草稿箱推送记录。</p>
+          </div>
+        </div>
+        <p class="empty-region">发布记录模块暂未开放。</p>
+      </section>
+
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'ai'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>小红书 AI 创作</h2>
+            <p class="toolbar-subtitle">博主风格创作拆成样本采集、风格蒸馏和发布包生成；当前后端仍以一次任务执行采集与蒸馏。</p>
           </div>
           <div class="actions">
             <button
@@ -1118,7 +1233,7 @@ onUnmounted(() => {
               :disabled="!selectedBloggerId || Boolean(pendingAction)"
               @click="handleDistillBlogger"
             >
-              <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '采集并蒸馏' }}</span>
+              <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '采集样本并蒸馏' }}</span>
             </button>
             <button
               v-if="pendingAction === 'distill'"
@@ -1130,6 +1245,25 @@ onUnmounted(() => {
               停止蒸馏
             </button>
           </div>
+        </div>
+
+        <div class="feature-grid workflow-strip">
+          <article class="feature-card active">
+            <span>01</span>
+            <h3>样本采集</h3>
+            <p>采集博主公开笔记、评论和视频字幕/ASR。</p>
+          </article>
+          <article class="feature-card active">
+            <span>02</span>
+            <h3>风格蒸馏</h3>
+            <p>基于样本生成蒸馏报告和风格资产。</p>
+          </article>
+          <article class="feature-card locked">
+            <span>03</span>
+            <h3>内容生成</h3>
+            <p>应用风格资产生成小红书发布包。</p>
+            <strong>暂未开放</strong>
+          </article>
         </div>
 
         <div class="distill-grid">
@@ -1240,7 +1374,27 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="activeMainTab === 'settings'" class="panel">
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab !== 'ai'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>{{ activeXhsTab === 'packages' ? '小红书发布包' : activeXhsTab === 'records' ? '小红书发布记录' : '小红书设置' }}</h2>
+            <p class="toolbar-subtitle">小红书发布包、自主 AI 创作和设置能力后续开放。</p>
+          </div>
+        </div>
+        <p class="empty-region">该模块暂未开放。</p>
+      </section>
+
+      <section v-if="activeMainTab === 'douyin'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>抖音{{ activeDouyinTab === 'ai' ? ' AI 创作' : activeDouyinTab === 'packages' ? '发布包' : activeDouyinTab === 'records' ? '发布记录' : '设置' }}</h2>
+            <p class="toolbar-subtitle">抖音会复用“样本采集、风格蒸馏、脚本生成、发布包”的结构，当前先预留入口。</p>
+          </div>
+        </div>
+        <p class="empty-region">该模块暂未开放。</p>
+      </section>
+
+      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'settings'" class="panel">
         <div class="section-header">
           <div>
             <h2>工作空间配置</h2>
@@ -1602,6 +1756,56 @@ onUnmounted(() => {
             </div>
           </div>
         </form>
+      </section>
+
+      <section v-if="activeMainTab === 'admin' && isAdmin" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>后台管理</h2>
+            <p class="toolbar-subtitle">管理员创建账号和工作空间；普通账号登录后只进入自己的工作空间。</p>
+          </div>
+        </div>
+        <div class="distill-grid">
+          <form class="distill-card" @submit.prevent="handleCreateAdminUser">
+            <h3>创建账号</h3>
+            <div class="config-grid">
+              <label>
+                用户名
+                <input v-model="adminUserForm.username" type="text" autocomplete="off" required />
+              </label>
+              <label>
+                初始密码
+                <input v-model="adminUserForm.password" type="password" autocomplete="new-password" required />
+              </label>
+              <label>
+                工作空间名称
+                <input v-model="adminUserForm.tenant_name" type="text" required />
+              </label>
+              <label>
+                工作空间标识
+                <input v-model="adminUserForm.tenant_slug" type="text" placeholder="留空则使用用户名" />
+              </label>
+            </div>
+            <label class="toggle-row">
+              <input v-model="adminUserForm.is_admin" type="checkbox" />
+              创建为管理员账号
+            </label>
+            <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+              {{ pendingAction === 'admin-user' ? '创建中' : '创建账号' }}
+            </button>
+          </form>
+
+          <article class="distill-card">
+            <h3>账号列表</h3>
+            <div v-if="adminUsers.length" class="admin-user-list">
+              <div v-for="user in adminUsers" :key="user.id">
+                <strong>{{ user.username }}</strong>
+                <span>{{ user.is_admin ? '管理员' : '普通用户' }} · 工作空间 ID {{ user.tenant_id || '未绑定' }} · {{ user.status }}</span>
+              </div>
+            </div>
+            <p v-else class="empty-region">暂无账号。</p>
+          </article>
+        </div>
       </section>
     </main>
   </div>

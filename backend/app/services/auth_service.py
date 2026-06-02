@@ -5,7 +5,11 @@ import json
 import time
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import Settings
+from app.models import User
 
 
 EXTRA_USERS = {
@@ -47,29 +51,63 @@ def token_username(token: str, settings: Settings) -> str | None:
     if not isinstance(payload, dict):
         return None
     username = str(payload.get("sub") or "")
-    if not is_known_user(username, settings):
-        return None
     exp = payload.get("exp")
     if not isinstance(exp, int) or exp <= time.time():
         return None
     return username
 
 
-def verify_credentials(username: str, password: str, settings: Settings) -> bool:
+def verify_credentials(username: str, password: str, settings: Settings, db: Session | None = None) -> bool:
+    if db is not None:
+        user = get_user_by_username(db, username)
+        return bool(user and user.status == "active" and verify_password(password, user.password_hash, settings))
     if hmac.compare_digest(username, settings.admin_username) and hmac.compare_digest(password, settings.admin_password):
         return True
     expected_password = EXTRA_USERS.get(username)
     return expected_password is not None and hmac.compare_digest(password, expected_password)
 
 
-def is_known_user(username: str, settings: Settings) -> bool:
+def is_known_user(username: str, settings: Settings, db: Session | None = None) -> bool:
+    if db is not None:
+        user = get_user_by_username(db, username)
+        return bool(user and user.status == "active")
     return hmac.compare_digest(username, settings.admin_username) or username in EXTRA_USERS
 
 
-def tenant_ids_for_user(username: str, settings: Settings) -> list[int]:
-    if hmac.compare_digest(username, settings.admin_username):
+def tenant_ids_for_user(username: str, settings: Settings, db: Session | None = None) -> list[int]:
+    if db is not None:
+        user = get_user_by_username(db, username)
+        if user and user.status == "active":
+            if user.is_admin:
+                return [1]
+            return [user.tenant_id] if user.tenant_id else []
+        return []
+    if is_admin_user(username, settings, db):
         return [1]
     return USER_TENANT_IDS.get(username, [])
+
+
+def is_admin_user(username: str, settings: Settings, db: Session | None = None) -> bool:
+    if db is not None:
+        user = get_user_by_username(db, username)
+        return bool(user and user.status == "active" and user.is_admin)
+    return hmac.compare_digest(username, settings.admin_username)
+
+
+def get_user_by_username(db: Session, username: str) -> User | None:
+    return db.scalar(select(User).where(User.username == username))
+
+
+def hash_password(password: str, settings: Settings) -> str:
+    salt = settings.auth_secret or settings.admin_password
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
+    return f"pbkdf2_sha256${base64.urlsafe_b64encode(digest).decode().rstrip('=')}"
+
+
+def verify_password(password: str, password_hash: str, settings: Settings) -> bool:
+    if password_hash.startswith("pbkdf2_sha256$"):
+        return hmac.compare_digest(password_hash, hash_password(password, settings))
+    return hmac.compare_digest(password, password_hash)
 
 
 def sign(encoded_payload: str, settings: Settings) -> str:

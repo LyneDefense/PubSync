@@ -1,4 +1,6 @@
 import type {
+  AdminUser,
+  AdminUserCreate,
   Article,
   ArticleUpdate,
   BloggerDistillationRun,
@@ -8,6 +10,7 @@ import type {
   BloggerProfileCreate,
   BloggerSkill,
   ContentProfile,
+  CurrentUser,
   LoginResponse,
   NewsItem,
   OperationTask,
@@ -83,6 +86,21 @@ export async function login(username: string, password: string) {
 
 export function listTenants() {
   return request<Tenant[]>('/tenants')
+}
+
+export function getCurrentUser() {
+  return request<CurrentUser>('/auth/me')
+}
+
+export function listAdminUsers() {
+  return request<AdminUser[]>('/admin/users')
+}
+
+export function createAdminUser(payload: AdminUserCreate) {
+  return request<AdminUser>('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
 }
 
 export function getProfile() {
