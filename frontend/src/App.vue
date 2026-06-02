@@ -217,6 +217,24 @@ const bloggerCostLabel = computed(() => {
   }
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
 })
+function bloggerCommentLabel(post: BloggerPost) {
+  if (post.comment_count > 0) {
+    return `评论 ${post.comment_count}`
+  }
+  const sampledCount = sampledCommentCount(post)
+  return sampledCount > 0 ? `评论未知 / 采样 ${sampledCount}` : '评论未知'
+}
+function sampledCommentCount(post: BloggerPost) {
+  if (typeof post.sampled_comment_count === 'number') {
+    return post.sampled_comment_count
+  }
+  try {
+    const comments = JSON.parse(post.comments_json || '[]')
+    return Array.isArray(comments) ? comments.length : 0
+  } catch {
+    return 0
+  }
+}
 const visibleTaskEvents = computed(() => {
   if (!taskEventsAction.value) {
     return []
@@ -1194,7 +1212,7 @@ onUnmounted(() => {
                 <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
                   <strong>{{ post.title }}</strong>
                   <span>
-                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / 评论 {{ post.comment_count }}
+                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
                     <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
                   </span>
                 </div>

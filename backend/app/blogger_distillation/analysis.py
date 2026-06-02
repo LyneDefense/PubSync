@@ -296,7 +296,6 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         comments = json.loads(post.comments_json or "[]")
     except json.JSONDecodeError:
         pass
-    display_comment_count = post.comment_count if post.comment_count > 0 else len(comments)
     return {
         "id": post.id,
         "external_id": post.external_id,
@@ -309,7 +308,8 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         "hashtags": json.loads(post.hashtags_json or "[]"),
         "like_count": post.like_count,
         "favorite_count": post.favorite_count,
-        "comment_count": display_comment_count,
+        "comment_count": post.comment_count,
+        "sampled_comment_count": len(comments),
         "score": round(post.score, 2),
         "url": post.url,
         "top_comments": comments[:10],

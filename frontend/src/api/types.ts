@@ -251,6 +251,7 @@ export interface BloggerPost {
   like_count: number
   favorite_count: number
   comment_count: number
+  sampled_comment_count?: number
   share_count: number
   score: number
   comments_json: string

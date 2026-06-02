@@ -295,9 +295,7 @@ def collect_posts(
         except TikHubError as exc:
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
-        collected_comments = [item for item in comments if item["content"]]
-        normalized["comments_json"] = json.dumps(collected_comments, ensure_ascii=False)
-        apply_collected_comment_fallback(normalized, len(collected_comments))
+        normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
         post_quality = evaluate_post_quality(normalized)
         if post_quality.level == "failed":
             logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
@@ -361,18 +359,6 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     }
 
 
-def apply_collected_comment_fallback(data: dict[str, Any], collected_comment_count: int) -> None:
-    if collected_comment_count <= 0 or int(data.get("comment_count") or 0) > 0:
-        return
-    data["comment_count"] = collected_comment_count
-    data["score"] = (
-        int(data.get("like_count") or 0) * 0.35
-        + int(data.get("favorite_count") or 0) * 0.45
-        + collected_comment_count * 0.2
-        + int(data.get("share_count") or 0) * 0.05
-    )
-
-
 def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload, list) and payload:
         first = payload[0]
@@ -417,16 +403,37 @@ def merge_interaction_counts(raw: dict[str, Any], candidate: XhsPostCandidate) -
 
 def extract_counts_from_payload(raw: dict[str, Any]) -> dict[str, int]:
     interact = recursive_find(raw, "interact_info") or recursive_find(raw, "interactInfo")
-    sources = [item for item in (interact, raw) if isinstance(item, dict)]
+    sources = collect_metric_sources(raw, interact)
     return {
-        "like_count": first_positive_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes"]),
+        "like_count": first_positive_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes", "likeNum"]),
         "favorite_count": first_positive_count(
             sources,
-            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects"],
+            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects", "collectNum"],
         ),
-        "comment_count": first_positive_count(sources, ["comment_count", "comment_count_str", "commentCount", "comments"]),
-        "share_count": first_positive_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares"]),
+        "comment_count": first_positive_count(
+            sources,
+            ["comment_count", "comment_count_str", "commentCount", "commentCountStr", "comments", "comment_num", "commentNum", "note_comment_count"],
+        ),
+        "share_count": first_positive_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares", "shareNum"]),
     }
+
+
+def collect_metric_sources(raw: dict[str, Any], primary: Any | None = None) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    seen: set[int] = set()
+
+    def add(value: Any) -> None:
+        if not isinstance(value, dict) or id(value) in seen:
+            return
+        seen.add(id(value))
+        sources.append(value)
+
+    add(primary)
+    for key in ("interact_info", "interactInfo", "note_card", "noteCard", "note", "stats", "statistics"):
+        value = recursive_find(raw, key)
+        add(value)
+    add(raw)
+    return sources
 
 
 def first_positive_count(sources: list[dict[str, Any]], keys: list[str]) -> int:

@@ -446,16 +446,37 @@ def find_container_cursor(container: dict[str, Any], notes: list[dict[str, Any]]
 
 def extract_interaction_counts(value: dict[str, Any]) -> dict[str, int]:
     interact = recursive_find(value, "interact_info") or recursive_find(value, "interactInfo")
-    sources = [item for item in (interact, value) if isinstance(item, dict)]
+    sources = collect_metric_sources(value, interact)
     return {
-        "like_count": first_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes"]),
+        "like_count": first_count(sources, ["liked_count", "liked_count_str", "likedCount", "like_count", "likeCount", "likes", "likeNum"]),
         "favorite_count": first_count(
             sources,
-            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects"],
+            ["collected_count", "collected_count_str", "collectedCount", "favorite_count", "collect_count", "collects", "collectNum"],
         ),
-        "comment_count": first_count(sources, ["comment_count", "comment_count_str", "commentCount", "comments"]),
-        "share_count": first_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares"]),
+        "comment_count": first_count(
+            sources,
+            ["comment_count", "comment_count_str", "commentCount", "commentCountStr", "comments", "comment_num", "commentNum", "note_comment_count"],
+        ),
+        "share_count": first_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares", "shareNum"]),
     }
+
+
+def collect_metric_sources(raw: dict[str, Any], primary: Any | None = None) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    seen: set[int] = set()
+
+    def add(value: Any) -> None:
+        if not isinstance(value, dict) or id(value) in seen:
+            return
+        seen.add(id(value))
+        sources.append(value)
+
+    add(primary)
+    for key in ("interact_info", "interactInfo", "note_card", "noteCard", "note", "stats", "statistics"):
+        value = recursive_find(raw, key)
+        add(value)
+    add(raw)
+    return sources
 
 
 def first_count(sources: list[dict[str, Any]], keys: list[str]) -> int:
