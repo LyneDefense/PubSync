@@ -1547,31 +1547,8 @@ onUnmounted(() => {
 
   <div v-else class="app-shell">
     <header class="topbar">
-      <div class="brand-block">
-        <div class="brand-mark" aria-hidden="true">PS</div>
-        <div>
-          <p class="brand-context">PubSync 工作台</p>
-          <h1>多平台内容自动化</h1>
-          <p class="brand-subtitle">采集、蒸馏、创作与发布管理</p>
-        </div>
-      </div>
+      <h1 class="topbar-title">多平台内容自动化</h1>
       <div class="topbar-controls">
-        <div class="platform-context">
-          <span>当前模块</span>
-          <strong>{{ activePlatformLabel }}</strong>
-        </div>
-        <label v-if="canSwitchTenant" class="tenant-switcher">
-          工作空间
-          <select v-model="selectedTenantId" @change="handleTenantChange">
-            <option v-for="tenant in tenants" :key="tenant.id" :value="String(tenant.id)">
-              {{ tenant.name }}
-            </option>
-          </select>
-        </label>
-        <div v-else class="tenant-badge">
-          <span>工作空间</span>
-          <strong>{{ currentTenantName }}</strong>
-        </div>
         <div class="user-menu" @mouseleave="showUserMenu = false">
           <button
             type="button"
@@ -1580,7 +1557,6 @@ onUnmounted(() => {
             aria-haspopup="menu"
             @click="toggleUserMenu"
           >
-            <span>当前用户</span>
             <strong>{{ currentUsername }}</strong>
           </button>
           <div v-if="showUserMenu" class="user-menu-popover" role="menu">
@@ -1645,13 +1621,31 @@ onUnmounted(() => {
 
       <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="小红书模块">
-          <button type="button" :class="{ active: activeXhsTab === 'collect' }" @click="activeXhsTab = 'collect'">数据采集</button>
-          <button type="button" :class="{ active: activeXhsTab === 'distill' }" @click="activeXhsTab = 'distill'">博主蒸馏</button>
-          <button type="button" :class="{ active: activeXhsTab === 'assets' }" @click="activeXhsTab = 'assets'">博主资产</button>
-          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">AI 创作</button>
-          <button type="button" :class="{ active: activeXhsTab === 'history' }" @click="activeXhsTab = 'history'">发布包历史</button>
+          <button
+            type="button"
+            :class="{ active: ['collect', 'distill', 'assets'].includes(activeXhsTab) }"
+            @click="activeXhsTab = 'collect'"
+          >
+            博主蒸馏
+          </button>
+          <button
+            type="button"
+            :class="{ active: ['packages', 'history'].includes(activeXhsTab) }"
+            @click="activeXhsTab = 'packages'"
+          >
+            AI 创作
+          </button>
           <button type="button" :class="{ active: activeXhsTab === 'records' }" @click="activeXhsTab = 'records'">发布记录</button>
           <button type="button" :class="{ active: activeXhsTab === 'settings' }" @click="activeXhsTab = 'settings'">设置</button>
+        </div>
+        <div v-if="['collect', 'distill', 'assets'].includes(activeXhsTab)" class="tabs sub-tabs" role="tablist" aria-label="小红书博主蒸馏子模块">
+          <button type="button" :class="{ active: activeXhsTab === 'collect' }" @click="activeXhsTab = 'collect'">数据采集</button>
+          <button type="button" :class="{ active: activeXhsTab === 'distill' }" @click="activeXhsTab = 'distill'">蒸馏</button>
+          <button type="button" :class="{ active: activeXhsTab === 'assets' }" @click="activeXhsTab = 'assets'">博主资产</button>
+        </div>
+        <div v-if="['packages', 'history'].includes(activeXhsTab)" class="tabs sub-tabs" role="tablist" aria-label="小红书 AI 创作子模块">
+          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">创作流程</button>
+          <button type="button" :class="{ active: activeXhsTab === 'history' }" @click="activeXhsTab = 'history'">发布包历史</button>
         </div>
       </div>
 
@@ -2063,10 +2057,6 @@ onUnmounted(() => {
                 <span>博主资产</span>
                 <h3>{{ selectedBlogger.display_name }}</h3>
                 <p>{{ selectedBlogger.description || selectedBlogger.niche || '暂无备注' }}</p>
-              </div>
-              <div class="actions">
-                <button type="button" @click="activeXhsTab = 'collect'; xhsCollectStep = 2">新建采集</button>
-                <button type="button" class="primary" @click="activeXhsTab = 'distill'; xhsDistillStep = selectedCollectionRun ? 3 : 2">基于批次蒸馏</button>
               </div>
             </div>
 
