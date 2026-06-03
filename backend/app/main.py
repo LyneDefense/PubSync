@@ -86,6 +86,7 @@ from app.services.task_service import (
     run_blogger_distillation_task,
     run_article_generation_task,
     run_news_fetch_task,
+    run_xhs_package_draft_task,
     scheduled_workspace_publish,
 )
 from app.blogger_distillation.service import abandon_blogger_distillation, confirm_blogger_distillation, create_blogger
@@ -668,6 +669,18 @@ def generate_xhs_publish_package_draft_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AIServiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/xhs/package-drafts/generate", response_model=OperationTaskRead)
+def generate_xhs_publish_package_draft_task_endpoint(
+    payload: XhsPublishPackageCreate,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    task = create_operation_task(db, "xhs_package_draft", tenant_id=tenant.id)
+    background_tasks.add_task(run_xhs_package_draft_task, task.id, payload.model_dump())
+    return task
 
 
 @app.post("/xhs/topic-ideas", response_model=XhsTopicIdeaResponse)

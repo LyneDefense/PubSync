@@ -13,7 +13,6 @@ import {
   distillBlogger,
   fetchNews,
   generateArticle,
-  generateXhsPublishPackageDraft,
   generateXhsTopicIdeas,
   getAuthToken,
   getCurrentUser,
@@ -35,6 +34,7 @@ import {
   sendArticleToWechat,
   saveXhsPublishPackage,
   setTenantId,
+  startXhsPublishPackageDraftTask,
   updateArticle,
   updateNewsSelection,
   updateWorkspaceConfig
@@ -63,16 +63,14 @@ import type {
   XhsTopicIdea
 } from './api/types'
 
-type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill'
+type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package'
 type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
 type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
-type XhsTab = 'ai' | 'packages' | 'history' | 'records' | 'settings'
+type XhsTab = 'collect' | 'distill' | 'assets' | 'packages' | 'history' | 'records' | 'settings'
 type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
-type XhsDistillView = 'workflow' | 'results'
-type XhsWorkflowTab = 'bloggers' | 'collect' | 'distill' | 'confirm'
 type XhsScriptSegment = {
   start?: string
   end?: string
@@ -124,10 +122,10 @@ const isLoggingIn = ref(false)
 const loginMessage = ref('')
 const activeMainTab = ref<MainTab>('wechat')
 const activeWechatTab = ref<WeChatTab>('brief')
-const activeXhsTab = ref<XhsTab>('ai')
+const activeXhsTab = ref<XhsTab>('collect')
 const activeDouyinTab = ref<DouyinTab>('ai')
-const activeXhsDistillView = ref<XhsDistillView>('workflow')
-const activeXhsWorkflowTab = ref<XhsWorkflowTab>('bloggers')
+const xhsCollectStep = ref(1)
+const xhsDistillStep = ref(1)
 const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
@@ -140,7 +138,8 @@ const taskProgress = reactive<Record<TaskActionName, number>>({
   fetch: 0,
   generate: 0,
   collect: 0,
-  distill: 0
+  distill: 0,
+  'xhs-package': 0
 })
 const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -352,6 +351,48 @@ const xhsCreationStepTitle = computed(() => {
     6: '确认发布包'
   }
   return titles[xhsCreationStep.value] || 'AI 创作'
+})
+const xhsCollectStepTitle = computed(() => {
+  const titles: Record<number, string> = {
+    1: '选择博主',
+    2: '配置采集',
+    3: '执行采集',
+    4: '查看结果'
+  }
+  return titles[xhsCollectStep.value] || '数据采集'
+})
+const xhsDistillStepTitle = computed(() => {
+  const titles: Record<number, string> = {
+    1: '选择博主',
+    2: '选择批次',
+    3: '执行蒸馏',
+    4: '确认结果'
+  }
+  return titles[xhsDistillStep.value] || '博主蒸馏'
+})
+const canGoNextXhsCollectStep = computed(() => {
+  if (xhsCollectStep.value === 1) {
+    return Boolean(selectedBlogger.value)
+  }
+  if (xhsCollectStep.value === 2) {
+    return Boolean(selectedBlogger.value)
+  }
+  if (xhsCollectStep.value === 3) {
+    return Boolean(selectedBlogger.value)
+  }
+  return false
+})
+const canGoNextXhsDistillStep = computed(() => {
+  if (xhsDistillStep.value === 1) {
+    return Boolean(selectedBlogger.value)
+  }
+  if (xhsDistillStep.value === 2) {
+    return Boolean(selectedCollectionRun.value)
+  }
+  if (xhsDistillStep.value === 3) {
+    return Boolean(selectedCollectionRun.value)
+  }
+  return false
 })
 const canGoNextXhsCreationStep = computed(() => {
   if (xhsCreationStep.value === 1) {
@@ -568,6 +609,17 @@ function parseEventPayload(event: OperationTaskEvent) {
   }
 }
 
+function findXhsDraftFromEvents(events: OperationTaskEvent[]) {
+  for (const event of [...events].reverse()) {
+    const payload = parseEventPayload(event)
+    const draft = payload?.draft
+    if (draft && typeof draft === 'object') {
+      return draft as XhsPublishPackageDraft
+    }
+  }
+  return null
+}
+
 async function runAction(name: string, label: string, action: () => Promise<void>) {
   pendingAction.value = name
   showMessage(label)
@@ -613,7 +665,7 @@ function taskButtonStyle(name: TaskActionName) {
 }
 
 function taskActionTab(name: TaskActionName): MainTab {
-  if (name === 'collect' || name === 'distill') {
+  if (name === 'collect' || name === 'distill' || name === 'xhs-package') {
     return 'xhs'
   }
   return 'wechat'
@@ -680,7 +732,6 @@ async function runTaskAction(
       }
     }
 
-    await onSuccess()
     throw new Error(timeoutMessage)
   } catch (error) {
     stopFakeProgress(name, false)
@@ -940,6 +991,30 @@ function goNextXhsCreationStep() {
   xhsCreationStep.value = Math.min(6, xhsCreationStep.value + 1)
 }
 
+function goPreviousXhsCollectStep() {
+  xhsCollectStep.value = Math.max(1, xhsCollectStep.value - 1)
+}
+
+function goNextXhsCollectStep() {
+  if (!canGoNextXhsCollectStep.value) {
+    showMessage(xhsCollectStep.value === 1 ? '请先选择博主' : '当前步骤还没有完成', true)
+    return
+  }
+  xhsCollectStep.value = Math.min(4, xhsCollectStep.value + 1)
+}
+
+function goPreviousXhsDistillStep() {
+  xhsDistillStep.value = Math.max(1, xhsDistillStep.value - 1)
+}
+
+function goNextXhsDistillStep() {
+  if (!canGoNextXhsDistillStep.value) {
+    showMessage(xhsDistillStep.value === 1 ? '请先选择博主' : '请先选择已完成的采集批次', true)
+    return
+  }
+  xhsDistillStep.value = Math.min(4, xhsDistillStep.value + 1)
+}
+
 async function refreshSelectedBlogger() {
   if (!selectedBloggerId.value) {
     bloggerPosts.value = []
@@ -991,8 +1066,7 @@ async function handleCreateBlogger() {
     selectedBloggerId.value = blogger.id
     selectedBloggerRunId.value = null
     resultCollectionFilterId.value = null
-    activeXhsDistillView.value = 'workflow'
-    activeXhsWorkflowTab.value = 'collect'
+    xhsCollectStep.value = 2
     bloggerForm.display_name = ''
     bloggerForm.homepage_url = ''
     bloggerForm.niche = ''
@@ -1029,7 +1103,8 @@ async function handleDistillBlogger() {
   }
   if (!selectedCollectionRunId.value) {
     showMessage('请先选择一个已完成的采集批次', true)
-    activeXhsWorkflowTab.value = 'collect'
+    activeXhsTab.value = 'distill'
+    xhsDistillStep.value = 2
     return
   }
   await runTaskAction(
@@ -1042,8 +1117,7 @@ async function handleDistillBlogger() {
     async () => {
       await refreshSelectedBlogger()
       selectLatestRunForCollection(selectedCollectionRunId.value)
-      activeXhsDistillView.value = 'workflow'
-      activeXhsWorkflowTab.value = 'confirm'
+      xhsDistillStep.value = 4
     },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
   )
@@ -1062,23 +1136,33 @@ async function handleCreateXhsPackage() {
     showMessage('请选择配图数量', true)
     return
   }
-  await runAction('xhs-package', '正在生成小红书发布包草稿', async () => {
-    const draft = await generateXhsPublishPackageDraft({
-      skill_id: xhsPackageForm.skill_id,
-      content_type: xhsPackageForm.content_type,
-      topic: xhsPackageForm.topic.trim(),
-      target_audience: xhsPackageForm.target_audience.trim(),
-      content_goal: xhsPackageForm.content_goal.trim(),
-      keywords: xhsPackageForm.keywords.trim(),
-      image_count_mode: xhsPackageForm.content_type === 'image_note' ? xhsPackageForm.image_count_mode : 'auto',
-      requested_image_count:
-        xhsPackageForm.content_type === 'image_note' && xhsPackageForm.image_count_mode === 'manual'
-          ? xhsPackageForm.requested_image_count
-          : null
-    })
-    currentXhsDraft.value = draft
-    xhsCreationStep.value = 4
-  })
+  await runTaskAction(
+    'xhs-package',
+    '已提交小红书发布包生成任务',
+    () =>
+      startXhsPublishPackageDraftTask({
+        skill_id: xhsPackageForm.skill_id,
+        content_type: xhsPackageForm.content_type,
+        topic: xhsPackageForm.topic.trim(),
+        target_audience: xhsPackageForm.target_audience.trim(),
+        content_goal: xhsPackageForm.content_goal.trim(),
+        keywords: xhsPackageForm.keywords.trim(),
+        image_count_mode: xhsPackageForm.content_type === 'image_note' ? xhsPackageForm.image_count_mode : 'auto',
+        requested_image_count:
+          xhsPackageForm.content_type === 'image_note' && xhsPackageForm.image_count_mode === 'manual'
+            ? xhsPackageForm.requested_image_count
+            : null
+      }),
+    async () => {
+      const draft = findXhsDraftFromEvents(taskEvents.value)
+      if (!draft) {
+        throw new Error('发布包草稿生成完成，但没有返回草稿内容')
+      }
+      currentXhsDraft.value = draft
+      xhsCreationStep.value = 4
+    },
+    '小红书发布包仍在后台生成，请稍后查看任务进度'
+  )
 }
 
 async function handleSaveXhsPackage() {
@@ -1124,7 +1208,7 @@ async function handleGenerateXhsTopicIdeas() {
 async function handleCollectBlogger() {
   if (!selectedBloggerId.value) {
     showMessage('请先选择博主', true)
-    activeXhsWorkflowTab.value = 'bloggers'
+    xhsCollectStep.value = 1
     return
   }
   await runTaskAction(
@@ -1138,7 +1222,7 @@ async function handleCollectBlogger() {
       }),
     async () => {
       await refreshSelectedBlogger()
-      activeXhsWorkflowTab.value = 'collect'
+      xhsCollectStep.value = 4
     },
     '样本采集仍在后台执行，请稍后刷新页面查看采集批次'
   )
@@ -1149,7 +1233,11 @@ async function selectBlogger(id: number) {
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
   resultCollectionFilterId.value = null
-  activeXhsWorkflowTab.value = 'collect'
+  if (activeXhsTab.value === 'distill') {
+    xhsDistillStep.value = 2
+  } else if (activeXhsTab.value === 'collect') {
+    xhsCollectStep.value = 2
+  }
   await refreshSelectedBlogger()
 }
 
@@ -1181,7 +1269,7 @@ async function handleConfirmBloggerRun() {
     const run = await confirmBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    activeXhsDistillView.value = 'results'
+    activeXhsTab.value = 'assets'
     showMessage('蒸馏结果已保存，Skill 已进入 AI 创作')
   })
 }
@@ -1195,7 +1283,7 @@ async function handleAbandonBloggerRun() {
     const run = await abandonBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    activeXhsDistillView.value = 'results'
+    activeXhsTab.value = 'assets'
     showMessage('已放弃本次蒸馏结果')
   })
 }
@@ -1211,7 +1299,7 @@ function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.
 
 function showCollectionResults(collectionRunId: number | null) {
   resultCollectionFilterId.value = collectionRunId
-  activeXhsDistillView.value = 'results'
+  activeXhsTab.value = 'assets'
   if (collectionRunId) {
     selectLatestRunForCollection(collectionRunId)
   } else {
@@ -1429,8 +1517,9 @@ watch(
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
-  window.clearInterval(progressTimers.fetch)
-  window.clearInterval(progressTimers.generate)
+  for (const timer of Object.values(progressTimers)) {
+    window.clearInterval(timer)
+  }
 })
 </script>
 
@@ -1556,7 +1645,9 @@ onUnmounted(() => {
 
       <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="小红书模块">
-          <button type="button" :class="{ active: activeXhsTab === 'ai' }" @click="activeXhsTab = 'ai'">博主蒸馏</button>
+          <button type="button" :class="{ active: activeXhsTab === 'collect' }" @click="activeXhsTab = 'collect'">数据采集</button>
+          <button type="button" :class="{ active: activeXhsTab === 'distill' }" @click="activeXhsTab = 'distill'">博主蒸馏</button>
+          <button type="button" :class="{ active: activeXhsTab === 'assets' }" @click="activeXhsTab = 'assets'">博主资产</button>
           <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">AI 创作</button>
           <button type="button" :class="{ active: activeXhsTab === 'history' }" @click="activeXhsTab = 'history'">发布包历史</button>
           <button type="button" :class="{ active: activeXhsTab === 'records' }" @click="activeXhsTab = 'records'">发布记录</button>
@@ -1794,79 +1885,29 @@ onUnmounted(() => {
         <p class="empty-region">发布记录模块暂未开放。</p>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'ai'" class="panel">
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'collect'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书博主蒸馏</h2>
-            <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；蒸馏出的 Skill 会进入 AI 创作流程。</p>
+            <h2>小红书数据采集</h2>
+            <p class="toolbar-subtitle">先选择博主，再配置采样数量、评论数量和 ASR；采集结果会进入博主资产。</p>
           </div>
         </div>
+        <div class="creator-shell">
+          <button v-if="xhsCollectStep > 1" type="button" class="creator-arrow previous" aria-label="上一步" @click="goPreviousXhsCollectStep">←</button>
+          <div class="creator-main">
+            <div class="creator-step-header">
+              <h3>{{ xhsCollectStepTitle }}</h3>
+              <span>步骤 {{ xhsCollectStep }} / 4</span>
+              <div class="creator-progress" aria-hidden="true"><i :style="{ width: `${(xhsCollectStep / 4) * 100}%` }"></i></div>
+            </div>
 
-        <div class="xhs-workbench">
-          <div class="distill-view-tabs" role="tablist" aria-label="博主蒸馏视图">
-            <button type="button" :class="{ active: activeXhsDistillView === 'workflow' }" @click="activeXhsDistillView = 'workflow'">蒸馏流程</button>
-            <button type="button" :class="{ active: activeXhsDistillView === 'results' }" @click="activeXhsDistillView = 'results'">结果展示</button>
-          </div>
-
-          <div v-if="activeXhsDistillView === 'workflow'" class="xhs-flow-map" aria-label="小红书博主蒸馏流程">
-            <button
-              type="button"
-              :class="{ active: activeXhsWorkflowTab === 'bloggers' }"
-              @click="activeXhsWorkflowTab = 'bloggers'"
-            >
-              <span>01</span>
-              <strong>博主档案</strong>
-              <small>{{ bloggers.length }} 个博主</small>
-            </button>
-            <span aria-hidden="true">→</span>
-            <button
-              type="button"
-              :class="{ active: activeXhsWorkflowTab === 'collect' }"
-              @click="activeXhsWorkflowTab = 'collect'"
-            >
-              <span>02</span>
-              <strong>样本采集</strong>
-              <small>{{ selectedBlogger ? `${bloggerCollectionRuns.length} 个批次` : '笔记与评论数量' }}</small>
-            </button>
-            <span aria-hidden="true">→</span>
-            <button
-              type="button"
-              :class="{ active: activeXhsWorkflowTab === 'distill' }"
-              @click="activeXhsWorkflowTab = 'distill'"
-            >
-              <span>03</span>
-              <strong>风格蒸馏</strong>
-              <small>{{ selectedCollectionRun ? `基于批次 #${selectedCollectionRun.id}` : '选择采集批次' }}</small>
-            </button>
-            <span aria-hidden="true">→</span>
-            <button
-              type="button"
-              :class="{ active: activeXhsWorkflowTab === 'confirm' }"
-              @click="activeXhsWorkflowTab = 'confirm'"
-            >
-              <span>04</span>
-              <strong>结果确认</strong>
-              <small>{{ selectedBloggerRun?.status === 'pending_confirmation' ? '等待保存或放弃' : '报告与 Skill 预览' }}</small>
-            </button>
-          </div>
-
-          <div class="xhs-stage">
-            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'bloggers'" class="stage-panel">
-              <div class="stage-header">
-                <div>
-                  <span>博主档案</span>
-                  <h3>选择要蒸馏的博主</h3>
-                </div>
+            <section v-if="xhsCollectStep === 1" class="creation-stage-card active">
+              <div class="inline-card-header">
+                <div><span>01 选择博主</span><h3>选择要采集的博主</h3></div>
                 <button type="button" class="primary" @click="showBloggerModal = true">创建博主</button>
               </div>
               <div v-if="bloggers.length" class="blogger-list compact">
-                <button
-                  v-for="blogger in bloggers"
-                  :key="blogger.id"
-                  type="button"
-                  :class="{ active: selectedBloggerId === blogger.id }"
-                  @click="selectBlogger(blogger.id)"
-                >
+                <button v-for="blogger in bloggers" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
                   <strong>{{ blogger.display_name }}</strong>
                   <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
                 </button>
@@ -1874,229 +1915,207 @@ onUnmounted(() => {
               <p v-else class="empty-region">还没有博主档案。点击“创建博主”添加小红书主页。</p>
             </section>
 
-            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'collect'" class="stage-panel">
-              <div class="stage-header">
-                <div>
-                  <span>样本采集</span>
-                  <h3>配置采集范围</h3>
-                </div>
-                <button
-                  type="button"
-                  class="task-button primary"
-                  :class="{ running: pendingAction === 'collect' }"
-                  :style="taskButtonStyle('collect')"
-                  :disabled="!selectedBloggerId || Boolean(pendingAction)"
-                  @click="handleCollectBlogger"
-                >
-                  <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
-                </button>
-              </div>
+            <section v-if="xhsCollectStep === 2" class="creation-stage-card active">
+              <div class="inline-card-header"><div><span>02 配置采集</span><h3>设置样本和评论范围</h3></div></div>
               <div class="config-grid">
-                <label>
-                  采样笔记数
-                  <input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" />
-                </label>
-                <label>
-                  每条评论数
-                  <input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" />
-                </label>
+                <label>采样笔记数<input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" /></label>
+                <label>每条评论数<input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" /></label>
               </div>
               <label class="asr-callout">
                 <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
-                <span>
-                  <strong>启用视频字幕/ASR 分析</strong>
-                  <small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。这个开关会影响本次采集批次的样本质量。</small>
-                </span>
+                <span><strong>启用视频字幕/ASR 分析</strong><small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。</small></span>
               </label>
-              <p class="form-hint">采集会读取公开笔记、互动数据和评论样本。评论数是每条笔记最多采集多少条评论，不代表平台真实评论总数。</p>
-              <div v-if="selectedBlogger" class="run-list collection-list" aria-label="采集批次">
-                <div class="run-list-header">
-                  <strong>采集批次</strong>
-                  <span>{{ bloggerCollectionRuns.length }} 次</span>
-                </div>
-                <button
-                  v-for="run in bloggerCollectionRuns"
-                  :key="run.id"
-                  type="button"
-                  :class="{ active: selectedCollectionRunId === run.id }"
-                  @click="selectCollectionRun(run.id)"
-                >
-                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 蒸馏结果 {{ collectionDistillationCount(run.id) }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · {{ collectionCostLabel(run) }}</span>
+              <p class="form-hint">这些配置只影响本次采集批次，后续可基于不同批次分别蒸馏。</p>
+            </section>
+
+            <section v-if="xhsCollectStep === 3" class="creation-stage-card active">
+              <div class="inline-card-header">
+                <div><span>03 执行采集</span><h3>提交后台采集任务</h3></div>
+                <button type="button" class="task-button primary" :class="{ running: pendingAction === 'collect' }" :style="taskButtonStyle('collect')" :disabled="!selectedBloggerId || Boolean(pendingAction)" @click="handleCollectBlogger">
+                  <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
                 </button>
-                <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
+              </div>
+              <div v-if="pendingAction === 'collect'" class="inline-progress-card" aria-live="polite">
+                <div><strong>正在采集数据</strong><span>系统正在读取公开笔记、互动数据和评论样本。</span></div><i aria-hidden="true"></i>
+              </div>
+              <p class="form-hint">采集耗时取决于样本数量、评论数量和视频 ASR 开关。</p>
+            </section>
+
+            <section v-if="xhsCollectStep === 4" class="creation-stage-card active">
+              <div class="inline-card-header">
+                <div><span>04 查看结果</span><h3>采集批次和样本预览</h3></div>
+                <button type="button" @click="activeXhsTab = 'assets'">查看博主资产</button>
               </div>
               <div v-if="selectedBlogger" class="stage-result-grid">
-                <article class="stage-metric">
-                  <span>当前博主</span>
-                  <strong>{{ selectedBlogger.display_name }}</strong>
-                </article>
-                <article class="stage-metric">
-                  <span>当前批次样本</span>
-                  <strong>{{ selectedCollectionRun?.post_count || 0 }}</strong>
-                </article>
+                <article class="stage-metric"><span>当前博主</span><strong>{{ selectedBlogger.display_name }}</strong></article>
+                <article class="stage-metric"><span>采集批次</span><strong>{{ bloggerCollectionRuns.length }}</strong></article>
               </div>
-              <article v-if="selectedBlogger && selectedCollectionRun" class="distill-card">
-                <div class="inline-card-header">
-                  <h3>爆款样本</h3>
-                  <button
-                    v-if="collectionDistillationCount(selectedCollectionRun.id)"
-                    type="button"
-                    @click="showCollectionResults(selectedCollectionRun.id)"
-                  >
-                    查看对应结果
-                  </button>
-                </div>
-                <div v-if="bloggerPosts.length" class="sample-list">
-                  <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
-                    <strong>{{ post.title }}</strong>
-                    <span>
-                      {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
-                      <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
-                    </span>
-                  </div>
-                </div>
-                <p v-else class="empty-region">这个采集批次还没有可展示样本。</p>
-              </article>
-              <p v-if="selectedBlogger && !selectedCollectionRun" class="empty-region">选择一个采集批次后，这里会显示该批次的爆款样本。</p>
-              <p v-if="!selectedBlogger" class="empty-region">请先在“博主档案”里选择一个博主，再查看样本采集结果。</p>
+              <div v-if="selectedBlogger" class="run-list collection-list">
+                <div class="run-list-header"><strong>采集历史</strong><span>{{ bloggerCollectionRuns.length }} 次</span></div>
+                <button v-for="run in bloggerCollectionRuns" :key="run.id" type="button" :class="{ active: selectedCollectionRunId === run.id }" @click="selectCollectionRun(run.id)">
+                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }}</span>
+                </button>
+              </div>
+              <p v-if="!selectedBlogger" class="empty-region">请先选择博主。</p>
             </section>
+          </div>
+          <button v-if="xhsCollectStep < 4" type="button" class="creator-arrow next" aria-label="下一步" @click="goNextXhsCollectStep">→</button>
+        </div>
+      </section>
 
-            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'distill'" class="stage-panel">
-              <div class="stage-header">
-                <div>
-                  <span>风格蒸馏</span>
-                  <h3>选择采集批次并蒸馏</h3>
-                </div>
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'distill'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>小红书博主蒸馏</h2>
+            <p class="toolbar-subtitle">选择博主和采集批次，生成报告与 Skill；保存后才进入 AI 创作可选列表。</p>
+          </div>
+        </div>
+        <div class="creator-shell">
+          <button v-if="xhsDistillStep > 1" type="button" class="creator-arrow previous" aria-label="上一步" @click="goPreviousXhsDistillStep">←</button>
+          <div class="creator-main">
+            <div class="creator-step-header">
+              <h3>{{ xhsDistillStepTitle }}</h3>
+              <span>步骤 {{ xhsDistillStep }} / 4</span>
+              <div class="creator-progress" aria-hidden="true"><i :style="{ width: `${(xhsDistillStep / 4) * 100}%` }"></i></div>
+            </div>
+            <section v-if="xhsDistillStep === 1" class="creation-stage-card active">
+              <div class="inline-card-header"><div><span>01 选择博主</span><h3>选择要蒸馏的博主</h3></div></div>
+              <div v-if="bloggers.length" class="blogger-list compact">
+                <button v-for="blogger in bloggers" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
+                  <strong>{{ blogger.display_name }}</strong><span>{{ blogger.niche || '未设置领域' }} · 采集批次 {{ bloggerCollectionRuns.length }}</span>
+                </button>
+              </div>
+              <p v-else class="empty-region">还没有博主档案。请先到“数据采集”创建博主。</p>
+            </section>
+            <section v-if="xhsDistillStep === 2" class="creation-stage-card active">
+              <div class="inline-card-header"><div><span>02 选择批次</span><h3>选择一次已完成采集</h3></div></div>
+              <div v-if="selectedBlogger" class="run-list collection-list">
+                <div class="run-list-header"><strong>可蒸馏批次</strong><span>{{ bloggerCollectionRuns.length }} 次</span></div>
+                <button v-for="run in bloggerCollectionRuns" :key="run.id" type="button" :disabled="run.status !== 'succeeded'" :class="{ active: selectedCollectionRunId === run.id }" @click="selectCollectionRun(run.id)">
+                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 已蒸馏 {{ collectionDistillationCount(run.id) }} 次</span>
+                </button>
+              </div>
+              <p v-else class="empty-region">请先选择博主。</p>
+            </section>
+            <section v-if="xhsDistillStep === 3" class="creation-stage-card active">
+              <div class="inline-card-header">
+                <div><span>03 执行蒸馏</span><h3>基于采集批次生成 Skill</h3></div>
+                <button type="button" class="task-button primary" :class="{ running: pendingAction === 'distill' }" :style="taskButtonStyle('distill')" :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)" @click="handleDistillBlogger">
+                  <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
+                </button>
+              </div>
+              <div v-if="pendingAction === 'distill'" class="inline-progress-card" aria-live="polite">
+                <div><strong>正在蒸馏风格</strong><span>大模型正在提炼选题、结构、标题、表达和禁区。</span></div><i aria-hidden="true"></i>
+              </div>
+              <p class="form-hint">蒸馏完成后会进入结果确认页，保存后 Skill 才会生效。</p>
+            </section>
+            <section v-if="xhsDistillStep === 4" class="creation-stage-card active">
+              <div class="inline-card-header">
+                <div><span>04 确认结果</span><h3>预览报告和 Skill</h3></div>
                 <div class="actions">
-                  <button
-                    type="button"
-                    class="task-button primary"
-                    :class="{ running: pendingAction === 'distill' }"
-                    :style="taskButtonStyle('distill')"
-                    :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
-                    @click="handleDistillBlogger"
-                  >
-                    <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
-                  </button>
-                  <button
-                    v-if="pendingAction === 'distill'"
-                    type="button"
-                    class="ghost danger"
-                    :disabled="!runningTaskId"
-                    @click="handleCancelDistillation"
-                  >
-                    停止蒸馏
-                  </button>
+                  <button type="button" class="primary" :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'" @click="handleConfirmBloggerRun">{{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}</button>
+                  <button type="button" :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'" @click="handleAbandonBloggerRun">{{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}</button>
                 </div>
               </div>
-              <div v-if="selectedBlogger" class="run-list collection-list" aria-label="可蒸馏采集批次">
+              <div v-if="selectedBloggerRun" class="distill-grid compact-result">
+                <article class="distill-card"><h3>蒸馏报告</h3><div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div><p v-else class="empty-region">暂无报告。</p></article>
+                <article class="distill-card"><h3>Skill 输出</h3><textarea v-if="selectedBloggerSkill" :value="selectedBloggerSkill.skill_markdown" readonly rows="18"></textarea><p v-else class="empty-region">暂无 Skill。</p></article>
+              </div>
+              <p v-else class="empty-region">完成一次蒸馏后，这里会显示待确认结果。</p>
+            </section>
+          </div>
+          <button v-if="xhsDistillStep < 4" type="button" class="creator-arrow next" aria-label="下一步" @click="goNextXhsDistillStep">→</button>
+        </div>
+      </section>
+
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'assets'" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>小红书博主资产</h2>
+            <p class="toolbar-subtitle">集中查看博主信息、采集历史、蒸馏历史、报告和 Skill。</p>
+          </div>
+        </div>
+
+        <div class="xhs-assets-browser">
+          <aside class="asset-sidebar" aria-label="小红书博主列表">
+            <div class="run-list-header">
+              <strong>博主</strong>
+              <span>{{ bloggers.length }} 个</span>
+            </div>
+            <button
+              v-for="blogger in bloggers"
+              :key="blogger.id"
+              type="button"
+              :class="{ active: selectedBloggerId === blogger.id }"
+              @click="selectBlogger(blogger.id)"
+            >
+              <strong>{{ blogger.display_name }}</strong>
+              <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
+            </button>
+            <p v-if="!bloggers.length" class="empty-region">还没有博主档案。请先到“数据采集”创建博主。</p>
+          </aside>
+
+          <div v-if="selectedBlogger" class="asset-detail">
+            <div class="asset-hero">
+              <div>
+                <span>博主资产</span>
+                <h3>{{ selectedBlogger.display_name }}</h3>
+                <p>{{ selectedBlogger.description || selectedBlogger.niche || '暂无备注' }}</p>
+              </div>
+              <div class="actions">
+                <button type="button" @click="activeXhsTab = 'collect'; xhsCollectStep = 2">新建采集</button>
+                <button type="button" class="primary" @click="activeXhsTab = 'distill'; xhsDistillStep = selectedCollectionRun ? 3 : 2">基于批次蒸馏</button>
+              </div>
+            </div>
+
+            <div class="workspace-snapshot scoped-snapshot">
+              <div>
+                <span>采集批次</span>
+                <strong>{{ bloggerCollectionRuns.length }}</strong>
+              </div>
+              <div>
+                <span>蒸馏记录</span>
+                <strong>{{ selectedBloggerRunCount }}</strong>
+              </div>
+              <div>
+                <span>最近蒸馏</span>
+                <strong>{{ selectedBlogger.last_distilled_at ? formatDate(selectedBlogger.last_distilled_at) : '暂无' }}</strong>
+              </div>
+            </div>
+
+            <div class="asset-two-column">
+              <section class="asset-panel">
                 <div class="run-list-header">
-                  <strong>选择采集批次</strong>
+                  <strong>采集历史</strong>
                   <span>{{ bloggerCollectionRuns.length }} 次</span>
                 </div>
-                <button
-                  v-for="run in bloggerCollectionRuns"
-                  :key="run.id"
-                  type="button"
-                  :disabled="run.status !== 'succeeded'"
-                  :class="{ active: selectedCollectionRunId === run.id }"
-                  @click="selectCollectionRun(run.id)"
-                >
-                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · 已生成 {{ collectionDistillationCount(run.id) }} 个蒸馏结果</span>
-                </button>
-                <p v-if="!bloggerCollectionRuns.length" class="empty-region">还没有采集批次，请先完成样本采集。</p>
-              </div>
-              <p class="form-hint">蒸馏会基于选中的采集批次执行；同一个采集批次可以生成多次不同蒸馏结果。</p>
-            </section>
-
-            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'confirm'" class="stage-panel">
-              <div class="stage-header">
-                <div>
-                  <span>结果确认</span>
-                  <h3>预览本次蒸馏结果</h3>
-                </div>
-                <div class="actions">
+                <div class="asset-run-list">
                   <button
+                    v-for="run in bloggerCollectionRuns"
+                    :key="run.id"
                     type="button"
-                    class="primary"
-                    :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'"
-                    @click="handleConfirmBloggerRun"
+                    :class="{ active: selectedCollectionRunId === run.id }"
+                    @click="selectCollectionRun(run.id)"
                   >
-                    {{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}
+                    <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
+                    <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开' : '关' }} · 蒸馏 {{ collectionDistillationCount(run.id) }}</span>
                   </button>
-                  <button
-                    type="button"
-                    :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'"
-                    @click="handleAbandonBloggerRun"
-                  >
-                    {{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}
-                  </button>
+                  <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
                 </div>
-              </div>
-              <p v-if="!selectedBloggerRun" class="empty-region">完成一次风格蒸馏后，这里会显示待确认的报告和 Skill。</p>
-              <div v-else class="distill-grid compact-result">
-                <article class="distill-card">
-                  <div class="inline-card-header">
-                    <div>
-                      <span>{{ distillationStatusLabel(selectedBloggerRun.status) }}</span>
-                      <h3>蒸馏报告预览</h3>
-                    </div>
-                    <button type="button" @click="activeXhsDistillView = 'results'">去结果展示</button>
-                  </div>
-                  <div v-if="selectedBloggerRun.status === 'failed'" class="failure-panel">
-                    <strong>蒸馏失败</strong>
-                    <p>{{ selectedBloggerRun.error_message || '未记录失败原因' }}</p>
-                  </div>
-                  <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
-                  <p v-else class="empty-region">本次蒸馏还没有生成报告。</p>
-                </article>
-                <article class="distill-card">
-                  <div class="inline-card-header">
-                    <div>
-                      <span>Skill 预览</span>
-                      <h3>{{ selectedBloggerSkill?.name || '待生成 Skill' }}</h3>
-                    </div>
-                  </div>
-                  <textarea
-                    v-if="selectedBloggerSkill"
-                    :value="selectedBloggerSkill.skill_markdown"
-                    readonly
-                    rows="18"
-                  ></textarea>
-                  <p v-else class="empty-region">本次蒸馏没有生成 Skill。</p>
-                </article>
-              </div>
-              <p v-if="selectedBloggerRun?.status === 'pending_confirmation'" class="form-hint">保存后，该 Skill 才会进入“小红书 AI 创作”的可选 Skill 列表；放弃后不会影响已有 active Skill。</p>
-            </section>
+              </section>
 
-            <section v-if="activeXhsDistillView === 'results'" class="stage-panel">
-              <div class="stage-header">
-                <div>
-                  <span>结果资产</span>
-                  <h3>{{ selectedBlogger ? selectedBlogger.display_name : '蒸馏报告与 Skill' }}</h3>
+              <section class="asset-panel">
+                <div class="run-list-header">
+                  <strong>{{ resultCollectionFilter ? `批次 #${resultCollectionFilter.id} 的蒸馏结果` : '蒸馏历史' }}</strong>
+                  <span>{{ resultCollectionFilter ? `${visibleBloggerRunCount} / ${selectedBloggerRunCount}` : `${selectedBloggerRunCount} 次` }}</span>
                 </div>
-                <div v-if="selectedBloggerRun?.status === 'pending_confirmation'" class="actions">
-                  <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleConfirmBloggerRun">
-                    {{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}
-                  </button>
-                  <button type="button" :disabled="Boolean(pendingAction)" @click="handleAbandonBloggerRun">
-                    {{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}
-                  </button>
+                <div v-if="resultCollectionFilter" class="filter-bar">
+                  <span>已按采集批次筛选</span>
+                  <button type="button" @click="showAllBloggerRuns">查看全部</button>
                 </div>
-              </div>
-
-              <div v-if="selectedBlogger" class="result-browser">
-                <aside class="run-list" aria-label="蒸馏记录">
-                  <div class="run-list-header">
-                    <strong>{{ resultCollectionFilter ? `采集批次 #${resultCollectionFilter.id} 的蒸馏结果` : '全部蒸馏记录' }}</strong>
-                    <span>{{ resultCollectionFilter ? `${visibleBloggerRunCount} / ${selectedBloggerRunCount} 次` : `${selectedBloggerRunCount} 次记录` }}</span>
-                  </div>
-                  <div v-if="resultCollectionFilter" class="filter-bar">
-                    <span>已筛选：批次 #{{ resultCollectionFilter.id }}</span>
-                    <button type="button" @click="showAllBloggerRuns">查看全部记录</button>
-                  </div>
+                <div class="asset-run-list">
                   <button
                     v-for="run in visibleBloggerRuns"
                     :key="run.id"
@@ -2105,59 +2124,82 @@ onUnmounted(() => {
                     @click="selectBloggerRun(run.id)"
                   >
                     <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>来源批次 #{{ run.collection_run_id || '旧数据' }} · {{ distillationStatusLabel(run.status) }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
+                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · {{ distillationStatusLabel(run.status) }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
                     <em v-if="run.status === 'failed'" class="run-error">失败原因：{{ run.error_message || '未记录失败原因' }}</em>
                   </button>
                   <p v-if="!visibleBloggerRuns.length && resultCollectionFilter" class="empty-region">这个采集批次还没有蒸馏结果。</p>
                   <p v-else-if="!visibleBloggerRuns.length" class="empty-region">这个博主还没有蒸馏记录。</p>
-                </aside>
+                </div>
+              </section>
+            </div>
 
-                <div class="run-detail">
-                  <div v-if="selectedBloggerRun" class="workspace-snapshot scoped-snapshot">
-                    <div>
-                      <span>样本数量</span>
-                      <strong>{{ selectedBloggerRun.sample_count }}</strong>
-                    </div>
-                    <div>
-                      <span>TikHub 请求</span>
-                      <strong>{{ selectedBloggerRun.tikhub_request_count }}</strong>
-                    </div>
-                    <div>
-                      <span>本次费用</span>
-                      <strong>{{ selectedRunCostLabel }}</strong>
-                    </div>
-                  </div>
-
-                  <div v-if="selectedBloggerRun" class="distill-grid compact-result">
-                    <article class="distill-card">
-                      <h3>蒸馏报告</h3>
-                      <div v-if="selectedBloggerRun.status === 'failed'" class="failure-panel">
-                        <strong>蒸馏失败</strong>
-                        <p>{{ selectedBloggerRun.error_message || '这次蒸馏没有记录失败原因，请查看任务日志。' }}</p>
-                      </div>
-                      <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
-                      <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
-                    </article>
-
-                    <article class="distill-card">
-                      <h3>Skill 输出</h3>
-                      <textarea
-                        v-if="selectedBloggerSkill"
-                        :value="selectedBloggerSkill.skill_markdown"
-                        readonly
-                        rows="18"
-                      ></textarea>
-                      <p v-else-if="selectedBloggerRun.status === 'failed'" class="empty-region">蒸馏失败后不会生成 Skill。</p>
-                      <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
-                    </article>
-                  </div>
-
-                  <p v-if="!selectedBloggerRun" class="empty-region result-placeholder">请选择左侧的一次蒸馏记录查看报告和 Skill。</p>
+            <section v-if="selectedCollectionRun" class="asset-panel">
+              <div class="inline-card-header">
+                <div>
+                  <span>采集样本</span>
+                  <h3>批次 #{{ selectedCollectionRun.id }}</h3>
+                </div>
+                <button v-if="collectionDistillationCount(selectedCollectionRun.id)" type="button" @click="showCollectionResults(selectedCollectionRun.id)">查看对应蒸馏</button>
+              </div>
+              <div v-if="bloggerPosts.length" class="sample-list asset-samples">
+                <div v-for="post in bloggerPosts.slice(0, 8)" :key="post.id">
+                  <strong>{{ post.title }}</strong>
+                  <span>
+                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
+                    <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
+                  </span>
                 </div>
               </div>
-              <p v-else class="empty-region">请先在“博主档案”里选择一个博主。</p>
+              <p v-else class="empty-region">这个采集批次还没有可展示样本。</p>
             </section>
+
+            <section v-if="selectedBloggerRun" class="asset-panel">
+              <div class="stage-header">
+                <div>
+                  <span>{{ distillationStatusLabel(selectedBloggerRun.status) }}</span>
+                  <h3>蒸馏结果 #{{ selectedBloggerRun.id }}</h3>
+                </div>
+                <div v-if="selectedBloggerRun.status === 'pending_confirmation'" class="actions">
+                  <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleConfirmBloggerRun">
+                    {{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}
+                  </button>
+                  <button type="button" :disabled="Boolean(pendingAction)" @click="handleAbandonBloggerRun">
+                    {{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}
+                  </button>
+                </div>
+              </div>
+              <div class="workspace-snapshot scoped-snapshot">
+                <div><span>样本数量</span><strong>{{ selectedBloggerRun.sample_count }}</strong></div>
+                <div><span>TikHub 请求</span><strong>{{ selectedBloggerRun.tikhub_request_count }}</strong></div>
+                <div><span>本次费用</span><strong>{{ selectedRunCostLabel }}</strong></div>
+              </div>
+              <div class="distill-grid compact-result">
+                <article class="distill-card">
+                  <h3>蒸馏报告</h3>
+                  <div v-if="selectedBloggerRun.status === 'failed'" class="failure-panel">
+                    <strong>蒸馏失败</strong>
+                    <p>{{ selectedBloggerRun.error_message || '这次蒸馏没有记录失败原因，请查看任务日志。' }}</p>
+                  </div>
+                  <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
+                  <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
+                </article>
+
+                <article class="distill-card">
+                  <h3>Skill 输出</h3>
+                  <textarea
+                    v-if="selectedBloggerSkill"
+                    :value="selectedBloggerSkill.skill_markdown"
+                    readonly
+                    rows="18"
+                  ></textarea>
+                  <p v-else-if="selectedBloggerRun.status === 'failed'" class="empty-region">蒸馏失败后不会生成 Skill。</p>
+                  <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
+                </article>
+              </div>
+            </section>
+            <p v-else class="empty-region result-placeholder">请选择一次蒸馏记录查看报告和 Skill。</p>
           </div>
+          <p v-else class="empty-region">请选择一个博主查看资产。</p>
         </div>
 
         <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">

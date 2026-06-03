@@ -28,6 +28,8 @@ from app.services.tenant_service import (
     get_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError
+from app.schemas import XhsPublishPackageCreate
+from app.xhs_creation.service import generate_xhs_publish_package_draft
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ TASK_MESSAGES = {
     "daily_publish": "已加入定时发布任务",
     "blogger_collection": "已加入博主样本采集任务",
     "blogger_distillation": "已加入博主蒸馏任务",
+    "xhs_package_draft": "已加入小红书发布包生成任务",
 }
 
 
@@ -188,6 +191,40 @@ def run_blogger_distillation_task(
         except Exception:
             logger.exception("记录博主蒸馏失败事件失败：任务ID=%s", task_id)
         mark_task_failed_by_id(db, task_id, "博主蒸馏失败", f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        db.close()
+
+
+def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
+    db = SessionLocal()
+    try:
+        logger.info("任务开始：任务ID=%s，类型=小红书发布包草稿生成", task_id)
+        task = get_task(db, task_id)
+        if not task:
+            return
+
+        mark_task_running(db, task, "正在生成小红书正文/脚本和素材")
+        record_task_event(db, task.tenant_id, task_id, "发布包生成", "running", "开始生成正文/脚本")
+        draft_payload = XhsPublishPackageCreate.model_validate(payload)
+        draft = generate_xhs_publish_package_draft(db, get_settings(), task.tenant_id, draft_payload)
+        record_task_event(
+            db,
+            task.tenant_id,
+            task_id,
+            "发布包草稿",
+            "succeeded",
+            "发布包草稿生成完成",
+            {"draft": draft},
+        )
+        mark_task_succeeded(db, task, "小红书发布包草稿生成完成")
+        logger.info("任务成功：任务ID=%s，类型=小红书发布包草稿生成", task_id)
+    except (ValueError, AIServiceError) as exc:
+        logger.warning("任务失败：任务ID=%s，类型=小红书发布包草稿生成，错误=%s", task_id, exc)
+        mark_task_failed_by_id(db, task_id, "小红书发布包草稿生成失败", str(exc))
+    except Exception as exc:
+        logger.exception("任务异常：任务ID=%s，类型=小红书发布包草稿生成", task_id)
+        mark_task_failed_by_id(db, task_id, "小红书发布包草稿生成失败", f"{type(exc).__name__}: {exc}")
         raise
     finally:
         db.close()

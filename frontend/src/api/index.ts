@@ -240,6 +240,13 @@ export function generateXhsPublishPackageDraft(payload: XhsPublishPackageCreate)
   })
 }
 
+export function startXhsPublishPackageDraftTask(payload: XhsPublishPackageCreate) {
+  return request<OperationTask>('/xhs/package-drafts/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
 export function saveXhsPublishPackage(payload: XhsPublishPackageSave) {
   return request<XhsPublishPackage>('/xhs/publish-packages', {
     method: 'POST',
