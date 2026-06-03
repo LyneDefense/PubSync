@@ -8,6 +8,7 @@ import {
   collectBlogger,
   createAdminUser,
   createBlogger,
+  createXhsPublishPackage,
   distillBlogger,
   fetchNews,
   generateArticle,
@@ -26,6 +27,7 @@ import {
   listBloggers,
   listTenants,
   listNews,
+  listXhsPublishPackages,
   login,
   sendArticleToWechat,
   setTenantId,
@@ -50,7 +52,9 @@ import type {
   OperationTask,
   OperationTaskEvent,
   Tenant,
-  WorkspaceConfig
+  WorkspaceConfig,
+  XhsPublishContentType,
+  XhsPublishPackage
 } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill'
@@ -77,12 +81,14 @@ const bloggerPosts = ref<BloggerPost[]>([])
 const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 const bloggerRuns = ref<BloggerDistillationRun[]>([])
 const bloggerSkills = ref<BloggerSkill[]>([])
+const xhsPackages = ref<XhsPublishPackage[]>([])
 const adminUsers = ref<AdminUser[]>([])
 const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
 const selectedCollectionRunId = ref<number | null>(null)
 const selectedBloggerRunId = ref<number | null>(null)
 const resultCollectionFilterId = ref<number | null>(null)
+const selectedXhsPackageId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
@@ -147,6 +153,17 @@ const bloggerDistillForm = reactive({
   sample_limit: 50,
   comments_per_post: 20,
   asr_enabled: false
+})
+
+const xhsPackageForm = reactive({
+  skill_id: 0,
+  content_type: 'text_note' as XhsPublishContentType,
+  topic: '',
+  target_audience: '',
+  content_goal: '知识分享',
+  keywords: '',
+  image_count_mode: 'auto' as 'auto' | 'manual',
+  requested_image_count: 3
 })
 
 const profileForm = reactive({
@@ -246,6 +263,8 @@ const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((r
 const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
 const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
+const selectedXhsSkill = computed(() => bloggerSkills.value.find((skill) => skill.id === xhsPackageForm.skill_id) || null)
+const selectedXhsPackage = computed(() => xhsPackages.value.find((item) => item.id === selectedXhsPackageId.value) || xhsPackages.value[0] || null)
 const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
 const visibleBloggerRuns = computed(() =>
   resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
@@ -257,6 +276,26 @@ const selectedRunCostLabel = computed(() => {
     return '暂无'
   }
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
+})
+const xhsPackageImageUrls = computed(() => parseJsonArray(selectedXhsPackage.value?.image_urls_json))
+const xhsPackageImagePlan = computed(() => parseJsonArray(selectedXhsPackage.value?.image_plan_json))
+const xhsPackageHashtags = computed(() => parseJsonArray(selectedXhsPackage.value?.hashtags_json))
+const xhsPackageScriptSegments = computed(() => {
+  const script = parseJsonObject(selectedXhsPackage.value?.script_json)
+  return Array.isArray(script.segments) ? script.segments : []
+})
+const xhsPackageSkillOptions = computed(() =>
+  bloggerSkills.value.filter((skill) => skill.status === 'active').map((skill) => ({
+    ...skill,
+    bloggerName: bloggers.value.find((blogger) => blogger.id === skill.blogger_id)?.display_name || `博主 #${skill.blogger_id}`
+  }))
+)
+const selectedXhsPackageBloggerName = computed(() => {
+  const pack = selectedXhsPackage.value
+  if (!pack) {
+    return ''
+  }
+  return bloggers.value.find((blogger) => blogger.id === pack.blogger_id)?.display_name || `博主 #${pack.blogger_id}`
 })
 function runCostLabel(run: BloggerDistillationRun) {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
@@ -364,6 +403,56 @@ const layoutPreviewSectionStyle = computed(() => ({
 function showMessage(text: string, error = false) {
   message.value = text
   isError.value = error
+}
+
+function parseJsonArray(raw?: string | null) {
+  if (!raw) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function parseJsonObject(raw?: string | null) {
+  if (!raw) {
+    return {} as Record<string, unknown>
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function xhsContentTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    text_note: '图文笔记',
+    image_note: '图文配图',
+    spoken_script: '口播脚本',
+    video_script: '视频脚本'
+  }
+  return labels[type] || type
+}
+
+function xhsPackageCopyText(pack: XhsPublishPackage) {
+  const tags = parseJsonArray(pack.hashtags_json)
+    .map((tag) => `#${String(tag).replace(/^#/, '')}`)
+    .join(' ')
+  return [pack.title, pack.body_text, tags].filter(Boolean).join('\n\n')
+}
+
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    showMessage(`${label}已复制`)
+  } catch {
+    showMessage('复制失败，请手动选择文本复制', true)
+  }
 }
 
 function compactTaskMessage(event: OperationTaskEvent) {
@@ -533,12 +622,13 @@ function wait(ms: number) {
 }
 
 async function loadAll() {
-  const [nextConfig, nextNews, nextArticle, nextBloggers, nextSkills] = await Promise.all([
+  const [nextConfig, nextNews, nextArticle, nextBloggers, nextSkills, nextXhsPackages] = await Promise.all([
     getWorkspaceConfig(),
     listNews(),
     getLatestArticle(),
     listBloggers(),
-    listBloggerSkills()
+    listBloggerSkills(),
+    listXhsPublishPackages()
   ])
   setWorkspaceConfig(nextConfig)
   news.value = nextNews
@@ -546,6 +636,8 @@ async function loadAll() {
   setArticle(nextArticle)
   bloggers.value = nextBloggers
   bloggerSkills.value = nextSkills
+  xhsPackages.value = nextXhsPackages
+  syncXhsPackageSelection()
   if (selectedBloggerId.value && !nextBloggers.some((blogger) => blogger.id === selectedBloggerId.value)) {
     selectedBloggerId.value = null
     selectedCollectionRunId.value = null
@@ -630,10 +722,12 @@ function handleLogout() {
   bloggerCollectionRuns.value = []
   bloggerRuns.value = []
   bloggerSkills.value = []
+  xhsPackages.value = []
   selectedBloggerId.value = null
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
   resultCollectionFilterId.value = null
+  selectedXhsPackageId.value = null
   currentUser.value = null
   adminUsers.value = []
   tenants.value = []
@@ -670,6 +764,7 @@ async function refreshArticle() {
 async function refreshBloggers() {
   bloggers.value = await listBloggers()
   bloggerSkills.value = await listBloggerSkills()
+  syncXhsPackageSelection()
   if (selectedBloggerId.value && !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
     selectedBloggerId.value = null
     selectedCollectionRunId.value = null
@@ -677,6 +772,15 @@ async function refreshBloggers() {
     resultCollectionFilterId.value = null
   }
   await refreshSelectedBlogger()
+}
+
+function syncXhsPackageSelection() {
+  if (!xhsPackageForm.skill_id || !bloggerSkills.value.some((skill) => skill.id === xhsPackageForm.skill_id && skill.status === 'active')) {
+    xhsPackageForm.skill_id = bloggerSkills.value.find((skill) => skill.status === 'active')?.id || 0
+  }
+  if (selectedXhsPackageId.value && !xhsPackages.value.some((item) => item.id === selectedXhsPackageId.value)) {
+    selectedXhsPackageId.value = null
+  }
 }
 
 async function refreshSelectedBlogger() {
@@ -712,6 +816,11 @@ async function refreshSelectedBlogger() {
   if (selectedBloggerRunId.value && !runs.some((run) => run.id === selectedBloggerRunId.value)) {
     selectedBloggerRunId.value = null
   }
+}
+
+async function refreshXhsPackages(selectedId?: number) {
+  xhsPackages.value = await listXhsPublishPackages()
+  selectedXhsPackageId.value = selectedId || xhsPackages.value[0]?.id || null
 }
 
 async function handleCreateBlogger() {
@@ -779,6 +888,38 @@ async function handleDistillBlogger() {
     },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
   )
+}
+
+async function handleCreateXhsPackage() {
+  if (!xhsPackageForm.skill_id) {
+    showMessage('请先选择一个 Skill', true)
+    return
+  }
+  if (!xhsPackageForm.topic.trim()) {
+    showMessage('请填写创作主题', true)
+    return
+  }
+  if (xhsPackageForm.content_type === 'image_note' && xhsPackageForm.image_count_mode === 'manual' && !xhsPackageForm.requested_image_count) {
+    showMessage('请选择配图数量', true)
+    return
+  }
+  await runAction('xhs-package', '正在生成小红书发布包', async () => {
+    const pack = await createXhsPublishPackage({
+      skill_id: xhsPackageForm.skill_id,
+      content_type: xhsPackageForm.content_type,
+      topic: xhsPackageForm.topic.trim(),
+      target_audience: xhsPackageForm.target_audience.trim(),
+      content_goal: xhsPackageForm.content_goal.trim(),
+      keywords: xhsPackageForm.keywords.trim(),
+      image_count_mode: xhsPackageForm.content_type === 'image_note' ? xhsPackageForm.image_count_mode : 'auto',
+      requested_image_count:
+        xhsPackageForm.content_type === 'image_note' && xhsPackageForm.image_count_mode === 'manual'
+          ? xhsPackageForm.requested_image_count
+          : null
+    })
+    await refreshXhsPackages(pack.id)
+    activeXhsTab.value = 'packages'
+  })
 }
 
 async function handleCollectBlogger() {
@@ -1716,11 +1857,199 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab !== 'ai'" class="panel">
+      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'packages'" class="panel">
         <div class="section-header">
           <div>
-            <h2>{{ activeXhsTab === 'packages' ? '小红书发布包' : activeXhsTab === 'records' ? '小红书发布记录' : '小红书设置' }}</h2>
-            <p class="toolbar-subtitle">小红书发布包、自主 AI 创作和设置能力后续开放。</p>
+            <h2>小红书发布包</h2>
+            <p class="toolbar-subtitle">选择一个蒸馏 Skill，输入主题后生成可复制、可保存图片的人工发布包。</p>
+          </div>
+        </div>
+        <div class="publish-package-layout">
+          <form class="package-form" @submit.prevent="handleCreateXhsPackage">
+            <div class="stage-header">
+              <div>
+                <span>AI 创作</span>
+                <h3>生成发布包</h3>
+              </div>
+              <button type="submit" class="primary" :disabled="Boolean(pendingAction) || !xhsPackageSkillOptions.length">
+                {{ pendingAction === 'xhs-package' ? '生成中' : '生成发布包' }}
+              </button>
+            </div>
+            <label>
+              选择 Skill
+              <select v-model.number="xhsPackageForm.skill_id" :disabled="!xhsPackageSkillOptions.length">
+                <option :value="0">请选择 Skill</option>
+                <option v-for="skill in xhsPackageSkillOptions" :key="skill.id" :value="skill.id">
+                  {{ skill.bloggerName }} · {{ skill.name }} · {{ formatDate(skill.created_at) }}
+                </option>
+              </select>
+            </label>
+            <div v-if="selectedXhsSkill" class="skill-mini-card">
+              <strong>{{ selectedXhsSkill.name }}</strong>
+              <span>{{ selectedXhsSkill.description }}</span>
+            </div>
+            <label>
+              创作主题
+              <input v-model="xhsPackageForm.topic" type="text" required placeholder="例如：新手养猫为什么总是买错猫粮" />
+            </label>
+            <div class="config-grid">
+              <label>
+                目标人群
+                <input v-model="xhsPackageForm.target_audience" type="text" placeholder="例如：第一次养猫的年轻人" />
+              </label>
+              <label>
+                内容目的
+                <select v-model="xhsPackageForm.content_goal">
+                  <option value="知识分享">知识分享</option>
+                  <option value="避坑科普">避坑科普</option>
+                  <option value="种草转化">种草转化</option>
+                  <option value="观点表达">观点表达</option>
+                  <option value="经验复盘">经验复盘</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              关键词
+              <input v-model="xhsPackageForm.keywords" type="text" placeholder="用逗号分隔，例如：猫粮, 配料表, 蛋白质" />
+            </label>
+            <div class="package-type-grid" role="radiogroup" aria-label="内容类型">
+              <label :class="{ active: xhsPackageForm.content_type === 'text_note' }">
+                <input v-model="xhsPackageForm.content_type" type="radio" value="text_note" />
+                <strong>图文笔记</strong>
+                <span>标题、正文、标签、封面文案</span>
+              </label>
+              <label :class="{ active: xhsPackageForm.content_type === 'image_note' }">
+                <input v-model="xhsPackageForm.content_type" type="radio" value="image_note" />
+                <strong>图文配图</strong>
+                <span>额外规划并生成配图</span>
+              </label>
+              <label :class="{ active: xhsPackageForm.content_type === 'spoken_script' }">
+                <input v-model="xhsPackageForm.content_type" type="radio" value="spoken_script" />
+                <strong>口播脚本</strong>
+                <span>按时间段输出口播稿</span>
+              </label>
+              <label :class="{ active: xhsPackageForm.content_type === 'video_script' }">
+                <input v-model="xhsPackageForm.content_type" type="radio" value="video_script" />
+                <strong>视频脚本</strong>
+                <span>分镜、旁白、字幕建议</span>
+              </label>
+            </div>
+            <div v-if="xhsPackageForm.content_type === 'image_note'" class="config-grid">
+              <label>
+                配图策略
+                <select v-model="xhsPackageForm.image_count_mode">
+                  <option value="auto">AI 判断数量</option>
+                  <option value="manual">手动选择数量</option>
+                </select>
+              </label>
+              <label>
+                配图数量
+                <select v-model.number="xhsPackageForm.requested_image_count" :disabled="xhsPackageForm.image_count_mode === 'auto'">
+                  <option v-for="count in [1, 2, 3, 4, 5, 6, 7, 8, 9]" :key="count" :value="count">{{ count }} 张</option>
+                </select>
+              </label>
+            </div>
+            <p v-if="!xhsPackageSkillOptions.length" class="empty-region">还没有可用 Skill。请先在 AI 创作里完成博主蒸馏。</p>
+          </form>
+
+          <div class="package-browser">
+            <aside class="run-list package-list" aria-label="发布包记录">
+              <div class="run-list-header">
+                <strong>发布包记录</strong>
+                <span>{{ xhsPackages.length }} 条</span>
+              </div>
+              <button
+                v-for="pack in xhsPackages"
+                :key="pack.id"
+                type="button"
+                :class="{ active: selectedXhsPackage?.id === pack.id }"
+                @click="selectedXhsPackageId = pack.id"
+              >
+                <strong>{{ pack.title || pack.topic }}</strong>
+                <span>{{ xhsContentTypeLabel(pack.content_type) }} · {{ formatDate(pack.created_at) }}</span>
+              </button>
+              <p v-if="!xhsPackages.length" class="empty-region">还没有发布包。左侧生成后会出现在这里。</p>
+            </aside>
+
+            <article v-if="selectedXhsPackage" class="package-preview">
+              <div class="inline-card-header">
+                <div>
+                  <span>{{ selectedXhsPackageBloggerName }} · {{ xhsContentTypeLabel(selectedXhsPackage.content_type) }}</span>
+                  <h3>{{ selectedXhsPackage.title }}</h3>
+                </div>
+                <button type="button" @click="copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
+              </div>
+              <div class="workspace-snapshot scoped-snapshot">
+                <div>
+                  <span>主题</span>
+                  <strong>{{ selectedXhsPackage.topic }}</strong>
+                </div>
+                <div>
+                  <span>封面文案</span>
+                  <strong>{{ selectedXhsPackage.cover_text || '暂无' }}</strong>
+                </div>
+                <div>
+                  <span>配图</span>
+                  <strong>{{ xhsPackageImageUrls.length || xhsPackageImagePlan.length }} 张</strong>
+                </div>
+              </div>
+              <section class="package-copy-block">
+                <div class="inline-card-header">
+                  <h3>正文</h3>
+                  <button type="button" @click="copyText(selectedXhsPackage.body_text, '正文')">复制正文</button>
+                </div>
+                <pre>{{ selectedXhsPackage.body_text }}</pre>
+              </section>
+              <section v-if="xhsPackageHashtags.length" class="tag-cloud">
+                <button
+                  v-for="tag in xhsPackageHashtags"
+                  :key="String(tag)"
+                  type="button"
+                  @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')"
+                >
+                  #{{ String(tag).replace(/^#/, '') }}
+                </button>
+              </section>
+              <section v-if="xhsPackageImageUrls.length || xhsPackageImagePlan.length" class="package-images">
+                <div class="inline-card-header">
+                  <h3>配图</h3>
+                </div>
+                <div class="image-output-grid">
+                  <figure v-for="(url, index) in xhsPackageImageUrls" :key="url">
+                    <img :src="String(url)" alt="小红书发布包配图" />
+                    <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
+                  </figure>
+                </div>
+                <div v-if="!xhsPackageImageUrls.length" class="sample-list">
+                  <div v-for="item in xhsPackageImagePlan" :key="String(item.slot)">
+                    <strong>{{ item.caption || `配图 ${item.slot}` }}</strong>
+                    <span>{{ item.purpose }}</span>
+                  </div>
+                </div>
+                <p v-if="selectedXhsPackage.error_message" class="run-error">{{ selectedXhsPackage.error_message }}</p>
+              </section>
+              <section v-if="xhsPackageScriptSegments.length" class="script-timeline">
+                <div class="inline-card-header">
+                  <h3>脚本分段</h3>
+                  <button type="button" @click="copyText(JSON.stringify(parseJsonObject(selectedXhsPackage.script_json), null, 2), '脚本')">复制脚本</button>
+                </div>
+                <div v-for="(segment, index) in xhsPackageScriptSegments" :key="index">
+                  <time>{{ segment.start || `${index * 10}s` }} - {{ segment.end || `${(index + 1) * 10}s` }}</time>
+                  <strong>{{ segment.voiceover || segment.subtitle }}</strong>
+                  <span>{{ segment.scene }}</span>
+                </div>
+              </section>
+            </article>
+            <p v-else class="empty-region result-placeholder">选择或生成一个发布包后，这里会展示可复制的内容。</p>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="activeMainTab === 'xhs' && (activeXhsTab === 'records' || activeXhsTab === 'settings')" class="panel">
+        <div class="section-header">
+          <div>
+            <h2>{{ activeXhsTab === 'records' ? '小红书发布记录' : '小红书设置' }}</h2>
+            <p class="toolbar-subtitle">发布记录和平台设置能力后续开放。</p>
           </div>
         </div>
         <p class="empty-region">该模块暂未开放。</p>

@@ -489,6 +489,35 @@ def ensure_runtime_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_blogger_id ON blogger_distillation_runs(blogger_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_skills_tenant_id ON blogger_skills(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_skills_blogger_id ON blogger_skills(blogger_id)",
+        """
+        CREATE TABLE IF NOT EXISTS xhs_publish_packages (
+            id SERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
+            skill_id INTEGER NOT NULL REFERENCES blogger_skills(id),
+            content_type VARCHAR(40) NOT NULL,
+            topic VARCHAR(300) NOT NULL,
+            target_audience VARCHAR(300) NOT NULL DEFAULT '',
+            content_goal VARCHAR(120) NOT NULL DEFAULT '',
+            keywords VARCHAR(500) NOT NULL DEFAULT '',
+            image_count_mode VARCHAR(30) NOT NULL DEFAULT 'auto',
+            requested_image_count INTEGER,
+            title VARCHAR(300) NOT NULL DEFAULT '',
+            body_text TEXT NOT NULL DEFAULT '',
+            hashtags_json TEXT NOT NULL DEFAULT '[]',
+            cover_text VARCHAR(300) NOT NULL DEFAULT '',
+            image_plan_json TEXT NOT NULL DEFAULT '[]',
+            image_urls_json TEXT NOT NULL DEFAULT '[]',
+            script_json TEXT NOT NULL DEFAULT '{}',
+            status VARCHAR(30) NOT NULL DEFAULT 'generated',
+            error_message TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_tenant_id ON xhs_publish_packages(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_blogger_id ON xhs_publish_packages(blogger_id)",
+        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_skill_id ON xhs_publish_packages(skill_id)",
     ]
     with engine.begin() as connection:
         for statement in enum_statements:

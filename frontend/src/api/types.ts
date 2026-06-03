@@ -342,3 +342,42 @@ export interface BloggerSkill {
   created_at: string
   updated_at: string
 }
+
+export type XhsPublishContentType = 'text_note' | 'image_note' | 'spoken_script' | 'video_script'
+export type XhsImageCountMode = 'auto' | 'manual'
+
+export interface XhsPublishPackageCreate {
+  skill_id: number
+  content_type: XhsPublishContentType
+  topic: string
+  target_audience: string
+  content_goal: string
+  keywords: string
+  image_count_mode: XhsImageCountMode
+  requested_image_count: number | null
+}
+
+export interface XhsPublishPackage {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  skill_id: number
+  content_type: XhsPublishContentType
+  topic: string
+  target_audience: string
+  content_goal: string
+  keywords: string
+  image_count_mode: XhsImageCountMode
+  requested_image_count: number | null
+  title: string
+  body_text: string
+  hashtags_json: string
+  cover_text: string
+  image_plan_json: string
+  image_urls_json: string
+  script_json: string
+  status: string
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}

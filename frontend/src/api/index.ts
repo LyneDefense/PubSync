@@ -19,7 +19,9 @@ import type {
   OperationTaskEvent,
   Tenant,
   WorkspaceConfig,
-  WorkspaceConfigUpdate
+  WorkspaceConfigUpdate,
+  XhsPublishPackage,
+  XhsPublishPackageCreate
 } from './types'
 
 const API_BASE = `${import.meta.env.BASE_URL}api`
@@ -209,4 +211,15 @@ export function listBloggerRuns(id: number) {
 
 export function listBloggerSkills() {
   return request<BloggerSkill[]>('/blogger-skills')
+}
+
+export function listXhsPublishPackages() {
+  return request<XhsPublishPackage[]>('/xhs/publish-packages')
+}
+
+export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {
+  return request<XhsPublishPackage>('/xhs/publish-packages', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
 }

@@ -31,6 +31,7 @@ from app.models import (
     TenantStatus,
     User,
     WeChatAccount,
+    XhsPublishPackage,
 )
 from app.schemas import (
     AdminUserCreate,
@@ -58,8 +59,11 @@ from app.schemas import (
     WeChatAccountRead,
     WorkspaceConfigRead,
     WorkspaceConfigUpdate,
+    XhsPublishPackageCreate,
+    XhsPublishPackageRead,
 )
 from app.services.article_service import update_article
+from app.services.ai_service import AIServiceError
 from app.services.auth_service import (
     create_token,
     get_user_by_username,
@@ -98,6 +102,7 @@ from app.services.tenant_service import (
     update_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
+from app.xhs_creation.service import create_xhs_publish_package
 
 
 settings = get_settings()
@@ -583,6 +588,34 @@ def list_blogger_skills_endpoint(
             .order_by(BloggerSkill.created_at.desc())
         )
     )
+
+
+@app.get("/xhs/publish-packages", response_model=list[XhsPublishPackageRead])
+def list_xhs_publish_packages_endpoint(
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[XhsPublishPackage]:
+    return list(
+        db.scalars(
+            select(XhsPublishPackage)
+            .where(XhsPublishPackage.tenant_id == tenant.id)
+            .order_by(XhsPublishPackage.created_at.desc(), XhsPublishPackage.id.desc())
+        )
+    )
+
+
+@app.post("/xhs/publish-packages", response_model=XhsPublishPackageRead)
+def create_xhs_publish_package_endpoint(
+    payload: XhsPublishPackageCreate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> XhsPublishPackage:
+    try:
+        return create_xhs_publish_package(db, settings, tenant.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AIServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/tasks/{task_id}", response_model=OperationTaskRead)
