@@ -1584,6 +1584,27 @@ p {
   margin: 0;
 }
 
+.image-preview-trigger {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.image-preview-trigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.image-preview-trigger:hover img {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
 .image-output-grid img {
   width: 100%;
   aspect-ratio: 1;
@@ -1591,6 +1612,7 @@ p {
   border: var(--rule-hair);
   border-radius: var(--radius-sm);
   background: var(--color-paper);
+  transition: border-color 0.18s ease, transform 0.18s ease;
 }
 
 .image-output-grid figcaption {
@@ -1641,6 +1663,47 @@ p {
 .script-segments article strong,
 .script-segments article p {
   margin: 0;
+}
+
+.image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--color-ink), transparent 22%);
+  padding: var(--space-md);
+}
+
+.image-preview-panel {
+  position: relative;
+  display: grid;
+  gap: var(--space-xs);
+  width: min(980px, 100%);
+  max-height: calc(100vh - var(--space-md) * 2);
+  margin: 0;
+  border: var(--rule-hair);
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  padding: var(--space-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+.image-preview-panel img {
+  width: 100%;
+  max-height: min(76vh, 760px);
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--color-paper-2);
+}
+
+.image-preview-panel figcaption {
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}
+
+.image-preview-close {
+  justify-self: end;
 }
 
 @keyframes inline-progress-sweep {

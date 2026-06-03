@@ -128,6 +128,7 @@ const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
 const showBloggerModal = ref(false)
+const previewImage = ref<{ url: string; caption: string } | null>(null)
 const newsPage = ref(1)
 const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
@@ -510,6 +511,24 @@ async function copyText(text: string, label: string) {
     showMessage(`${label}已复制`)
   } catch {
     showMessage('复制失败，请手动选择文本复制', true)
+  }
+}
+
+function openImagePreview(url: unknown, caption: string) {
+  const imageUrl = String(url || '').trim()
+  if (!imageUrl) {
+    return
+  }
+  previewImage.value = { url: imageUrl, caption }
+}
+
+function closeImagePreview() {
+  previewImage.value = null
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeImagePreview()
   }
 }
 
@@ -1326,6 +1345,7 @@ function groupLabel(groupKey: string) {
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
   if (isAuthenticated.value) {
     loadTenantOptions()
       .then(loadAll)
@@ -1355,6 +1375,7 @@ watch(
 )
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
   window.clearInterval(progressTimers.fetch)
   window.clearInterval(progressTimers.generate)
 })
@@ -2243,7 +2264,13 @@ onUnmounted(() => {
               </section>
               <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
                 <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
-                  <img :src="String(url)" alt="小红书发布包配图" />
+                  <button
+                    type="button"
+                    class="image-preview-trigger"
+                    @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
+                  >
+                    <img :src="String(url)" alt="小红书发布包配图" />
+                  </button>
                   <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                 </figure>
               </div>
@@ -2307,7 +2334,13 @@ onUnmounted(() => {
                 </section>
                 <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
                   <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
-                    <img :src="String(url)" alt="小红书发布包配图" />
+                    <button
+                      type="button"
+                      class="image-preview-trigger"
+                      @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
+                    >
+                      <img :src="String(url)" alt="小红书发布包配图" />
+                    </button>
                     <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                   </figure>
                 </div>
@@ -2409,7 +2442,13 @@ onUnmounted(() => {
               </div>
               <div class="image-output-grid">
                 <figure v-for="(url, index) in xhsPackageImageUrls" :key="url">
-                  <img :src="String(url)" alt="小红书发布包配图" />
+                  <button
+                    type="button"
+                    class="image-preview-trigger"
+                    @click="openImagePreview(url, xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}`)"
+                  >
+                    <img :src="String(url)" alt="小红书发布包配图" />
+                  </button>
                   <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                 </figure>
               </div>
@@ -2870,6 +2909,14 @@ onUnmounted(() => {
           </article>
         </div>
       </section>
+
+      <div v-if="previewImage" class="image-preview-backdrop" role="presentation" @click.self="closeImagePreview">
+        <figure class="image-preview-panel" role="dialog" aria-modal="true" aria-label="配图预览">
+          <button type="button" class="ghost image-preview-close" @click="closeImagePreview">关闭</button>
+          <img :src="previewImage.url" alt="小红书发布包配图大图预览" />
+          <figcaption>{{ previewImage.caption }}</figcaption>
+        </figure>
+      </div>
     </main>
   </div>
 </template>
