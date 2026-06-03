@@ -58,6 +58,7 @@ type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
 type XhsTab = 'ai' | 'packages' | 'records' | 'settings'
 type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
+type XhsWorkflowTab = 'bloggers' | 'collect' | 'distill' | 'assets'
 
 const statusText: Record<string, string> = {
   draft: '草稿',
@@ -93,9 +94,11 @@ const activeMainTab = ref<MainTab>('wechat')
 const activeWechatTab = ref<WeChatTab>('brief')
 const activeXhsTab = ref<XhsTab>('ai')
 const activeDouyinTab = ref<DouyinTab>('ai')
+const activeXhsWorkflowTab = ref<XhsWorkflowTab>('bloggers')
 const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
+const showBloggerModal = ref(false)
 const newsPage = ref(1)
 const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
@@ -129,7 +132,10 @@ const bloggerForm = reactive({
   display_name: '',
   homepage_url: '',
   niche: '',
-  description: '',
+  description: ''
+})
+
+const bloggerDistillForm = reactive({
   sample_limit: 50,
   comments_per_post: 20,
   asr_enabled: false
@@ -641,6 +647,7 @@ async function handleCreateBlogger() {
     bloggerForm.homepage_url = ''
     bloggerForm.niche = ''
     bloggerForm.description = ''
+    showBloggerModal.value = false
     await refreshBloggers()
   })
 }
@@ -675,13 +682,18 @@ async function handleDistillBlogger() {
     '已提交博主蒸馏任务',
     () =>
       distillBlogger(selectedBloggerId.value!, {
-        sample_limit: bloggerForm.sample_limit,
-        comments_per_post: bloggerForm.comments_per_post,
-        asr_enabled: bloggerForm.asr_enabled
+        sample_limit: bloggerDistillForm.sample_limit,
+        comments_per_post: bloggerDistillForm.comments_per_post,
+        asr_enabled: bloggerDistillForm.asr_enabled
       }),
     refreshSelectedBlogger,
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
   )
+}
+
+async function selectBlogger(id: number) {
+  selectedBloggerId.value = id
+  await refreshSelectedBlogger()
 }
 
 async function handleFetchNews() {
@@ -968,21 +980,6 @@ onUnmounted(() => {
     <main class="workspace">
       <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
 
-      <div class="workspace-snapshot" aria-label="工作台摘要">
-        <div>
-          <span>候选内容</span>
-          <strong>{{ news.length }}</strong>
-        </div>
-        <div>
-          <span>当前文章</span>
-          <strong>{{ articleStateLabel }}</strong>
-        </div>
-        <div>
-          <span>工作区</span>
-          <strong>{{ publicationName }}</strong>
-        </div>
-      </div>
-
       <div v-if="activeMainTab === 'wechat'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="公众号模块">
           <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>
@@ -1043,6 +1040,20 @@ onUnmounted(() => {
       </section>
 
       <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'brief'" class="panel">
+        <div class="workspace-snapshot scoped-snapshot" aria-label="公众号每日早报摘要">
+          <div>
+            <span>候选内容</span>
+            <strong>{{ news.length }}</strong>
+          </div>
+          <div>
+            <span>当前文章</span>
+            <strong>{{ articleStateLabel }}</strong>
+          </div>
+          <div>
+            <span>工作区</span>
+            <strong>{{ publicationName }}</strong>
+          </div>
+        </div>
         <div class="section-header">
           <div>
             <h2>{{ workspaceTitle }}每日早报</h2>
@@ -1222,9 +1233,10 @@ onUnmounted(() => {
         <div class="section-header">
           <div>
             <h2>小红书 AI 创作</h2>
-            <p class="toolbar-subtitle">博主风格创作拆成样本采集、风格蒸馏和发布包生成；当前后端仍以一次任务执行采集与蒸馏。</p>
+            <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；内容生成与发布包后续接入。</p>
           </div>
           <div class="actions">
+            <button type="button" @click="showBloggerModal = true">创建博主</button>
             <button
               type="button"
               class="task-button"
@@ -1233,7 +1245,7 @@ onUnmounted(() => {
               :disabled="!selectedBloggerId || Boolean(pendingAction)"
               @click="handleDistillBlogger"
             >
-              <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '采集样本并蒸馏' }}</span>
+              <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '开始采集与蒸馏' }}</span>
             </button>
             <button
               v-if="pendingAction === 'distill'"
@@ -1247,98 +1259,143 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="feature-grid workflow-strip">
-          <article class="feature-card active">
-            <span>01</span>
-            <h3>样本采集</h3>
-            <p>采集博主公开笔记、评论和视频字幕/ASR。</p>
-          </article>
-          <article class="feature-card active">
-            <span>02</span>
-            <h3>风格蒸馏</h3>
-            <p>基于样本生成蒸馏报告和风格资产。</p>
-          </article>
-          <article class="feature-card locked">
-            <span>03</span>
-            <h3>内容生成</h3>
-            <p>应用风格资产生成小红书发布包。</p>
-            <strong>暂未开放</strong>
-          </article>
-        </div>
-
-        <div class="distill-grid">
-          <form class="distill-card" @submit.prevent="handleCreateBlogger">
-            <h3>新增博主</h3>
-            <label>
-              博主名称
-              <input v-model="bloggerForm.display_name" type="text" required />
-            </label>
-            <label>
-              小红书主页链接
-              <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
-            </label>
-            <label>
-              领域/赛道
-              <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
-            </label>
-            <label>
-              备注
-              <textarea v-model="bloggerForm.description" rows="3"></textarea>
-            </label>
-            <div class="config-grid">
-              <label>
-                采样笔记数
-                <input v-model.number="bloggerForm.sample_limit" type="number" min="5" max="200" />
-              </label>
-              <label>
-                每条评论数
-                <input v-model.number="bloggerForm.comments_per_post" type="number" min="0" max="100" />
-              </label>
-            </div>
-            <label class="checkbox-line">
-              <input v-model="bloggerForm.asr_enabled" type="checkbox" />
-              <span>开启视频 ASR 转写</span>
-            </label>
-            <p class="form-hint">开启后，视频笔记会尝试走腾讯云长音频识别；失败时自动降级为标题、描述、评论和互动数据分析。</p>
-            <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
-              {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
+        <div class="xhs-workbench">
+          <aside class="xhs-rail" aria-label="小红书创作流程">
+            <button
+              type="button"
+              :class="{ active: activeXhsWorkflowTab === 'bloggers' }"
+              @click="activeXhsWorkflowTab = 'bloggers'"
+            >
+              <span>01</span>
+              <strong>博主档案</strong>
+              <small>{{ bloggers.length }} 个博主</small>
             </button>
-          </form>
+            <button
+              type="button"
+              :class="{ active: activeXhsWorkflowTab === 'collect' }"
+              @click="activeXhsWorkflowTab = 'collect'"
+            >
+              <span>02</span>
+              <strong>样本采集</strong>
+              <small>笔记与评论数量</small>
+            </button>
+            <button
+              type="button"
+              :class="{ active: activeXhsWorkflowTab === 'distill' }"
+              @click="activeXhsWorkflowTab = 'distill'"
+            >
+              <span>03</span>
+              <strong>风格蒸馏</strong>
+              <small>ASR 与分析策略</small>
+            </button>
+            <button
+              type="button"
+              :class="{ active: activeXhsWorkflowTab === 'assets' }"
+              @click="activeXhsWorkflowTab = 'assets'"
+            >
+              <span>04</span>
+              <strong>结果资产</strong>
+              <small>报告与 Skill</small>
+            </button>
+          </aside>
 
-          <div class="distill-card">
-            <h3>博主列表</h3>
-            <div v-if="bloggers.length" class="blogger-list">
-              <button
-                v-for="blogger in bloggers"
-                :key="blogger.id"
-                type="button"
-                :class="{ active: selectedBloggerId === blogger.id }"
-                @click="selectedBloggerId = blogger.id; refreshSelectedBlogger()"
-              >
-                <strong>{{ blogger.display_name }}</strong>
-                <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
-              </button>
-            </div>
-            <p v-else class="empty-region">还没有博主档案。</p>
+          <div class="xhs-stage">
+            <section v-if="activeXhsWorkflowTab === 'bloggers'" class="stage-panel">
+              <div class="stage-header">
+                <div>
+                  <span>博主档案</span>
+                  <h3>选择要蒸馏的博主</h3>
+                </div>
+                <button type="button" class="primary" @click="showBloggerModal = true">创建博主</button>
+              </div>
+              <div v-if="bloggers.length" class="blogger-list compact">
+                <button
+                  v-for="blogger in bloggers"
+                  :key="blogger.id"
+                  type="button"
+                  :class="{ active: selectedBloggerId === blogger.id }"
+                  @click="selectBlogger(blogger.id)"
+                >
+                  <strong>{{ blogger.display_name }}</strong>
+                  <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
+                </button>
+              </div>
+              <p v-else class="empty-region">还没有博主档案。点击“创建博主”添加小红书主页。</p>
+            </section>
+
+            <section v-if="activeXhsWorkflowTab === 'collect'" class="stage-panel">
+              <div class="stage-header">
+                <div>
+                  <span>样本采集</span>
+                  <h3>配置采集范围</h3>
+                </div>
+              </div>
+              <div class="config-grid">
+                <label>
+                  采样笔记数
+                  <input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" />
+                </label>
+                <label>
+                  每条评论数
+                  <input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" />
+                </label>
+              </div>
+              <p class="form-hint">采集会读取公开笔记、互动数据和评论样本。评论数是每条笔记最多采集多少条评论，不代表平台真实评论总数。</p>
+            </section>
+
+            <section v-if="activeXhsWorkflowTab === 'distill'" class="stage-panel">
+              <div class="stage-header">
+                <div>
+                  <span>风格蒸馏</span>
+                  <h3>配置分析策略</h3>
+                </div>
+              </div>
+              <label class="checkbox-line">
+                <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
+                <span>启用视频字幕/ASR 分析</span>
+              </label>
+              <p class="form-hint">开启后，视频笔记会优先使用字幕流；没有字幕时再尝试腾讯云长音频识别，失败时降级为标题、描述、评论和互动数据分析。</p>
+              <div class="actions left">
+                <button
+                  type="button"
+                  class="task-button"
+                  :class="{ running: pendingAction === 'distill' }"
+                  :style="taskButtonStyle('distill')"
+                  :disabled="!selectedBloggerId || Boolean(pendingAction)"
+                  @click="handleDistillBlogger"
+                >
+                  <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '开始采集与蒸馏' }}</span>
+                </button>
+              </div>
+            </section>
+
+            <section v-if="activeXhsWorkflowTab === 'assets'" class="stage-panel">
+              <div class="stage-header">
+                <div>
+                  <span>结果资产</span>
+                  <h3>蒸馏报告与 Skill</h3>
+                </div>
+              </div>
+              <div v-if="selectedBlogger" class="workspace-snapshot scoped-snapshot">
+                <div>
+                  <span>当前博主</span>
+                  <strong>{{ selectedBlogger.display_name }}</strong>
+                </div>
+                <div>
+                  <span>TikHub 请求</span>
+                  <strong>{{ latestBloggerRun?.tikhub_request_count || 0 }}</strong>
+                </div>
+                <div>
+                  <span>本次费用</span>
+                  <strong>{{ bloggerCostLabel }}</strong>
+                </div>
+              </div>
+              <p v-else class="empty-region">请先选择一个博主。</p>
+            </section>
           </div>
         </div>
 
         <div v-if="selectedBlogger" class="distill-result">
-          <div class="workspace-snapshot">
-            <div>
-              <span>当前博主</span>
-              <strong>{{ selectedBlogger.display_name }}</strong>
-            </div>
-            <div>
-              <span>TikHub 请求</span>
-              <strong>{{ latestBloggerRun?.tikhub_request_count || 0 }}</strong>
-            </div>
-            <div>
-              <span>本次费用</span>
-              <strong>{{ bloggerCostLabel }}</strong>
-            </div>
-          </div>
-
           <div class="distill-grid">
             <article class="distill-card">
               <h3>爆款样本</h3>
@@ -1371,6 +1428,40 @@ onUnmounted(() => {
             ></textarea>
             <p v-else class="empty-region">完成蒸馏后会生成 SKILL.md。</p>
           </article>
+        </div>
+
+        <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
+          <form class="modal-panel" role="dialog" aria-modal="true" aria-label="创建小红书博主" @submit.prevent="handleCreateBlogger">
+            <div class="section-header">
+              <div>
+                <h2>创建博主</h2>
+                <p class="toolbar-subtitle">只保存主页和领域信息；采集数量与 ASR 在后续步骤配置。</p>
+              </div>
+              <button type="button" class="ghost" @click="showBloggerModal = false">关闭</button>
+            </div>
+            <label>
+              博主名称
+              <input v-model="bloggerForm.display_name" type="text" required />
+            </label>
+            <label>
+              小红书主页链接
+              <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
+            </label>
+            <label>
+              领域/赛道
+              <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
+            </label>
+            <label>
+              备注
+              <textarea v-model="bloggerForm.description" rows="3"></textarea>
+            </label>
+            <div class="actions">
+              <button type="button" @click="showBloggerModal = false">取消</button>
+              <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+                {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
+              </button>
+            </div>
+          </form>
         </div>
       </section>
 
