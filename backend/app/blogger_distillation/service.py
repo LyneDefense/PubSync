@@ -151,6 +151,7 @@ def run_blogger_collection(
     blogger_id: int,
     sample_limit: int = 50,
     comments_per_post: int = 20,
+    asr_enabled: bool = False,
 ) -> CollectionResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -163,11 +164,12 @@ def run_blogger_collection(
         status="running",
         sample_limit=sample_limit,
         comments_per_post=comments_per_post,
+        asr_enabled=asr_enabled,
     )
     db.add(run)
     db.commit()
     db.refresh(run)
-    collection_settings = settings.model_copy(update={"asr_enabled": False})
+    collection_settings = settings.model_copy(update={"asr_enabled": asr_enabled})
 
     client: TikHubXhsClient | None = None
     try:
@@ -245,7 +247,6 @@ def run_blogger_distillation(
     tenant_id: int,
     blogger_id: int,
     collection_run_id: int,
-    asr_enabled: bool | None = None,
 ) -> DistillationResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -266,8 +267,6 @@ def run_blogger_distillation(
     db.add(run)
     db.commit()
     db.refresh(run)
-    effective_settings = settings.model_copy(update={"asr_enabled": asr_enabled}) if asr_enabled is not None else settings
-
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         record_task_event(db, tenant_id, task_id, "采集批次", "succeeded", f"使用采集批次 #{collection_run.id}，样本={collection_run.post_count}")
@@ -297,7 +296,7 @@ def run_blogger_distillation(
         except json.JSONDecodeError:
             pass
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
-        distillation = distill_with_llm(effective_settings, blogger, user_info, stats)
+        distillation = distill_with_llm(settings, blogger, user_info, stats)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         usage = TikHubUsage()
         report_html = artifacts.render_report_html(blogger, stats, distillation, usage)

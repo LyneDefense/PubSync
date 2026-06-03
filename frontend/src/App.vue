@@ -731,8 +731,7 @@ async function handleDistillBlogger() {
     '已提交博主蒸馏任务',
     () =>
       distillBlogger(selectedBloggerId.value!, {
-        collection_run_id: selectedCollectionRunId.value!,
-        asr_enabled: bloggerDistillForm.asr_enabled
+        collection_run_id: selectedCollectionRunId.value!
       }),
     refreshSelectedBlogger,
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
@@ -751,7 +750,8 @@ async function handleCollectBlogger() {
     () =>
       collectBlogger(selectedBloggerId.value!, {
         sample_limit: bloggerDistillForm.sample_limit,
-        comments_per_post: bloggerDistillForm.comments_per_post
+        comments_per_post: bloggerDistillForm.comments_per_post,
+        asr_enabled: bloggerDistillForm.asr_enabled
       }),
     async () => {
       await refreshSelectedBlogger()
@@ -1445,6 +1445,13 @@ onUnmounted(() => {
                   <input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" />
                 </label>
               </div>
+              <label class="asr-callout">
+                <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
+                <span>
+                  <strong>启用视频字幕/ASR 分析</strong>
+                  <small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。这个开关会影响本次采集批次的样本质量。</small>
+                </span>
+              </label>
               <p class="form-hint">采集会读取公开笔记、互动数据和评论样本。评论数是每条笔记最多采集多少条评论，不代表平台真实评论总数。</p>
               <div v-if="selectedBlogger" class="run-list collection-list" aria-label="采集批次">
                 <div class="run-list-header">
@@ -1459,7 +1466,7 @@ onUnmounted(() => {
                   @click="selectCollectionRun(run.id)"
                 >
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · {{ collectionCostLabel(run) }}</span>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · {{ collectionCostLabel(run) }}</span>
                 </button>
                 <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
               </div>
@@ -1511,14 +1518,10 @@ onUnmounted(() => {
                   @click="selectCollectionRun(run.id)"
                 >
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 已生成 {{ bloggerRuns.filter((item) => item.collection_run_id === run.id).length }} 个蒸馏结果</span>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · 已生成 {{ bloggerRuns.filter((item) => item.collection_run_id === run.id).length }} 个蒸馏结果</span>
                 </button>
                 <p v-if="!bloggerCollectionRuns.length" class="empty-region">还没有采集批次，请先完成样本采集。</p>
               </div>
-              <label class="checkbox-line">
-                <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
-                <span>启用视频字幕/ASR 分析</span>
-              </label>
               <p class="form-hint">蒸馏会基于选中的采集批次执行；同一个采集批次可以生成多次不同蒸馏结果。</p>
               <div class="actions left">
                 <button

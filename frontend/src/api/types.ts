@@ -251,12 +251,12 @@ export interface BloggerProfileCreate {
 
 export interface BloggerDistillRequest {
   collection_run_id: number
-  asr_enabled?: boolean | null
 }
 
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
+  asr_enabled: boolean
 }
 
 export interface BloggerPost {
@@ -316,6 +316,7 @@ export interface BloggerCollectionRun {
   status: string
   sample_limit: number
   comments_per_post: number
+  asr_enabled: boolean
   post_count: number
   hot_post_count: number
   comment_count: number

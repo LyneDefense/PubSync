@@ -362,6 +362,7 @@ class BloggerCollectionRun(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
     sample_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     comments_per_post: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    asr_enabled: Mapped[bool] = mapped_column(default=False)
     post_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hot_post_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

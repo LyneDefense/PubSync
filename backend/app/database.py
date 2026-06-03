@@ -451,6 +451,7 @@ def ensure_runtime_schema() -> None:
             status VARCHAR(30) NOT NULL DEFAULT 'running',
             sample_limit INTEGER NOT NULL DEFAULT 50,
             comments_per_post INTEGER NOT NULL DEFAULT 20,
+            asr_enabled BOOLEAN NOT NULL DEFAULT false,
             post_count INTEGER NOT NULL DEFAULT 0,
             hot_post_count INTEGER NOT NULL DEFAULT 0,
             comment_count INTEGER NOT NULL DEFAULT 0,
@@ -464,6 +465,7 @@ def ensure_runtime_schema() -> None:
             updated_at TIMESTAMPTZ DEFAULT NOW()
         )
         """,
+        "ALTER TABLE blogger_collection_runs ADD COLUMN IF NOT EXISTS asr_enabled BOOLEAN NOT NULL DEFAULT false",
         """
         CREATE TABLE IF NOT EXISTS blogger_collection_posts (
             id SERIAL PRIMARY KEY,

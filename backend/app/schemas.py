@@ -340,12 +340,12 @@ class BloggerProfileRead(BaseModel):
 
 class BloggerDistillRequest(BaseModel):
     collection_run_id: int
-    asr_enabled: bool | None = None
 
 
 class BloggerCollectRequest(BaseModel):
     sample_limit: int = Field(default=50, ge=5, le=200)
     comments_per_post: int = Field(default=20, ge=0, le=100)
+    asr_enabled: bool = False
 
 
 class BloggerPostRead(BaseModel):
@@ -385,6 +385,7 @@ class BloggerCollectionRunRead(BaseModel):
     status: str
     sample_limit: int
     comments_per_post: int
+    asr_enabled: bool
     post_count: int
     hot_post_count: int
     comment_count: int

@@ -108,6 +108,7 @@ def run_blogger_collection_task(
     blogger_id: int,
     sample_limit: int = 50,
     comments_per_post: int = 20,
+    asr_enabled: bool = False,
 ) -> None:
     db = SessionLocal()
     try:
@@ -128,6 +129,7 @@ def run_blogger_collection_task(
             blogger_id=blogger_id,
             sample_limit=sample_limit,
             comments_per_post=comments_per_post,
+            asr_enabled=asr_enabled,
         )
         mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
         logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)
@@ -149,7 +151,6 @@ def run_blogger_distillation_task(
     task_id: str,
     blogger_id: int,
     collection_run_id: int,
-    asr_enabled: bool | None = None,
 ) -> None:
     db = SessionLocal()
     try:
@@ -169,7 +170,6 @@ def run_blogger_distillation_task(
             tenant_id=task.tenant_id,
             blogger_id=blogger_id,
             collection_run_id=collection_run_id,
-            asr_enabled=asr_enabled,
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，生成 Skill：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)

@@ -480,6 +480,7 @@ def collect_blogger_endpoint(
         blogger.id,
         payload.sample_limit,
         payload.comments_per_post,
+        payload.asr_enabled,
     )
     return task
 
@@ -548,7 +549,6 @@ def distill_blogger_endpoint(
         task.id,
         blogger.id,
         payload.collection_run_id,
-        payload.asr_enabled,
     )
     return task
 

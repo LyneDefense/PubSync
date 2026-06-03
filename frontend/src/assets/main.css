@@ -863,6 +863,38 @@ p {
   accent-color: var(--color-accent);
 }
 
+.asr-callout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-xs);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  padding: var(--space-sm);
+}
+
+.asr-callout input {
+  width: 22px;
+  height: 22px;
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+}
+
+.asr-callout span {
+  display: grid;
+  gap: 4px;
+}
+
+.asr-callout strong {
+  font-family: var(--font-display);
+}
+
+.asr-callout small {
+  color: var(--color-ink-2);
+  line-height: 1.6;
+}
+
 .form-hint {
   margin: calc(var(--space-2xs) * -1) 0 0;
   color: var(--color-ink-3);
