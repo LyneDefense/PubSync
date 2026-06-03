@@ -301,7 +301,6 @@ def run_blogger_distillation(
         usage = TikHubUsage()
         report_html = artifacts.render_report_html(blogger, stats, distillation, usage)
         skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation)
-        archive_active_skills(db, tenant_id, blogger.id)
         skill = BloggerSkill(
             tenant_id=tenant_id,
             blogger_id=blogger.id,
@@ -309,11 +308,11 @@ def run_blogger_distillation(
             name=artifacts.slug_skill_name(blogger.display_name),
             description=f"基于小红书博主 {blogger.display_name} 公开内容蒸馏出的创作方法论",
             skill_markdown=skill_markdown,
-            status="active",
+            status="pending_confirmation",
         )
         db.add(skill)
 
-        run.status = "succeeded"
+        run.status = "pending_confirmation"
         run.sample_count = len(posts)
         run.hot_post_count = len(stats["hot_posts"])
         run.comment_count = stats["comment_total"]
@@ -323,7 +322,6 @@ def run_blogger_distillation(
         run.tikhub_cost_max_usd = collection_run.tikhub_cost_max_usd
         run.report_json = json.dumps({"stats": stats, "distillation": distillation}, ensure_ascii=False, default=str)
         run.report_html = report_html
-        blogger.last_distilled_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(run)
         db.refresh(skill)
@@ -333,7 +331,7 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成：批次 #{collection_run.id}",
+            f"蒸馏完成，等待确认：批次 #{collection_run.id}",
             {"collection_run_id": collection_run.id, "run_id": run.id, "skill_id": skill.id},
         )
         return DistillationResult(run=run, skill=skill)
@@ -347,6 +345,59 @@ def run_blogger_distillation(
         run.error_message = str(exc)
         db.commit()
         raise
+
+
+def confirm_blogger_distillation(db: Session, tenant_id: int, run_id: int) -> DistillationResult:
+    run = db.get(BloggerDistillationRun, run_id)
+    if not run or run.tenant_id != tenant_id:
+        raise ValueError("蒸馏结果不存在或不属于当前工作空间")
+    if run.status != "pending_confirmation":
+        raise ValueError("只能保存待确认的蒸馏结果")
+    blogger = db.get(BloggerProfile, run.blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("蒸馏结果对应的博主不存在")
+    skill = db.scalar(
+        select(BloggerSkill).where(
+            BloggerSkill.tenant_id == tenant_id,
+            BloggerSkill.blogger_id == blogger.id,
+            BloggerSkill.run_id == run.id,
+            BloggerSkill.status == "pending_confirmation",
+        )
+    )
+    if not skill:
+        raise ValueError("待确认 Skill 不存在")
+
+    archive_active_skills(db, tenant_id, blogger.id)
+    skill.status = "active"
+    run.status = "succeeded"
+    blogger.last_distilled_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(run)
+    db.refresh(skill)
+    logger.info("博主蒸馏结果已保存：租户=%s，运行ID=%s，Skill ID=%s", tenant_id, run.id, skill.id)
+    return DistillationResult(run=run, skill=skill)
+
+
+def abandon_blogger_distillation(db: Session, tenant_id: int, run_id: int) -> BloggerDistillationRun:
+    run = db.get(BloggerDistillationRun, run_id)
+    if not run or run.tenant_id != tenant_id:
+        raise ValueError("蒸馏结果不存在或不属于当前工作空间")
+    if run.status != "pending_confirmation":
+        raise ValueError("只能放弃待确认的蒸馏结果")
+    skill = db.scalar(
+        select(BloggerSkill).where(
+            BloggerSkill.tenant_id == tenant_id,
+            BloggerSkill.run_id == run.id,
+            BloggerSkill.status == "pending_confirmation",
+        )
+    )
+    if skill:
+        skill.status = "abandoned"
+    run.status = "abandoned"
+    db.commit()
+    db.refresh(run)
+    logger.info("博主蒸馏结果已放弃：租户=%s，运行ID=%s", tenant_id, run.id)
+    return run
 
 
 def collect_posts(

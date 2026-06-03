@@ -213,6 +213,14 @@ export function listBloggerRuns(id: number) {
   return request<BloggerDistillationRun[]>(`/bloggers/${id}/distillation-runs`)
 }
 
+export function confirmBloggerRun(bloggerId: number, runId: number) {
+  return request<BloggerDistillationRun>(`/bloggers/${bloggerId}/distillation-runs/${runId}/confirm`, { method: 'POST' })
+}
+
+export function abandonBloggerRun(bloggerId: number, runId: number) {
+  return request<BloggerDistillationRun>(`/bloggers/${bloggerId}/distillation-runs/${runId}/abandon`, { method: 'POST' })
+}
+
 export function listBloggerSkills() {
   return request<BloggerSkill[]>('/blogger-skills')
 }

@@ -807,6 +807,29 @@ p {
   align-items: start;
 }
 
+.distill-view-tabs {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border: var(--rule-hair);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--color-paper), transparent 24%);
+  padding: 4px;
+}
+
+.distill-view-tabs button {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-3);
+  font-weight: 900;
+}
+
+.distill-view-tabs button.active {
+  background: var(--color-accent);
+  color: var(--color-paper);
+}
+
 .xhs-flow-map {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);

@@ -2,10 +2,12 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import {
+  abandonBloggerRun,
   cancelTask,
   clearAuthToken,
   clearTenantId,
   collectBlogger,
+  confirmBloggerRun,
   createAdminUser,
   createBlogger,
   distillBlogger,
@@ -69,7 +71,8 @@ type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
 type XhsTab = 'ai' | 'packages' | 'history' | 'records' | 'settings'
 type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
-type XhsWorkflowTab = 'bloggers' | 'collect' | 'distill' | 'assets'
+type XhsDistillView = 'workflow' | 'results'
+type XhsWorkflowTab = 'bloggers' | 'collect' | 'distill' | 'confirm'
 type XhsScriptSegment = {
   start?: string
   end?: string
@@ -123,6 +126,7 @@ const activeMainTab = ref<MainTab>('wechat')
 const activeWechatTab = ref<WeChatTab>('brief')
 const activeXhsTab = ref<XhsTab>('ai')
 const activeDouyinTab = ref<DouyinTab>('ai')
+const activeXhsDistillView = ref<XhsDistillView>('workflow')
 const activeXhsWorkflowTab = ref<XhsWorkflowTab>('bloggers')
 const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
@@ -380,6 +384,8 @@ function distillationStatusLabel(status: string) {
   const labels: Record<string, string> = {
     running: '进行中',
     succeeded: '已完成',
+    pending_confirmation: '待确认',
+    abandoned: '已放弃',
     failed: '失败',
     cancelled: '已停止',
     cancel_requested: '停止中'
@@ -985,7 +991,8 @@ async function handleCreateBlogger() {
     selectedBloggerId.value = blogger.id
     selectedBloggerRunId.value = null
     resultCollectionFilterId.value = null
-    activeXhsWorkflowTab.value = 'assets'
+    activeXhsDistillView.value = 'workflow'
+    activeXhsWorkflowTab.value = 'collect'
     bloggerForm.display_name = ''
     bloggerForm.homepage_url = ''
     bloggerForm.niche = ''
@@ -1034,10 +1041,11 @@ async function handleDistillBlogger() {
       }),
     async () => {
       await refreshSelectedBlogger()
-      showCollectionResults(selectedCollectionRunId.value)
-      activeXhsWorkflowTab.value = 'assets'
+      selectLatestRunForCollection(selectedCollectionRunId.value)
+      activeXhsDistillView.value = 'workflow'
+      activeXhsWorkflowTab.value = 'confirm'
     },
-    '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
+    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
   )
 }
 
@@ -1164,6 +1172,34 @@ function selectBloggerRun(id: number) {
   selectedBloggerRunId.value = id
 }
 
+async function handleConfirmBloggerRun() {
+  if (!selectedBloggerId.value || !selectedBloggerRun.value) {
+    showMessage('请先选择待确认的蒸馏结果', true)
+    return
+  }
+  await runAction('distill-confirm', '正在保存蒸馏结果', async () => {
+    const run = await confirmBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
+    await refreshSelectedBlogger()
+    selectedBloggerRunId.value = run.id
+    activeXhsDistillView.value = 'results'
+    showMessage('蒸馏结果已保存，Skill 已进入 AI 创作')
+  })
+}
+
+async function handleAbandonBloggerRun() {
+  if (!selectedBloggerId.value || !selectedBloggerRun.value) {
+    showMessage('请先选择待确认的蒸馏结果', true)
+    return
+  }
+  await runAction('distill-abandon', '正在放弃本次蒸馏结果', async () => {
+    const run = await abandonBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
+    await refreshSelectedBlogger()
+    selectedBloggerRunId.value = run.id
+    activeXhsDistillView.value = 'results'
+    showMessage('已放弃本次蒸馏结果')
+  })
+}
+
 function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.value) {
   if (!collectionRunId) {
     selectedBloggerRunId.value = null
@@ -1175,7 +1211,7 @@ function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.
 
 function showCollectionResults(collectionRunId: number | null) {
   resultCollectionFilterId.value = collectionRunId
-  activeXhsWorkflowTab.value = 'assets'
+  activeXhsDistillView.value = 'results'
   if (collectionRunId) {
     selectLatestRunForCollection(collectionRunId)
   } else {
@@ -1767,7 +1803,12 @@ onUnmounted(() => {
         </div>
 
         <div class="xhs-workbench">
-          <div class="xhs-flow-map" aria-label="小红书创作流程">
+          <div class="distill-view-tabs" role="tablist" aria-label="博主蒸馏视图">
+            <button type="button" :class="{ active: activeXhsDistillView === 'workflow' }" @click="activeXhsDistillView = 'workflow'">蒸馏流程</button>
+            <button type="button" :class="{ active: activeXhsDistillView === 'results' }" @click="activeXhsDistillView = 'results'">结果展示</button>
+          </div>
+
+          <div v-if="activeXhsDistillView === 'workflow'" class="xhs-flow-map" aria-label="小红书博主蒸馏流程">
             <button
               type="button"
               :class="{ active: activeXhsWorkflowTab === 'bloggers' }"
@@ -1800,17 +1841,17 @@ onUnmounted(() => {
             <span aria-hidden="true">→</span>
             <button
               type="button"
-              :class="{ active: activeXhsWorkflowTab === 'assets' }"
-              @click="activeXhsWorkflowTab = 'assets'"
+              :class="{ active: activeXhsWorkflowTab === 'confirm' }"
+              @click="activeXhsWorkflowTab = 'confirm'"
             >
               <span>04</span>
-              <strong>结果资产</strong>
-              <small>{{ selectedBlogger ? `${selectedBloggerRunCount} 次记录` : '报告与 Skill' }}</small>
+              <strong>结果确认</strong>
+              <small>{{ selectedBloggerRun?.status === 'pending_confirmation' ? '等待保存或放弃' : '报告与 Skill 预览' }}</small>
             </button>
           </div>
 
           <div class="xhs-stage">
-            <section v-if="activeXhsWorkflowTab === 'bloggers'" class="stage-panel">
+            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'bloggers'" class="stage-panel">
               <div class="stage-header">
                 <div>
                   <span>博主档案</span>
@@ -1833,7 +1874,7 @@ onUnmounted(() => {
               <p v-else class="empty-region">还没有博主档案。点击“创建博主”添加小红书主页。</p>
             </section>
 
-            <section v-if="activeXhsWorkflowTab === 'collect'" class="stage-panel">
+            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'collect'" class="stage-panel">
               <div class="stage-header">
                 <div>
                   <span>样本采集</span>
@@ -1921,7 +1962,7 @@ onUnmounted(() => {
               <p v-if="!selectedBlogger" class="empty-region">请先在“博主档案”里选择一个博主，再查看样本采集结果。</p>
             </section>
 
-            <section v-if="activeXhsWorkflowTab === 'distill'" class="stage-panel">
+            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'distill'" class="stage-panel">
               <div class="stage-header">
                 <div>
                   <span>风格蒸馏</span>
@@ -1970,11 +2011,79 @@ onUnmounted(() => {
               <p class="form-hint">蒸馏会基于选中的采集批次执行；同一个采集批次可以生成多次不同蒸馏结果。</p>
             </section>
 
-            <section v-if="activeXhsWorkflowTab === 'assets'" class="stage-panel">
+            <section v-if="activeXhsDistillView === 'workflow' && activeXhsWorkflowTab === 'confirm'" class="stage-panel">
+              <div class="stage-header">
+                <div>
+                  <span>结果确认</span>
+                  <h3>预览本次蒸馏结果</h3>
+                </div>
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="primary"
+                    :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'"
+                    @click="handleConfirmBloggerRun"
+                  >
+                    {{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'"
+                    @click="handleAbandonBloggerRun"
+                  >
+                    {{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}
+                  </button>
+                </div>
+              </div>
+              <p v-if="!selectedBloggerRun" class="empty-region">完成一次风格蒸馏后，这里会显示待确认的报告和 Skill。</p>
+              <div v-else class="distill-grid compact-result">
+                <article class="distill-card">
+                  <div class="inline-card-header">
+                    <div>
+                      <span>{{ distillationStatusLabel(selectedBloggerRun.status) }}</span>
+                      <h3>蒸馏报告预览</h3>
+                    </div>
+                    <button type="button" @click="activeXhsDistillView = 'results'">去结果展示</button>
+                  </div>
+                  <div v-if="selectedBloggerRun.status === 'failed'" class="failure-panel">
+                    <strong>蒸馏失败</strong>
+                    <p>{{ selectedBloggerRun.error_message || '未记录失败原因' }}</p>
+                  </div>
+                  <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
+                  <p v-else class="empty-region">本次蒸馏还没有生成报告。</p>
+                </article>
+                <article class="distill-card">
+                  <div class="inline-card-header">
+                    <div>
+                      <span>Skill 预览</span>
+                      <h3>{{ selectedBloggerSkill?.name || '待生成 Skill' }}</h3>
+                    </div>
+                  </div>
+                  <textarea
+                    v-if="selectedBloggerSkill"
+                    :value="selectedBloggerSkill.skill_markdown"
+                    readonly
+                    rows="18"
+                  ></textarea>
+                  <p v-else class="empty-region">本次蒸馏没有生成 Skill。</p>
+                </article>
+              </div>
+              <p v-if="selectedBloggerRun?.status === 'pending_confirmation'" class="form-hint">保存后，该 Skill 才会进入“小红书 AI 创作”的可选 Skill 列表；放弃后不会影响已有 active Skill。</p>
+            </section>
+
+            <section v-if="activeXhsDistillView === 'results'" class="stage-panel">
               <div class="stage-header">
                 <div>
                   <span>结果资产</span>
                   <h3>{{ selectedBlogger ? selectedBlogger.display_name : '蒸馏报告与 Skill' }}</h3>
+                </div>
+                <div v-if="selectedBloggerRun?.status === 'pending_confirmation'" class="actions">
+                  <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleConfirmBloggerRun">
+                    {{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}
+                  </button>
+                  <button type="button" :disabled="Boolean(pendingAction)" @click="handleAbandonBloggerRun">
+                    {{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}
+                  </button>
                 </div>
               </div>
 

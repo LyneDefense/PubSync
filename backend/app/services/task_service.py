@@ -171,7 +171,7 @@ def run_blogger_distillation_task(
             blogger_id=blogger_id,
             collection_run_id=collection_run_id,
         )
-        mark_task_succeeded(db, task, f"博主蒸馏完成，生成 Skill：{result.skill.name}")
+        mark_task_succeeded(db, task, f"博主蒸馏完成，等待确认：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)
     except DistillationCancelled as exc:
         logger.info("任务停止：任务ID=%s，类型=博主蒸馏，原因=%s", task_id, exc)

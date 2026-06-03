@@ -88,7 +88,7 @@ from app.services.task_service import (
     run_news_fetch_task,
     scheduled_workspace_publish,
 )
-from app.blogger_distillation.service import create_blogger
+from app.blogger_distillation.service import abandon_blogger_distillation, confirm_blogger_distillation, create_blogger
 from app.services.tenant_service import (
     ensure_tenant_defaults,
     get_content_groups,
@@ -582,6 +582,38 @@ def list_blogger_runs_endpoint(
             .order_by(BloggerDistillationRun.created_at.desc())
         )
     )
+
+
+@app.post("/bloggers/{blogger_id}/distillation-runs/{run_id}/confirm", response_model=BloggerDistillationRunRead)
+def confirm_blogger_run_endpoint(
+    blogger_id: int,
+    run_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerDistillationRun:
+    run = db.get(BloggerDistillationRun, run_id)
+    if not run or run.tenant_id != tenant.id or run.blogger_id != blogger_id:
+        raise HTTPException(status_code=404, detail="Distillation run not found")
+    try:
+        return confirm_blogger_distillation(db, tenant.id, run_id).run
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/bloggers/{blogger_id}/distillation-runs/{run_id}/abandon", response_model=BloggerDistillationRunRead)
+def abandon_blogger_run_endpoint(
+    blogger_id: int,
+    run_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerDistillationRun:
+    run = db.get(BloggerDistillationRun, run_id)
+    if not run or run.tenant_id != tenant.id or run.blogger_id != blogger_id:
+        raise HTTPException(status_code=404, detail="Distillation run not found")
+    try:
+        return abandon_blogger_distillation(db, tenant.id, run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/blogger-skills", response_model=list[BloggerSkillRead])
