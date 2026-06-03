@@ -357,6 +357,30 @@ export interface XhsPublishPackageCreate {
   requested_image_count: number | null
 }
 
+export interface XhsPublishPackageDraft {
+  tenant_id: number
+  blogger_id: number
+  skill_id: number
+  content_type: XhsPublishContentType
+  topic: string
+  target_audience: string
+  content_goal: string
+  keywords: string
+  image_count_mode: XhsImageCountMode
+  requested_image_count: number | null
+  title: string
+  body_text: string
+  hashtags_json: string
+  cover_text: string
+  image_plan_json: string
+  image_urls_json: string
+  script_json: string
+  status: string
+  error_message: string | null
+}
+
+export type XhsPublishPackageSave = XhsPublishPackageDraft
+
 export interface XhsTopicIdeaRequest {
   skill_id: number
   seed_topic: string

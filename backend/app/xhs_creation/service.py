@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import BloggerProfile, BloggerSkill, XhsPublishPackage
-from app.schemas import XhsPublishPackageCreate, XhsTopicIdeaRequest
+from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
 from app.services.ai_service import AIServiceError, create_json_response, generate_image, is_ai_enabled
 
 
@@ -20,25 +20,16 @@ CONTENT_TYPE_LABELS = {
 }
 
 
-def create_xhs_publish_package(
+def generate_xhs_publish_package_draft(
     db: Session,
     settings: Settings,
     tenant_id: int,
     payload: XhsPublishPackageCreate,
-) -> XhsPublishPackage:
-    skill = db.get(BloggerSkill, payload.skill_id)
-    if not skill or skill.tenant_id != tenant_id or skill.status != "active":
-        raise ValueError("Skill 不存在或不可用")
-    blogger = db.get(BloggerProfile, skill.blogger_id)
-    if not blogger or blogger.tenant_id != tenant_id:
-        raise ValueError("Skill 对应的博主不存在")
-    if payload.content_type == "image_note" and payload.image_count_mode == "manual" and not payload.requested_image_count:
-        raise ValueError("手动配图数量至少为 1")
-    if not is_ai_enabled(settings):
-        raise AIServiceError("未配置可用的大模型 API Key")
+) -> dict[str, Any]:
+    skill, blogger = validate_xhs_package_request(db, settings, tenant_id, payload)
 
     logger.info(
-        "小红书发布包生成开始：租户=%s，博主=%s，skill_id=%s，类型=%s，主题=%s",
+        "小红书发布包草稿生成开始：租户=%s，博主=%s，skill_id=%s，类型=%s，主题=%s",
         tenant_id,
         blogger.display_name,
         skill.id,
@@ -67,6 +58,43 @@ def create_xhs_publish_package(
                 logger.warning("小红书发布包配图生成失败：skill_id=%s，序号=%s，错误=%s", skill.id, index, exc)
                 error_message = f"部分配图生成失败：{exc}"
 
+    draft = {
+        "tenant_id": tenant_id,
+        "blogger_id": blogger.id,
+        "skill_id": skill.id,
+        "content_type": payload.content_type,
+        "topic": payload.topic,
+        "target_audience": payload.target_audience,
+        "content_goal": payload.content_goal,
+        "keywords": payload.keywords,
+        "image_count_mode": payload.image_count_mode,
+        "requested_image_count": payload.requested_image_count,
+        "title": str(generated.get("title") or "").strip(),
+        "body_text": str(generated.get("body_text") or "").strip(),
+        "hashtags_json": json.dumps(normalize_string_list(generated.get("hashtags")), ensure_ascii=False),
+        "cover_text": str(generated.get("cover_text") or "").strip(),
+        "image_plan_json": json.dumps(image_plan, ensure_ascii=False),
+        "image_urls_json": json.dumps(image_urls, ensure_ascii=False),
+        "script_json": json.dumps(normalize_script(generated.get("script"), payload.content_type), ensure_ascii=False),
+        "status": "draft",
+        "error_message": error_message,
+    }
+    logger.info("小红书发布包草稿生成完成：skill_id=%s，图片=%s", skill.id, len(image_urls))
+    return draft
+
+
+def create_xhs_publish_package(
+    db: Session,
+    tenant_id: int,
+    payload: XhsPublishPackageSave,
+) -> XhsPublishPackage:
+    skill = db.get(BloggerSkill, payload.skill_id)
+    if not skill or skill.tenant_id != tenant_id or skill.status != "active":
+        raise ValueError("Skill 不存在或不可用")
+    blogger = db.get(BloggerProfile, skill.blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("Skill 对应的博主不存在")
+
     package = XhsPublishPackage(
         tenant_id=tenant_id,
         blogger_id=blogger.id,
@@ -78,21 +106,40 @@ def create_xhs_publish_package(
         keywords=payload.keywords,
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
-        title=str(generated.get("title") or "").strip(),
-        body_text=str(generated.get("body_text") or "").strip(),
-        hashtags_json=json.dumps(normalize_string_list(generated.get("hashtags")), ensure_ascii=False),
-        cover_text=str(generated.get("cover_text") or "").strip(),
-        image_plan_json=json.dumps(image_plan, ensure_ascii=False),
-        image_urls_json=json.dumps(image_urls, ensure_ascii=False),
-        script_json=json.dumps(normalize_script(generated.get("script"), payload.content_type), ensure_ascii=False),
+        title=payload.title.strip(),
+        body_text=payload.body_text,
+        hashtags_json=payload.hashtags_json,
+        cover_text=payload.cover_text.strip(),
+        image_plan_json=payload.image_plan_json,
+        image_urls_json=payload.image_urls_json,
+        script_json=payload.script_json,
         status="generated",
-        error_message=error_message,
+        error_message=payload.error_message,
     )
     db.add(package)
     db.commit()
     db.refresh(package)
-    logger.info("小红书发布包生成完成：package_id=%s，图片=%s", package.id, len(image_urls))
+    logger.info("小红书发布包保存完成：package_id=%s，skill_id=%s", package.id, skill.id)
     return package
+
+
+def validate_xhs_package_request(
+    db: Session,
+    settings: Settings,
+    tenant_id: int,
+    payload: XhsPublishPackageCreate,
+) -> tuple[BloggerSkill, BloggerProfile]:
+    skill = db.get(BloggerSkill, payload.skill_id)
+    if not skill or skill.tenant_id != tenant_id or skill.status != "active":
+        raise ValueError("Skill 不存在或不可用")
+    blogger = db.get(BloggerProfile, skill.blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("Skill 对应的博主不存在")
+    if payload.content_type == "image_note" and payload.image_count_mode == "manual" and not payload.requested_image_count:
+        raise ValueError("手动配图数量至少为 1")
+    if not is_ai_enabled(settings):
+        raise AIServiceError("未配置可用的大模型 API Key")
+    return skill, blogger
 
 
 def generate_xhs_topic_ideas(

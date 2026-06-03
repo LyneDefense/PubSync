@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import {
   cancelTask,
@@ -8,10 +8,10 @@ import {
   collectBlogger,
   createAdminUser,
   createBlogger,
-  createXhsPublishPackage,
   distillBlogger,
   fetchNews,
   generateArticle,
+  generateXhsPublishPackageDraft,
   generateXhsTopicIdeas,
   getAuthToken,
   getCurrentUser,
@@ -31,6 +31,7 @@ import {
   listXhsPublishPackages,
   login,
   sendArticleToWechat,
+  saveXhsPublishPackage,
   setTenantId,
   updateArticle,
   updateNewsSelection,
@@ -56,6 +57,7 @@ import type {
   WorkspaceConfig,
   XhsPublishContentType,
   XhsPublishPackage,
+  XhsPublishPackageDraft,
   XhsTopicIdea
 } from './api/types'
 
@@ -68,6 +70,13 @@ type XhsTab = 'ai' | 'packages' | 'history' | 'records' | 'settings'
 type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 type XhsWorkflowTab = 'bloggers' | 'collect' | 'distill' | 'assets'
+type XhsScriptSegment = {
+  start?: string
+  end?: string
+  scene?: string
+  voiceover?: string
+  subtitle?: string
+}
 
 const statusText: Record<string, string> = {
   draft: '草稿',
@@ -84,6 +93,7 @@ const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 const bloggerRuns = ref<BloggerDistillationRun[]>([])
 const bloggerSkills = ref<BloggerSkill[]>([])
 const xhsPackages = ref<XhsPublishPackage[]>([])
+const currentXhsDraft = ref<XhsPublishPackageDraft | null>(null)
 const adminUsers = ref<AdminUser[]>([])
 const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
@@ -286,6 +296,13 @@ const selectedRunCostLabel = computed(() => {
 const xhsPackageImageUrls = computed(() => parseJsonArray(selectedXhsPackage.value?.image_urls_json))
 const xhsPackageImagePlan = computed(() => parseJsonArray(selectedXhsPackage.value?.image_plan_json))
 const xhsPackageHashtags = computed(() => parseJsonArray(selectedXhsPackage.value?.hashtags_json))
+const xhsDraftImageUrls = computed(() => parseJsonArray(currentXhsDraft.value?.image_urls_json))
+const xhsDraftImagePlan = computed(() => parseJsonArray(currentXhsDraft.value?.image_plan_json))
+const xhsDraftHashtags = computed(() => parseJsonArray(currentXhsDraft.value?.hashtags_json))
+const xhsDraftScriptSegments = computed(() => {
+  const script = parseJsonObject(currentXhsDraft.value?.script_json)
+  return Array.isArray(script.segments) ? (script.segments as XhsScriptSegment[]) : []
+})
 const xhsPackageScriptSegments = computed(() => {
   const script = parseJsonObject(selectedXhsPackage.value?.script_json)
   return Array.isArray(script.segments) ? script.segments : []
@@ -331,10 +348,10 @@ const canGoNextXhsCreationStep = computed(() => {
     return Boolean(selectedXhsTopicIdea.value)
   }
   if (xhsCreationStep.value === 4) {
-    return Boolean(selectedXhsPackage.value)
+    return Boolean(currentXhsDraft.value)
   }
   if (xhsCreationStep.value === 5) {
-    return Boolean(selectedXhsPackage.value)
+    return Boolean(currentXhsDraft.value)
   }
   return false
 })
@@ -480,7 +497,7 @@ function xhsContentTypeLabel(type: string) {
   return labels[type] || type
 }
 
-function xhsPackageCopyText(pack: XhsPublishPackage) {
+function xhsPackageCopyText(pack: Pick<XhsPublishPackage, 'title' | 'body_text' | 'hashtags_json'> | XhsPublishPackageDraft) {
   const tags = parseJsonArray(pack.hashtags_json)
     .map((tag) => `#${String(tag).replace(/^#/, '')}`)
     .join(' ')
@@ -764,6 +781,7 @@ function handleLogout() {
   bloggerRuns.value = []
   bloggerSkills.value = []
   xhsPackages.value = []
+  currentXhsDraft.value = null
   selectedBloggerId.value = null
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
@@ -833,6 +851,7 @@ function syncXhsPackageSelection() {
 function resetXhsTopicIdeas() {
   xhsTopicIdeas.value = []
   selectedXhsTopicIndex.value = null
+  currentXhsDraft.value = null
 }
 
 function handleXhsCreatorBloggerChange() {
@@ -856,6 +875,7 @@ function selectXhsTopicIdea(index: number) {
   xhsPackageForm.target_audience = idea.target_audience || xhsPackageForm.target_audience
   xhsPackageForm.content_goal = idea.content_goal || xhsPackageForm.content_goal
   xhsPackageForm.keywords = idea.keywords.join(', ')
+  currentXhsDraft.value = null
   xhsCreationStep.value = Math.max(xhsCreationStep.value, 3)
 }
 
@@ -998,8 +1018,8 @@ async function handleCreateXhsPackage() {
     showMessage('请选择配图数量', true)
     return
   }
-  await runAction('xhs-package', '正在生成小红书发布包', async () => {
-    const pack = await createXhsPublishPackage({
+  await runAction('xhs-package', '正在生成小红书发布包草稿', async () => {
+    const draft = await generateXhsPublishPackageDraft({
       skill_id: xhsPackageForm.skill_id,
       content_type: xhsPackageForm.content_type,
       topic: xhsPackageForm.topic.trim(),
@@ -1012,10 +1032,29 @@ async function handleCreateXhsPackage() {
           ? xhsPackageForm.requested_image_count
           : null
     })
-    await refreshXhsPackages(pack.id)
-    activeXhsTab.value = 'packages'
-    xhsCreationStep.value = 5
+    currentXhsDraft.value = draft
+    xhsCreationStep.value = 4
   })
+}
+
+async function handleSaveXhsPackage() {
+  if (!currentXhsDraft.value) {
+    showMessage('请先生成当前发布包草稿', true)
+    return
+  }
+  await runAction('xhs-package-save', '正在保存发布包', async () => {
+    const pack = await saveXhsPublishPackage(currentXhsDraft.value!)
+    await refreshXhsPackages(pack.id)
+    currentXhsDraft.value = null
+    activeXhsTab.value = 'history'
+    showMessage('发布包已保存到历史记录')
+  })
+}
+
+function handleDiscardXhsDraft() {
+  currentXhsDraft.value = null
+  xhsCreationStep.value = 4
+  showMessage('已放弃本次创作草稿')
 }
 
 async function handleGenerateXhsTopicIdeas() {
@@ -1032,10 +1071,9 @@ async function handleGenerateXhsTopicIdeas() {
       keywords: xhsPackageForm.keywords.trim()
     })
     xhsTopicIdeas.value = result.ideas
-    if (result.ideas.length) {
-      selectXhsTopicIdea(0)
-      xhsCreationStep.value = 2
-    }
+    selectedXhsTopicIndex.value = null
+    currentXhsDraft.value = null
+    xhsCreationStep.value = 3
   })
 }
 
@@ -1299,6 +1337,22 @@ onMounted(() => {
       })
   }
 })
+
+watch(
+  () => [
+    xhsPackageForm.skill_id,
+    xhsPackageForm.content_type,
+    xhsPackageForm.topic,
+    xhsPackageForm.target_audience,
+    xhsPackageForm.content_goal,
+    xhsPackageForm.keywords,
+    xhsPackageForm.image_count_mode,
+    xhsPackageForm.requested_image_count
+  ],
+  () => {
+    currentXhsDraft.value = null
+  }
+)
 
 onUnmounted(() => {
   window.clearInterval(progressTimers.fetch)
@@ -2108,7 +2162,7 @@ onUnmounted(() => {
                   <h3>选择内容类型并生成</h3>
                 </div>
                 <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill || !xhsPackageForm.topic.trim()" @click="handleCreateXhsPackage">
-                  {{ pendingAction === 'xhs-package' ? '生成中' : selectedXhsPackage ? '重新生成内容' : '生成内容' }}
+                  {{ pendingAction === 'xhs-package' ? '生成中' : currentXhsDraft ? '重新生成' : '开始生成' }}
                 </button>
               </div>
               <div v-if="selectedXhsTopicIdea" class="selected-idea-card">
@@ -2138,12 +2192,12 @@ onUnmounted(() => {
                   <span>分镜、旁白、字幕建议</span>
                 </label>
               </div>
-              <section v-if="selectedXhsPackage" class="package-copy-block">
+              <section v-if="currentXhsDraft" class="package-copy-block">
                 <div class="inline-card-header">
-                  <h3>{{ selectedXhsPackage.title }}</h3>
-                  <button type="button" @click="copyText(selectedXhsPackage.body_text, '正文')">复制正文</button>
+                  <h3>{{ currentXhsDraft.title }}</h3>
+                  <button type="button" @click="copyText(currentXhsDraft.body_text, '正文')">复制正文</button>
                 </div>
-                <pre>{{ selectedXhsPackage.body_text }}</pre>
+                <pre>{{ currentXhsDraft.body_text }}</pre>
               </section>
             </section>
 
@@ -2154,47 +2208,100 @@ onUnmounted(() => {
                   <h3>检查素材输出</h3>
                 </div>
               </div>
-              <div v-if="selectedXhsPackage" class="asset-output-grid">
+              <div v-if="currentXhsDraft" class="asset-output-grid">
                 <article>
                   <span>封面文案</span>
-                  <strong>{{ selectedXhsPackage.cover_text || '暂无' }}</strong>
+                  <strong>{{ currentXhsDraft.cover_text || '暂无' }}</strong>
                 </article>
                 <article>
                   <span>标签</span>
-                  <strong>{{ xhsPackageHashtags.length }} 个</strong>
+                  <strong>{{ xhsDraftHashtags.length }} 个</strong>
                 </article>
                 <article>
                   <span>配图</span>
-                  <strong>{{ xhsPackageImageUrls.length || xhsPackageImagePlan.length }} 张</strong>
+                  <strong>{{ xhsDraftImageUrls.length || xhsDraftImagePlan.length }} 张</strong>
                 </article>
               </div>
-              <section v-if="xhsPackageHashtags.length" class="tag-cloud">
-                <button v-for="tag in xhsPackageHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
+              <section v-if="xhsDraftHashtags.length" class="tag-cloud">
+                <button v-for="tag in xhsDraftHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
                   #{{ String(tag).replace(/^#/, '') }}
                 </button>
               </section>
-              <div v-if="xhsPackageImageUrls.length" class="image-output-grid">
-                <figure v-for="(url, index) in xhsPackageImageUrls" :key="url">
+              <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
+                <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
                   <img :src="String(url)" alt="小红书发布包配图" />
-                  <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
+                  <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                 </figure>
               </div>
-              <p v-if="!selectedXhsPackage" class="empty-region">生成内容后，这里会展示封面、标签和配图输出。</p>
+              <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会展示封面、标签和配图输出。</p>
             </section>
 
             <section v-if="xhsCreationStep === 6" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div>
                   <span>06 最终发布包</span>
-                  <h3>确认、复制并人工发布</h3>
+                  <h3>预览并决定是否保存</h3>
                 </div>
-                <button type="button" :disabled="!selectedXhsPackage" @click="selectedXhsPackage && copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
+                <div class="actions compact-actions">
+                  <button type="button" :disabled="!currentXhsDraft" @click="currentXhsDraft && copyText(xhsPackageCopyText(currentXhsDraft), '发布文案')">复制发布文案</button>
+                  <button type="button" class="primary" :disabled="Boolean(pendingAction) || !currentXhsDraft" @click="handleSaveXhsPackage">
+                    {{ pendingAction === 'xhs-package-save' ? '保存中' : '保存发布包' }}
+                  </button>
+                  <button type="button" :disabled="!currentXhsDraft" @click="handleDiscardXhsDraft">放弃本次创作</button>
+                </div>
               </div>
-              <p v-if="!selectedXhsPackage" class="empty-region">生成内容后，这里会显示最终可复制内容。</p>
-              <div v-else class="selected-idea-card">
-                <span>{{ selectedXhsPackageBloggerName }} · {{ xhsContentTypeLabel(selectedXhsPackage.content_type) }}</span>
-                <strong>{{ selectedXhsPackage.title }}</strong>
-                <p>{{ selectedXhsPackage.topic }}</p>
+              <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会显示本次创作的最终预览。保存后才会进入发布包历史。</p>
+              <div v-else class="package-preview draft-preview">
+                <div class="package-preview-head">
+                  <div>
+                    <span>{{ xhsContentTypeLabel(currentXhsDraft.content_type) }}</span>
+                    <h3>{{ currentXhsDraft.title }}</h3>
+                  </div>
+                </div>
+                <div class="package-meta-grid">
+                  <article>
+                    <span>主题</span>
+                    <strong>{{ currentXhsDraft.topic }}</strong>
+                  </article>
+                  <article>
+                    <span>封面文案</span>
+                    <strong>{{ currentXhsDraft.cover_text || '暂无' }}</strong>
+                  </article>
+                  <article>
+                    <span>标签</span>
+                    <strong>{{ xhsDraftHashtags.length }} 个</strong>
+                  </article>
+                </div>
+                <section v-if="xhsDraftHashtags.length" class="tag-cloud">
+                  <button v-for="tag in xhsDraftHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
+                    #{{ String(tag).replace(/^#/, '') }}
+                  </button>
+                </section>
+                <section class="package-copy-block">
+                  <div class="inline-card-header">
+                    <h3>正文预览</h3>
+                    <button type="button" @click="copyText(currentXhsDraft.body_text, '正文')">复制正文</button>
+                  </div>
+                  <pre>{{ currentXhsDraft.body_text }}</pre>
+                </section>
+                <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
+                  <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
+                    <img :src="String(url)" alt="小红书发布包配图" />
+                    <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
+                  </figure>
+                </div>
+                <section v-if="xhsDraftScriptSegments.length" class="script-segments">
+                  <div class="inline-card-header">
+                    <h3>脚本预览</h3>
+                    <button type="button" @click="copyText(JSON.stringify(parseJsonObject(currentXhsDraft.script_json), null, 2), '脚本')">复制脚本</button>
+                  </div>
+                  <article v-for="(segment, index) in xhsDraftScriptSegments" :key="index">
+                    <span>{{ segment.start || `${index * 5}s` }} - {{ segment.end || '' }}</span>
+                    <strong>{{ segment.subtitle || segment.scene || '脚本片段' }}</strong>
+                    <p>{{ segment.voiceover || segment.scene }}</p>
+                  </article>
+                </section>
+                <p v-if="currentXhsDraft.error_message" class="run-error">{{ currentXhsDraft.error_message }}</p>
               </div>
             </section>
           </div>

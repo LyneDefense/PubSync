@@ -60,7 +60,9 @@ from app.schemas import (
     WorkspaceConfigRead,
     WorkspaceConfigUpdate,
     XhsPublishPackageCreate,
+    XhsPublishPackageDraftRead,
     XhsPublishPackageRead,
+    XhsPublishPackageSave,
     XhsTopicIdeaRequest,
     XhsTopicIdeaResponse,
 )
@@ -104,7 +106,11 @@ from app.services.tenant_service import (
     update_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
-from app.xhs_creation.service import create_xhs_publish_package, generate_xhs_topic_ideas
+from app.xhs_creation.service import (
+    create_xhs_publish_package,
+    generate_xhs_publish_package_draft,
+    generate_xhs_topic_ideas,
+)
 
 
 settings = get_settings()
@@ -608,12 +614,24 @@ def list_xhs_publish_packages_endpoint(
 
 @app.post("/xhs/publish-packages", response_model=XhsPublishPackageRead)
 def create_xhs_publish_package_endpoint(
-    payload: XhsPublishPackageCreate,
+    payload: XhsPublishPackageSave,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> XhsPublishPackage:
     try:
-        return create_xhs_publish_package(db, settings, tenant.id, payload)
+        return create_xhs_publish_package(db, tenant.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/xhs/package-drafts", response_model=XhsPublishPackageDraftRead)
+def generate_xhs_publish_package_draft_endpoint(
+    payload: XhsPublishPackageCreate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return generate_xhs_publish_package_draft(db, settings, tenant.id, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AIServiceError as exc:

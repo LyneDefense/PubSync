@@ -22,6 +22,8 @@ import type {
   WorkspaceConfigUpdate,
   XhsPublishPackage,
   XhsPublishPackageCreate,
+  XhsPublishPackageDraft,
+  XhsPublishPackageSave,
   XhsTopicIdeaRequest,
   XhsTopicIdeaResponse
 } from './types'
@@ -220,6 +222,17 @@ export function listXhsPublishPackages() {
 }
 
 export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {
+  return generateXhsPublishPackageDraft(payload)
+}
+
+export function generateXhsPublishPackageDraft(payload: XhsPublishPackageCreate) {
+  return request<XhsPublishPackageDraft>('/xhs/package-drafts', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function saveXhsPublishPackage(payload: XhsPublishPackageSave) {
   return request<XhsPublishPackage>('/xhs/publish-packages', {
     method: 'POST',
     body: JSON.stringify(payload)
