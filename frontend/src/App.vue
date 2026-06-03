@@ -76,6 +76,7 @@ const bloggerSkills = ref<BloggerSkill[]>([])
 const adminUsers = ref<AdminUser[]>([])
 const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
+const selectedBloggerRunId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
@@ -234,20 +235,19 @@ const pagedNews = computed(() => {
   return activeNews.value.slice(start, start + pageSize)
 })
 const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
-const latestBloggerRun = computed(() => bloggerRuns.value[0] || null)
-const latestBloggerSkill = computed(
-  () =>
-    bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value && skill.status === 'active') ||
-    bloggerSkills.value.find((skill) => skill.blogger_id === selectedBloggerId.value) ||
-    null
-)
-const bloggerCostLabel = computed(() => {
-  const run = latestBloggerRun.value
+const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
+const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
+const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
+const selectedRunCostLabel = computed(() => {
+  const run = selectedBloggerRun.value
   if (!run) {
     return '暂无'
   }
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
 })
+function runCostLabel(run: BloggerDistillationRun) {
+  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
+}
 function bloggerCommentLabel(post: BloggerPost) {
   if (post.comment_count > 0) {
     return `评论 ${post.comment_count}`
@@ -497,7 +497,10 @@ async function loadAll() {
   setArticle(nextArticle)
   bloggers.value = nextBloggers
   bloggerSkills.value = nextSkills
-  selectedBloggerId.value = nextBloggers[0]?.id || null
+  if (selectedBloggerId.value && !nextBloggers.some((blogger) => blogger.id === selectedBloggerId.value)) {
+    selectedBloggerId.value = null
+    selectedBloggerRunId.value = null
+  }
   await refreshSelectedBlogger()
   if (isAdmin.value) {
     adminUsers.value = await listAdminUsers()
@@ -576,6 +579,7 @@ function handleLogout() {
   bloggerRuns.value = []
   bloggerSkills.value = []
   selectedBloggerId.value = null
+  selectedBloggerRunId.value = null
   currentUser.value = null
   adminUsers.value = []
   tenants.value = []
@@ -612,8 +616,9 @@ async function refreshArticle() {
 async function refreshBloggers() {
   bloggers.value = await listBloggers()
   bloggerSkills.value = await listBloggerSkills()
-  if (!selectedBloggerId.value || !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
-    selectedBloggerId.value = bloggers.value[0]?.id || null
+  if (selectedBloggerId.value && !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
+    selectedBloggerId.value = null
+    selectedBloggerRunId.value = null
   }
   await refreshSelectedBlogger()
 }
@@ -622,6 +627,7 @@ async function refreshSelectedBlogger() {
   if (!selectedBloggerId.value) {
     bloggerPosts.value = []
     bloggerRuns.value = []
+    selectedBloggerRunId.value = null
     return
   }
   const [posts, runs, skills] = await Promise.all([
@@ -632,6 +638,9 @@ async function refreshSelectedBlogger() {
   bloggerPosts.value = posts
   bloggerRuns.value = runs
   bloggerSkills.value = skills
+  if (selectedBloggerRunId.value && !runs.some((run) => run.id === selectedBloggerRunId.value)) {
+    selectedBloggerRunId.value = null
+  }
 }
 
 async function handleCreateBlogger() {
@@ -643,6 +652,8 @@ async function handleCreateBlogger() {
       description: bloggerForm.description
     })
     selectedBloggerId.value = blogger.id
+    selectedBloggerRunId.value = null
+    activeXhsWorkflowTab.value = 'assets'
     bloggerForm.display_name = ''
     bloggerForm.homepage_url = ''
     bloggerForm.niche = ''
@@ -693,7 +704,13 @@ async function handleDistillBlogger() {
 
 async function selectBlogger(id: number) {
   selectedBloggerId.value = id
+  selectedBloggerRunId.value = null
+  activeXhsWorkflowTab.value = 'assets'
   await refreshSelectedBlogger()
+}
+
+function selectBloggerRun(id: number) {
+  selectedBloggerRunId.value = id
 }
 
 async function handleFetchNews() {
@@ -1295,7 +1312,7 @@ onUnmounted(() => {
             >
               <span>04</span>
               <strong>结果资产</strong>
-              <small>报告与 Skill</small>
+              <small>{{ selectedBlogger ? `${selectedBloggerRunCount} 次记录` : '报告与 Skill' }}</small>
             </button>
           </aside>
 
@@ -1373,61 +1390,84 @@ onUnmounted(() => {
               <div class="stage-header">
                 <div>
                   <span>结果资产</span>
-                  <h3>蒸馏报告与 Skill</h3>
+                  <h3>{{ selectedBlogger ? selectedBlogger.display_name : '蒸馏报告与 Skill' }}</h3>
                 </div>
               </div>
-              <div v-if="selectedBlogger" class="workspace-snapshot scoped-snapshot">
-                <div>
-                  <span>当前博主</span>
-                  <strong>{{ selectedBlogger.display_name }}</strong>
-                </div>
-                <div>
-                  <span>TikHub 请求</span>
-                  <strong>{{ latestBloggerRun?.tikhub_request_count || 0 }}</strong>
-                </div>
-                <div>
-                  <span>本次费用</span>
-                  <strong>{{ bloggerCostLabel }}</strong>
+
+              <div v-if="selectedBlogger" class="result-browser">
+                <aside class="run-list" aria-label="蒸馏记录">
+                  <div class="run-list-header">
+                    <strong>蒸馏记录</strong>
+                    <span>{{ bloggerRuns.length }} 次</span>
+                  </div>
+                  <button
+                    v-for="run in bloggerRuns"
+                    :key="run.id"
+                    type="button"
+                    :class="{ active: selectedBloggerRunId === run.id }"
+                    @click="selectBloggerRun(run.id)"
+                  >
+                    <strong>{{ formatDate(run.created_at) }}</strong>
+                    <span>{{ run.status }} · 样本 {{ run.sample_count }} · 请求 {{ run.tikhub_request_count }} · {{ runCostLabel(run) }}</span>
+                  </button>
+                  <p v-if="!bloggerRuns.length" class="empty-region">这个博主还没有蒸馏记录。</p>
+                </aside>
+
+                <div class="run-detail">
+                  <div v-if="selectedBloggerRun" class="workspace-snapshot scoped-snapshot">
+                    <div>
+                      <span>样本数量</span>
+                      <strong>{{ selectedBloggerRun.sample_count }}</strong>
+                    </div>
+                    <div>
+                      <span>TikHub 请求</span>
+                      <strong>{{ selectedBloggerRun.tikhub_request_count }}</strong>
+                    </div>
+                    <div>
+                      <span>本次费用</span>
+                      <strong>{{ selectedRunCostLabel }}</strong>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedBloggerRun" class="distill-grid compact-result">
+                    <article class="distill-card">
+                      <h3>爆款样本</h3>
+                      <div v-if="bloggerPosts.length" class="sample-list">
+                        <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
+                          <strong>{{ post.title }}</strong>
+                          <span>
+                            {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
+                            <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
+                          </span>
+                        </div>
+                      </div>
+                      <p v-else class="empty-region">这次蒸馏还没有可展示样本。</p>
+                    </article>
+
+                    <article class="distill-card">
+                      <h3>蒸馏报告</h3>
+                      <div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
+                      <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
+                    </article>
+                  </div>
+
+                  <article v-if="selectedBloggerRun" class="distill-card">
+                    <h3>Skill 输出</h3>
+                    <textarea
+                      v-if="selectedBloggerSkill"
+                      :value="selectedBloggerSkill.skill_markdown"
+                      readonly
+                      rows="18"
+                    ></textarea>
+                    <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
+                  </article>
+
+                  <p v-if="!selectedBloggerRun" class="empty-region result-placeholder">请选择左侧的一次蒸馏记录查看报告和 Skill。</p>
                 </div>
               </div>
-              <p v-else class="empty-region">请先选择一个博主。</p>
+              <p v-else class="empty-region">请先在“博主档案”里选择一个博主。</p>
             </section>
           </div>
-        </div>
-
-        <div v-if="selectedBlogger" class="distill-result">
-          <div class="distill-grid">
-            <article class="distill-card">
-              <h3>爆款样本</h3>
-              <div v-if="bloggerPosts.length" class="sample-list">
-                <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
-                  <strong>{{ post.title }}</strong>
-                  <span>
-                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
-                    <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
-                  </span>
-                </div>
-              </div>
-              <p v-else class="empty-region">完成蒸馏后会显示样本。</p>
-            </article>
-
-            <article class="distill-card">
-              <h3>蒸馏报告</h3>
-              <div v-if="latestBloggerRun?.report_html" class="distill-report" v-html="latestBloggerRun.report_html"></div>
-              <p v-else class="empty-region">完成蒸馏后会显示报告。</p>
-            </article>
-          </div>
-
-          <article class="distill-card">
-            <h3>Skill 输出</h3>
-            <textarea
-              v-if="latestBloggerSkill"
-              :value="latestBloggerSkill.skill_markdown"
-              readonly
-              rows="18"
-            ></textarea>
-            <p v-else class="empty-region">完成蒸馏后会生成 SKILL.md。</p>
-          </article>
         </div>
 
         <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
