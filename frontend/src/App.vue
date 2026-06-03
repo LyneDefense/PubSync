@@ -1607,8 +1607,6 @@ onUnmounted(() => {
     </nav>
 
     <main class="workspace">
-      <p class="message" :class="{ error: isError }" role="status">{{ message }}</p>
-
       <div v-if="activeMainTab === 'wechat'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="公众号模块">
           <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>

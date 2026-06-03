@@ -495,16 +495,6 @@ p {
   justify-content: flex-start;
 }
 
-.message {
-  min-height: 24px;
-  color: var(--color-accent);
-  margin: 0;
-}
-
-.message.error {
-  color: var(--color-danger);
-}
-
 .module-subnav {
   margin-bottom: var(--space-md);
   overflow-x: auto;
