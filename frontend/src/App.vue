@@ -2190,39 +2190,6 @@ onUnmounted(() => {
           <p v-else class="empty-region">请选择一个博主查看资产。</p>
         </div>
 
-        <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
-          <form class="modal-panel" role="dialog" aria-modal="true" aria-label="创建小红书博主" @submit.prevent="handleCreateBlogger">
-            <div class="section-header">
-              <div>
-                <h2>创建博主</h2>
-                <p class="toolbar-subtitle">只保存主页和领域信息；采集数量与 ASR 在后续步骤配置。</p>
-              </div>
-              <button type="button" class="ghost" @click="showBloggerModal = false">关闭</button>
-            </div>
-            <label>
-              博主名称
-              <input v-model="bloggerForm.display_name" type="text" required />
-            </label>
-            <label>
-              小红书主页链接
-              <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
-            </label>
-            <label>
-              领域/赛道
-              <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
-            </label>
-            <label>
-              备注
-              <textarea v-model="bloggerForm.description" rows="3"></textarea>
-            </label>
-            <div class="actions">
-              <button type="button" @click="showBloggerModal = false">取消</button>
-              <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
-                {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
-              </button>
-            </div>
-          </form>
-        </div>
       </section>
 
       <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'packages'" class="panel">
@@ -3084,6 +3051,40 @@ onUnmounted(() => {
           </article>
         </div>
       </section>
+
+      <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
+        <form class="modal-panel" role="dialog" aria-modal="true" aria-label="创建小红书博主" @submit.prevent="handleCreateBlogger">
+          <div class="section-header">
+            <div>
+              <h2>创建博主</h2>
+              <p class="toolbar-subtitle">只保存主页和领域信息；采集数量与 ASR 在后续步骤配置。</p>
+            </div>
+            <button type="button" class="ghost" @click="showBloggerModal = false">关闭</button>
+          </div>
+          <label>
+            博主名称
+            <input v-model="bloggerForm.display_name" type="text" required />
+          </label>
+          <label>
+            小红书主页链接
+            <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
+          </label>
+          <label>
+            领域/赛道
+            <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
+          </label>
+          <label>
+            备注
+            <textarea v-model="bloggerForm.description" rows="3"></textarea>
+          </label>
+          <div class="actions">
+            <button type="button" @click="showBloggerModal = false">取消</button>
+            <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+              {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div v-if="previewImage" class="image-preview-backdrop" role="presentation" @click.self="closeImagePreview">
         <figure class="image-preview-panel" role="dialog" aria-modal="true" aria-label="配图预览">
