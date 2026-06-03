@@ -1128,6 +1128,7 @@ p {
 
 .creator-main {
   display: grid;
+  grid-column: 2;
   gap: var(--space-sm);
   min-width: 0;
 }
@@ -1162,6 +1163,14 @@ p {
   border-radius: var(--radius-pill);
   font-size: var(--text-xl);
   font-weight: 900;
+}
+
+.creator-arrow.previous {
+  grid-column: 1;
+}
+
+.creator-arrow.next {
+  grid-column: 3;
 }
 
 .creation-step-strip {
@@ -1817,6 +1826,12 @@ dd {
 
   .creator-shell {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creator-main,
+  .creator-arrow.previous,
+  .creator-arrow.next {
+    grid-column: auto;
   }
 
   .creator-arrow {

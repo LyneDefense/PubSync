@@ -1986,7 +1986,7 @@ onUnmounted(() => {
           <button
             v-if="xhsCreationStep > 1"
             type="button"
-            class="creator-arrow"
+            class="creator-arrow previous"
             aria-label="上一步"
             @click="goPreviousXhsCreationStep"
           >
@@ -2224,7 +2224,7 @@ onUnmounted(() => {
           <button
             v-if="xhsCreationStep < 6"
             type="button"
-            class="creator-arrow"
+            class="creator-arrow next"
             aria-label="下一步"
             @click="goNextXhsCreationStep"
           >
