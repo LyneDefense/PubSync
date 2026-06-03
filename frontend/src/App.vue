@@ -751,7 +751,11 @@ async function handleDistillBlogger() {
       distillBlogger(selectedBloggerId.value!, {
         collection_run_id: selectedCollectionRunId.value!
       }),
-    refreshSelectedBlogger,
+    async () => {
+      await refreshSelectedBlogger()
+      selectLatestRunForCollection()
+      activeXhsWorkflowTab.value = 'assets'
+    },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
   )
 }
@@ -799,10 +803,20 @@ async function selectCollectionRun(id: number) {
   if (selectedBloggerId.value) {
     bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, id)
   }
+  selectLatestRunForCollection()
 }
 
 function selectBloggerRun(id: number) {
   selectedBloggerRunId.value = id
+}
+
+function selectLatestRunForCollection() {
+  if (!selectedCollectionRunId.value) {
+    selectedBloggerRunId.value = null
+    return
+  }
+  const latestRun = bloggerRuns.value.find((run) => run.collection_run_id === selectedCollectionRunId.value)
+  selectedBloggerRunId.value = latestRun?.id || null
 }
 
 async function handleFetchNews() {
@@ -1344,37 +1358,6 @@ onUnmounted(() => {
             <h2>小红书 AI 创作</h2>
             <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；内容生成与发布包后续接入。</p>
           </div>
-          <div class="actions">
-            <button
-              type="button"
-              class="task-button"
-              :class="{ running: pendingAction === 'collect' }"
-              :style="taskButtonStyle('collect')"
-              :disabled="!selectedBloggerId || Boolean(pendingAction)"
-              @click="handleCollectBlogger"
-            >
-              <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
-            </button>
-            <button
-              type="button"
-              class="task-button"
-              :class="{ running: pendingAction === 'distill' }"
-              :style="taskButtonStyle('distill')"
-              :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
-              @click="handleDistillBlogger"
-            >
-              <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
-            </button>
-            <button
-              v-if="pendingAction === 'distill'"
-              type="button"
-              class="ghost danger"
-              :disabled="!runningTaskId"
-              @click="handleCancelDistillation"
-            >
-              停止蒸馏
-            </button>
-          </div>
         </div>
 
         <div class="xhs-workbench">
@@ -1536,6 +1519,27 @@ onUnmounted(() => {
                   <span>风格蒸馏</span>
                   <h3>选择采集批次并蒸馏</h3>
                 </div>
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="task-button primary"
+                    :class="{ running: pendingAction === 'distill' }"
+                    :style="taskButtonStyle('distill')"
+                    :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
+                    @click="handleDistillBlogger"
+                  >
+                    <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
+                  </button>
+                  <button
+                    v-if="pendingAction === 'distill'"
+                    type="button"
+                    class="ghost danger"
+                    :disabled="!runningTaskId"
+                    @click="handleCancelDistillation"
+                  >
+                    停止蒸馏
+                  </button>
+                </div>
               </div>
               <div v-if="selectedBlogger" class="run-list collection-list" aria-label="可蒸馏采集批次">
                 <div class="run-list-header">
@@ -1556,18 +1560,6 @@ onUnmounted(() => {
                 <p v-if="!bloggerCollectionRuns.length" class="empty-region">还没有采集批次，请先完成样本采集。</p>
               </div>
               <p class="form-hint">蒸馏会基于选中的采集批次执行；同一个采集批次可以生成多次不同蒸馏结果。</p>
-              <div class="actions left">
-                <button
-                  type="button"
-                  class="task-button"
-                  :class="{ running: pendingAction === 'distill' }"
-                  :style="taskButtonStyle('distill')"
-                  :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
-                  @click="handleDistillBlogger"
-                >
-                  <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
-                </button>
-              </div>
             </section>
 
             <section v-if="activeXhsWorkflowTab === 'assets'" class="stage-panel">
