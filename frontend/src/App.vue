@@ -2139,6 +2139,13 @@ onUnmounted(() => {
                 关键词
                 <input v-model="xhsPackageForm.keywords" type="text" placeholder="用逗号分隔，例如：猫粮, 配料表, 蛋白质" />
               </label>
+              <div v-if="pendingAction === 'xhs-topic'" class="inline-progress-card" aria-live="polite">
+                <div>
+                  <strong>正在生成选题</strong>
+                  <span>大模型正在结合 Skill、主题和目标人群整理方向。</span>
+                </div>
+                <i aria-hidden="true"></i>
+              </div>
               <div v-if="xhsTopicIdeas.length" class="topic-idea-grid">
                 <button
                   v-for="(idea, index) in xhsTopicIdeas"
@@ -2191,6 +2198,13 @@ onUnmounted(() => {
                   <strong>视频脚本</strong>
                   <span>分镜、旁白、字幕建议</span>
                 </label>
+              </div>
+              <div v-if="pendingAction === 'xhs-package'" class="inline-progress-card" aria-live="polite">
+                <div>
+                  <strong>正在生成正文/脚本</strong>
+                  <span>会先生成内容结构；如果选择配图，会继续规划并生成图片。</span>
+                </div>
+                <i aria-hidden="true"></i>
               </div>
               <section v-if="currentXhsDraft" class="package-copy-block">
                 <div class="inline-card-header">
@@ -2249,6 +2263,13 @@ onUnmounted(() => {
                   </button>
                   <button type="button" :disabled="!currentXhsDraft" @click="handleDiscardXhsDraft">放弃本次创作</button>
                 </div>
+              </div>
+              <div v-if="pendingAction === 'xhs-package-save'" class="inline-progress-card" aria-live="polite">
+                <div>
+                  <strong>正在保存发布包</strong>
+                  <span>保存后会进入发布包历史，方便后续查看和复制。</span>
+                </div>
+                <i aria-hidden="true"></i>
               </div>
               <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会显示本次创作的最终预览。保存后才会进入发布包历史。</p>
               <div v-else class="package-preview draft-preview">
