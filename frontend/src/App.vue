@@ -427,10 +427,8 @@ function eventPayloadSummary(event: OperationTaskEvent) {
   if (!payload) {
     return ''
   }
-  if (payload.current && payload.total) {
-    return `${payload.current}/${payload.total}`
-  }
   const entries = Object.entries(payload)
+    .filter(([key]) => !['current', 'total'].includes(key))
     .filter(([, value]) => value !== null && value !== '' && value !== undefined)
     .slice(0, 3)
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)

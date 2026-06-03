@@ -174,7 +174,7 @@ def run_blogger_collection(
     client: TikHubXhsClient | None = None
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始通过 TikHub 采集小红书公开笔记")
+        record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始采集数据")
         client = TikHubXhsClient(collection_settings)
         client.get_user_info(blogger.homepage_url)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
@@ -380,7 +380,7 @@ def collect_posts(
             task_id,
             "笔记详情",
             "running",
-            f"采集 {index}/{total}",
+            "采集",
             {"current": index, "total": total, "type": candidate.note_type, "note_id": candidate.external_id},
         )
         try:
@@ -422,7 +422,7 @@ def collect_posts(
             task_id,
             "样本入库",
             "succeeded",
-            f"已保存样本 {index}/{total}",
+            "已保存样本",
             {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"]},
         )
     db.commit()
