@@ -21,7 +21,9 @@ import type {
   WorkspaceConfig,
   WorkspaceConfigUpdate,
   XhsPublishPackage,
-  XhsPublishPackageCreate
+  XhsPublishPackageCreate,
+  XhsTopicIdeaRequest,
+  XhsTopicIdeaResponse
 } from './types'
 
 const API_BASE = `${import.meta.env.BASE_URL}api`
@@ -219,6 +221,13 @@ export function listXhsPublishPackages() {
 
 export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {
   return request<XhsPublishPackage>('/xhs/publish-packages', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
+  return request<XhsTopicIdeaResponse>('/xhs/topic-ideas', {
     method: 'POST',
     body: JSON.stringify(payload)
   })

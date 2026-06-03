@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import BloggerProfile, BloggerSkill, XhsPublishPackage
-from app.schemas import XhsPublishPackageCreate
+from app.schemas import XhsPublishPackageCreate, XhsTopicIdeaRequest
 from app.services.ai_service import AIServiceError, create_json_response, generate_image, is_ai_enabled
 
 
@@ -95,6 +95,80 @@ def create_xhs_publish_package(
     return package
 
 
+def generate_xhs_topic_ideas(
+    db: Session,
+    settings: Settings,
+    tenant_id: int,
+    payload: XhsTopicIdeaRequest,
+) -> list[dict[str, Any]]:
+    skill = db.get(BloggerSkill, payload.skill_id)
+    if not skill or skill.tenant_id != tenant_id or skill.status != "active":
+        raise ValueError("Skill 不存在或不可用")
+    blogger = db.get(BloggerProfile, skill.blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("Skill 对应的博主不存在")
+    if not is_ai_enabled(settings):
+        raise AIServiceError("未配置可用的大模型 API Key")
+
+    logger.info(
+        "小红书选题方案生成开始：租户=%s，博主=%s，skill_id=%s，种子主题=%s",
+        tenant_id,
+        blogger.display_name,
+        skill.id,
+        payload.seed_topic,
+    )
+    prompt = f"""
+你是小红书选题策划。请基于“博主蒸馏 Skill”为用户生成 5 个可执行的选题方案。
+
+要求：
+- 只学习 Skill 的选题方法、标题结构、切入角度，不要冒充原博主，不要复制原文。
+- 如果用户提供了种子主题，所有方案都要围绕该主题变化切角。
+- 如果用户没有提供种子主题，请基于 Skill、目标人群和内容目的主动提出可写选题。
+- 每个方案要让用户一眼看出：写什么、怎么切、适合谁、为什么值得写。
+- 输出必须是合法 JSON，不要 Markdown，不要解释文字。
+
+输入：
+{json.dumps({
+        "blogger": {
+            "display_name": blogger.display_name,
+            "niche": blogger.niche,
+            "description": blogger.description,
+        },
+        "seed_topic": payload.seed_topic,
+        "target_audience": payload.target_audience,
+        "content_goal": payload.content_goal,
+        "keywords": payload.keywords,
+    }, ensure_ascii=False, indent=2)}
+
+博主蒸馏 Skill：
+{skill.skill_markdown[:10000]}
+
+输出 JSON：
+{{
+  "ideas": [
+    {{
+      "title": "选题标题，不超过 32 个汉字",
+      "angle": "具体切入角度",
+      "target_audience": "适合的读者",
+      "content_goal": "知识分享/避坑科普/种草转化/观点表达/经验复盘",
+      "keywords": ["关键词"],
+      "reason": "为什么这个选题值得做"
+    }}
+  ]
+}}
+"""
+    result = create_json_response(settings=settings, prompt=prompt)
+    ideas = result.get("ideas")
+    if not isinstance(ideas, list):
+        raise AIServiceError("AI 没有返回可用选题方案")
+    normalized = [normalize_topic_idea(item) for item in ideas if isinstance(item, dict)]
+    normalized = [item for item in normalized if item["title"] and item["angle"]]
+    if not normalized:
+        raise AIServiceError("AI 返回的选题方案为空")
+    logger.info("小红书选题方案生成完成：skill_id=%s，数量=%s", skill.id, len(normalized))
+    return normalized[:5]
+
+
 def generate_package_content(
     settings: Settings,
     blogger: BloggerProfile,
@@ -169,6 +243,17 @@ def generate_package_content(
 }}
 """
     return create_json_response(settings=settings, prompt=prompt)
+
+
+def normalize_topic_idea(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": str(item.get("title") or "").strip(),
+        "angle": str(item.get("angle") or "").strip(),
+        "target_audience": str(item.get("target_audience") or "").strip(),
+        "content_goal": str(item.get("content_goal") or "").strip(),
+        "keywords": normalize_string_list(item.get("keywords")),
+        "reason": str(item.get("reason") or "").strip(),
+    }
 
 
 def resolve_image_count(payload: XhsPublishPackageCreate, generated: dict[str, Any], image_plan: list[dict[str, Any]]) -> int:

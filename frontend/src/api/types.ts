@@ -357,6 +357,27 @@ export interface XhsPublishPackageCreate {
   requested_image_count: number | null
 }
 
+export interface XhsTopicIdeaRequest {
+  skill_id: number
+  seed_topic: string
+  target_audience: string
+  content_goal: string
+  keywords: string
+}
+
+export interface XhsTopicIdea {
+  title: string
+  angle: string
+  target_audience: string
+  content_goal: string
+  keywords: string[]
+  reason: string
+}
+
+export interface XhsTopicIdeaResponse {
+  ideas: XhsTopicIdea[]
+}
+
 export interface XhsPublishPackage {
   id: number
   tenant_id: number

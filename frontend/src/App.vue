@@ -12,6 +12,7 @@ import {
   distillBlogger,
   fetchNews,
   generateArticle,
+  generateXhsTopicIdeas,
   getAuthToken,
   getCurrentUser,
   getLatestArticle,
@@ -54,7 +55,8 @@ import type {
   Tenant,
   WorkspaceConfig,
   XhsPublishContentType,
-  XhsPublishPackage
+  XhsPublishPackage,
+  XhsTopicIdea
 } from './api/types'
 
 type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill'
@@ -89,6 +91,10 @@ const selectedCollectionRunId = ref<number | null>(null)
 const selectedBloggerRunId = ref<number | null>(null)
 const resultCollectionFilterId = ref<number | null>(null)
 const selectedXhsPackageId = ref<number | null>(null)
+const xhsCreatorBloggerId = ref<number | null>(null)
+const xhsCreationStep = ref(1)
+const xhsTopicIdeas = ref<XhsTopicIdea[]>([])
+const selectedXhsTopicIndex = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
@@ -284,11 +290,14 @@ const xhsPackageScriptSegments = computed(() => {
   const script = parseJsonObject(selectedXhsPackage.value?.script_json)
   return Array.isArray(script.segments) ? script.segments : []
 })
-const xhsPackageSkillOptions = computed(() =>
+const activeXhsSkills = computed(() =>
   bloggerSkills.value.filter((skill) => skill.status === 'active').map((skill) => ({
     ...skill,
     bloggerName: bloggers.value.find((blogger) => blogger.id === skill.blogger_id)?.display_name || `博主 #${skill.blogger_id}`
   }))
+)
+const xhsCreatorSkillOptions = computed(() =>
+  activeXhsSkills.value.filter((skill) => !xhsCreatorBloggerId.value || skill.blogger_id === xhsCreatorBloggerId.value)
 )
 const selectedXhsPackageBloggerName = computed(() => {
   const pack = selectedXhsPackage.value
@@ -297,6 +306,9 @@ const selectedXhsPackageBloggerName = computed(() => {
   }
   return bloggers.value.find((blogger) => blogger.id === pack.blogger_id)?.display_name || `博主 #${pack.blogger_id}`
 })
+const selectedXhsTopicIdea = computed(() =>
+  selectedXhsTopicIndex.value === null ? null : xhsTopicIdeas.value[selectedXhsTopicIndex.value] || null
+)
 function runCostLabel(run: BloggerDistillationRun) {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
 }
@@ -775,12 +787,47 @@ async function refreshBloggers() {
 }
 
 function syncXhsPackageSelection() {
-  if (!xhsPackageForm.skill_id || !bloggerSkills.value.some((skill) => skill.id === xhsPackageForm.skill_id && skill.status === 'active')) {
-    xhsPackageForm.skill_id = bloggerSkills.value.find((skill) => skill.status === 'active')?.id || 0
+  if (!xhsCreatorBloggerId.value && activeXhsSkills.value.length) {
+    xhsCreatorBloggerId.value = activeXhsSkills.value[0].blogger_id
+  }
+  if (
+    !xhsPackageForm.skill_id ||
+    !xhsCreatorSkillOptions.value.some((skill) => skill.id === xhsPackageForm.skill_id && skill.status === 'active')
+  ) {
+    xhsPackageForm.skill_id = xhsCreatorSkillOptions.value[0]?.id || activeXhsSkills.value[0]?.id || 0
   }
   if (selectedXhsPackageId.value && !xhsPackages.value.some((item) => item.id === selectedXhsPackageId.value)) {
     selectedXhsPackageId.value = null
   }
+}
+
+function resetXhsTopicIdeas() {
+  xhsTopicIdeas.value = []
+  selectedXhsTopicIndex.value = null
+}
+
+function handleXhsCreatorBloggerChange() {
+  xhsPackageForm.skill_id = xhsCreatorSkillOptions.value[0]?.id || 0
+  resetXhsTopicIdeas()
+  xhsCreationStep.value = 1
+}
+
+function handleXhsCreatorSkillChange() {
+  resetXhsTopicIdeas()
+  xhsCreationStep.value = 1
+}
+
+function selectXhsTopicIdea(index: number) {
+  const idea = xhsTopicIdeas.value[index]
+  if (!idea) {
+    return
+  }
+  selectedXhsTopicIndex.value = index
+  xhsPackageForm.topic = idea.title
+  xhsPackageForm.target_audience = idea.target_audience || xhsPackageForm.target_audience
+  xhsPackageForm.content_goal = idea.content_goal || xhsPackageForm.content_goal
+  xhsPackageForm.keywords = idea.keywords.join(', ')
+  xhsCreationStep.value = Math.max(xhsCreationStep.value, 3)
 }
 
 async function refreshSelectedBlogger() {
@@ -919,6 +966,28 @@ async function handleCreateXhsPackage() {
     })
     await refreshXhsPackages(pack.id)
     activeXhsTab.value = 'packages'
+    xhsCreationStep.value = 5
+  })
+}
+
+async function handleGenerateXhsTopicIdeas() {
+  if (!xhsPackageForm.skill_id) {
+    showMessage('请先选择博主和 Skill', true)
+    return
+  }
+  await runAction('xhs-topic', '正在生成选题方案', async () => {
+    const result = await generateXhsTopicIdeas({
+      skill_id: xhsPackageForm.skill_id,
+      seed_topic: xhsPackageForm.topic.trim(),
+      target_audience: xhsPackageForm.target_audience.trim(),
+      content_goal: xhsPackageForm.content_goal.trim(),
+      keywords: xhsPackageForm.keywords.trim()
+    })
+    xhsTopicIdeas.value = result.ideas
+    if (result.ideas.length) {
+      selectXhsTopicIdea(0)
+      xhsCreationStep.value = 2
+    }
   })
 }
 
@@ -1292,8 +1361,8 @@ onUnmounted(() => {
 
       <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="小红书模块">
-          <button type="button" :class="{ active: activeXhsTab === 'ai' }" @click="activeXhsTab = 'ai'">AI 创作</button>
-          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">发布包</button>
+          <button type="button" :class="{ active: activeXhsTab === 'ai' }" @click="activeXhsTab = 'ai'">博主蒸馏</button>
+          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">AI 创作</button>
           <button type="button" :class="{ active: activeXhsTab === 'records' }" @click="activeXhsTab = 'records'">发布记录</button>
           <button type="button" :class="{ active: activeXhsTab === 'settings' }" @click="activeXhsTab = 'settings'">设置</button>
         </div>
@@ -1532,8 +1601,8 @@ onUnmounted(() => {
       <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'ai'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书 AI 创作</h2>
-            <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；内容生成与发布包后续接入。</p>
+            <h2>小红书博主蒸馏</h2>
+            <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；蒸馏出的 Skill 会进入 AI 创作流程。</p>
           </div>
         </div>
 
@@ -1860,97 +1929,230 @@ onUnmounted(() => {
       <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'packages'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书发布包</h2>
-            <p class="toolbar-subtitle">选择一个蒸馏 Skill，输入主题后生成可复制、可保存图片的人工发布包。</p>
+            <h2>小红书 AI 创作</h2>
+            <p class="toolbar-subtitle">选择博主 Skill，先生成选题方案，再确认方向并生成可人工发布的小红书发布包。</p>
           </div>
         </div>
+        <div class="creation-step-strip" aria-label="小红书 AI 创作流程">
+          <button type="button" :class="{ active: xhsCreationStep === 1, done: Boolean(selectedXhsSkill) }" @click="xhsCreationStep = 1">
+            <span>01</span>
+            <strong>选择风格</strong>
+            <small>{{ selectedXhsSkill ? selectedXhsSkill.name : '博主与 Skill' }}</small>
+          </button>
+          <button type="button" :class="{ active: xhsCreationStep === 2, done: Boolean(xhsTopicIdeas.length) }" @click="xhsCreationStep = 2">
+            <span>02</span>
+            <strong>选题方案</strong>
+            <small>{{ xhsTopicIdeas.length ? `${xhsTopicIdeas.length} 个方向` : '先生成方案' }}</small>
+          </button>
+          <button type="button" :class="{ active: xhsCreationStep === 3, done: Boolean(selectedXhsTopicIdea) }" @click="xhsCreationStep = 3">
+            <span>03</span>
+            <strong>生成正文</strong>
+            <small>{{ selectedXhsTopicIdea ? selectedXhsTopicIdea.title : '确认方向' }}</small>
+          </button>
+          <button type="button" :class="{ active: xhsCreationStep === 4, done: Boolean(selectedXhsPackage) }" @click="xhsCreationStep = 4">
+            <span>04</span>
+            <strong>封面配图</strong>
+            <small>{{ selectedXhsPackage ? `${xhsPackageImageUrls.length || xhsPackageImagePlan.length} 张图` : '标签与素材' }}</small>
+          </button>
+          <button type="button" :class="{ active: xhsCreationStep === 5, done: Boolean(selectedXhsPackage) }" @click="xhsCreationStep = 5">
+            <span>05</span>
+            <strong>发布包</strong>
+            <small>{{ selectedXhsPackage ? '可复制发布' : '最终资产' }}</small>
+          </button>
+        </div>
         <div class="publish-package-layout">
-          <form class="package-form" @submit.prevent="handleCreateXhsPackage">
-            <div class="stage-header">
-              <div>
-                <span>AI 创作</span>
-                <h3>生成发布包</h3>
+          <div class="creation-workflow">
+            <section class="creation-stage-card" :class="{ active: xhsCreationStep === 1 }">
+              <div class="inline-card-header">
+                <div>
+                  <span>01 选择风格资产</span>
+                  <h3>先选博主，再选 Skill</h3>
+                </div>
+                <button type="button" @click="xhsCreationStep = 2" :disabled="!selectedXhsSkill">下一步</button>
               </div>
-              <button type="submit" class="primary" :disabled="Boolean(pendingAction) || !xhsPackageSkillOptions.length">
-                {{ pendingAction === 'xhs-package' ? '生成中' : '生成发布包' }}
-              </button>
-            </div>
-            <label>
-              选择 Skill
-              <select v-model.number="xhsPackageForm.skill_id" :disabled="!xhsPackageSkillOptions.length">
-                <option :value="0">请选择 Skill</option>
-                <option v-for="skill in xhsPackageSkillOptions" :key="skill.id" :value="skill.id">
-                  {{ skill.bloggerName }} · {{ skill.name }} · {{ formatDate(skill.created_at) }}
-                </option>
-              </select>
-            </label>
-            <div v-if="selectedXhsSkill" class="skill-mini-card">
-              <strong>{{ selectedXhsSkill.name }}</strong>
-              <span>{{ selectedXhsSkill.description }}</span>
-            </div>
-            <label>
-              创作主题
-              <input v-model="xhsPackageForm.topic" type="text" required placeholder="例如：新手养猫为什么总是买错猫粮" />
-            </label>
-            <div class="config-grid">
+              <div class="config-grid">
+                <label>
+                博主
+                <select v-model.number="xhsCreatorBloggerId" @change="handleXhsCreatorBloggerChange">
+                    <option :value="0">请选择博主</option>
+                    <option v-for="blogger in bloggers" :key="blogger.id" :value="blogger.id">
+                      {{ blogger.display_name }} · {{ blogger.niche || '未设置领域' }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  Skill
+                  <select v-model.number="xhsPackageForm.skill_id" :disabled="!xhsCreatorSkillOptions.length" @change="handleXhsCreatorSkillChange">
+                    <option :value="0">请选择 Skill</option>
+                    <option v-for="skill in xhsCreatorSkillOptions" :key="skill.id" :value="skill.id">
+                      {{ skill.name }} · {{ formatDate(skill.created_at) }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div v-if="selectedXhsSkill" class="skill-mini-card">
+                <strong>{{ selectedXhsSkill.name }}</strong>
+                <span>{{ selectedXhsSkill.description }}</span>
+              </div>
+              <p v-if="!activeXhsSkills.length" class="empty-region">还没有可用 Skill。请先到“博主蒸馏”完成一次风格蒸馏。</p>
+            </section>
+
+            <section class="creation-stage-card" :class="{ active: xhsCreationStep === 2 }">
+              <div class="inline-card-header">
+                <div>
+                  <span>02 生成选题方案</span>
+                  <h3>先让 AI 给出几个方向</h3>
+                </div>
+                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill" @click="handleGenerateXhsTopicIdeas">
+                  {{ pendingAction === 'xhs-topic' ? '生成中' : xhsTopicIdeas.length ? '重新生成选题' : '生成选题方案' }}
+                </button>
+              </div>
               <label>
-                目标人群
-                <input v-model="xhsPackageForm.target_audience" type="text" placeholder="例如：第一次养猫的年轻人" />
+                种子主题
+                <input v-model="xhsPackageForm.topic" type="text" placeholder="可以留空，也可以输入你想写的大方向" />
               </label>
+              <div class="config-grid">
+                <label>
+                  目标人群
+                  <input v-model="xhsPackageForm.target_audience" type="text" placeholder="例如：第一次养猫的年轻人" />
+                </label>
+                <label>
+                  内容目的
+                  <select v-model="xhsPackageForm.content_goal">
+                    <option value="知识分享">知识分享</option>
+                    <option value="避坑科普">避坑科普</option>
+                    <option value="种草转化">种草转化</option>
+                    <option value="观点表达">观点表达</option>
+                    <option value="经验复盘">经验复盘</option>
+                  </select>
+                </label>
+              </div>
               <label>
-                内容目的
-                <select v-model="xhsPackageForm.content_goal">
-                  <option value="知识分享">知识分享</option>
-                  <option value="避坑科普">避坑科普</option>
-                  <option value="种草转化">种草转化</option>
-                  <option value="观点表达">观点表达</option>
-                  <option value="经验复盘">经验复盘</option>
-                </select>
+                关键词
+                <input v-model="xhsPackageForm.keywords" type="text" placeholder="用逗号分隔，例如：猫粮, 配料表, 蛋白质" />
               </label>
-            </div>
-            <label>
-              关键词
-              <input v-model="xhsPackageForm.keywords" type="text" placeholder="用逗号分隔，例如：猫粮, 配料表, 蛋白质" />
-            </label>
-            <div class="package-type-grid" role="radiogroup" aria-label="内容类型">
-              <label :class="{ active: xhsPackageForm.content_type === 'text_note' }">
-                <input v-model="xhsPackageForm.content_type" type="radio" value="text_note" />
-                <strong>图文笔记</strong>
-                <span>标题、正文、标签、封面文案</span>
-              </label>
-              <label :class="{ active: xhsPackageForm.content_type === 'image_note' }">
-                <input v-model="xhsPackageForm.content_type" type="radio" value="image_note" />
-                <strong>图文配图</strong>
-                <span>额外规划并生成配图</span>
-              </label>
-              <label :class="{ active: xhsPackageForm.content_type === 'spoken_script' }">
-                <input v-model="xhsPackageForm.content_type" type="radio" value="spoken_script" />
-                <strong>口播脚本</strong>
-                <span>按时间段输出口播稿</span>
-              </label>
-              <label :class="{ active: xhsPackageForm.content_type === 'video_script' }">
-                <input v-model="xhsPackageForm.content_type" type="radio" value="video_script" />
-                <strong>视频脚本</strong>
-                <span>分镜、旁白、字幕建议</span>
-              </label>
-            </div>
-            <div v-if="xhsPackageForm.content_type === 'image_note'" class="config-grid">
-              <label>
-                配图策略
-                <select v-model="xhsPackageForm.image_count_mode">
-                  <option value="auto">AI 判断数量</option>
-                  <option value="manual">手动选择数量</option>
-                </select>
-              </label>
-              <label>
-                配图数量
-                <select v-model.number="xhsPackageForm.requested_image_count" :disabled="xhsPackageForm.image_count_mode === 'auto'">
-                  <option v-for="count in [1, 2, 3, 4, 5, 6, 7, 8, 9]" :key="count" :value="count">{{ count }} 张</option>
-                </select>
-              </label>
-            </div>
-            <p v-if="!xhsPackageSkillOptions.length" class="empty-region">还没有可用 Skill。请先在 AI 创作里完成博主蒸馏。</p>
-          </form>
+              <div v-if="xhsTopicIdeas.length" class="topic-idea-grid">
+                <button
+                  v-for="(idea, index) in xhsTopicIdeas"
+                  :key="`${idea.title}-${index}`"
+                  type="button"
+                  :class="{ active: selectedXhsTopicIndex === index }"
+                  @click="selectXhsTopicIdea(index)"
+                >
+                  <strong>{{ idea.title }}</strong>
+                  <span>{{ idea.angle }}</span>
+                  <small>{{ idea.reason }}</small>
+                </button>
+              </div>
+              <p v-else class="empty-region">生成后，这里会显示多个可选择的选题方案。</p>
+            </section>
+
+            <section class="creation-stage-card" :class="{ active: xhsCreationStep === 3 }">
+              <div class="inline-card-header">
+                <div>
+                  <span>03 生成正式内容</span>
+                  <h3>确认内容类型并生成</h3>
+                </div>
+                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill || !xhsPackageForm.topic.trim()" @click="handleCreateXhsPackage">
+                  {{ pendingAction === 'xhs-package' ? '生成中' : selectedXhsPackage ? '重新生成发布包' : '生成发布包' }}
+                </button>
+              </div>
+              <div v-if="selectedXhsTopicIdea" class="selected-idea-card">
+                <span>已选方向</span>
+                <strong>{{ selectedXhsTopicIdea.title }}</strong>
+                <p>{{ selectedXhsTopicIdea.angle }}</p>
+              </div>
+              <div class="package-type-grid" role="radiogroup" aria-label="内容类型">
+                <label :class="{ active: xhsPackageForm.content_type === 'text_note' }">
+                  <input v-model="xhsPackageForm.content_type" type="radio" value="text_note" />
+                  <strong>图文笔记</strong>
+                  <span>标题、正文、标签、封面文案</span>
+                </label>
+                <label :class="{ active: xhsPackageForm.content_type === 'image_note' }">
+                  <input v-model="xhsPackageForm.content_type" type="radio" value="image_note" />
+                  <strong>图文配图</strong>
+                  <span>额外规划并生成配图</span>
+                </label>
+                <label :class="{ active: xhsPackageForm.content_type === 'spoken_script' }">
+                  <input v-model="xhsPackageForm.content_type" type="radio" value="spoken_script" />
+                  <strong>口播脚本</strong>
+                  <span>按时间段输出口播稿</span>
+                </label>
+                <label :class="{ active: xhsPackageForm.content_type === 'video_script' }">
+                  <input v-model="xhsPackageForm.content_type" type="radio" value="video_script" />
+                  <strong>视频脚本</strong>
+                  <span>分镜、旁白、字幕建议</span>
+                </label>
+              </div>
+              <div v-if="xhsPackageForm.content_type === 'image_note'" class="config-grid">
+                <label>
+                  配图策略
+                  <select v-model="xhsPackageForm.image_count_mode">
+                    <option value="auto">AI 判断数量</option>
+                    <option value="manual">手动选择数量</option>
+                  </select>
+                </label>
+                <label>
+                  配图数量
+                  <select v-model.number="xhsPackageForm.requested_image_count" :disabled="xhsPackageForm.image_count_mode === 'auto'">
+                    <option v-for="count in [1, 2, 3, 4, 5, 6, 7, 8, 9]" :key="count" :value="count">{{ count }} 张</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="creation-stage-card" :class="{ active: xhsCreationStep === 4 }">
+              <div class="inline-card-header">
+                <div>
+                  <span>04 封面、配图与标签</span>
+                  <h3>检查素材输出</h3>
+                </div>
+                <button type="button" :disabled="!selectedXhsPackage" @click="xhsCreationStep = 5">进入发布包</button>
+              </div>
+              <div v-if="selectedXhsPackage" class="asset-output-grid">
+                <article>
+                  <span>封面文案</span>
+                  <strong>{{ selectedXhsPackage.cover_text || '暂无' }}</strong>
+                </article>
+                <article>
+                  <span>标签</span>
+                  <strong>{{ xhsPackageHashtags.length }} 个</strong>
+                </article>
+                <article>
+                  <span>配图</span>
+                  <strong>{{ xhsPackageImageUrls.length || xhsPackageImagePlan.length }} 张</strong>
+                </article>
+              </div>
+              <section v-if="xhsPackageHashtags.length" class="tag-cloud">
+                <button v-for="tag in xhsPackageHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
+                  #{{ String(tag).replace(/^#/, '') }}
+                </button>
+              </section>
+              <div v-if="xhsPackageImageUrls.length" class="image-output-grid">
+                <figure v-for="(url, index) in xhsPackageImageUrls" :key="url">
+                  <img :src="String(url)" alt="小红书发布包配图" />
+                  <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
+                </figure>
+              </div>
+              <p v-if="!selectedXhsPackage" class="empty-region">生成发布包后，这里会展示封面、标签和配图输出。</p>
+            </section>
+
+            <section class="creation-stage-card" :class="{ active: xhsCreationStep === 5 }">
+              <div class="inline-card-header">
+                <div>
+                  <span>05 最终发布包</span>
+                  <h3>复制内容，人工发布</h3>
+                </div>
+                <button type="button" :disabled="!selectedXhsPackage" @click="selectedXhsPackage && copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
+              </div>
+              <p v-if="!selectedXhsPackage" class="empty-region">生成发布包后，这里会显示最终可复制内容。</p>
+              <div v-else class="selected-idea-card">
+                <span>{{ selectedXhsPackageBloggerName }} · {{ xhsContentTypeLabel(selectedXhsPackage.content_type) }}</span>
+                <strong>{{ selectedXhsPackage.title }}</strong>
+                <p>{{ selectedXhsPackage.topic }}</p>
+              </div>
+            </section>
+          </div>
 
           <div class="package-browser">
             <aside class="run-list package-list" aria-label="发布包记录">

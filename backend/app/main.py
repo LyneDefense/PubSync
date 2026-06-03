@@ -61,6 +61,8 @@ from app.schemas import (
     WorkspaceConfigUpdate,
     XhsPublishPackageCreate,
     XhsPublishPackageRead,
+    XhsTopicIdeaRequest,
+    XhsTopicIdeaResponse,
 )
 from app.services.article_service import update_article
 from app.services.ai_service import AIServiceError
@@ -102,7 +104,7 @@ from app.services.tenant_service import (
     update_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError, send_article_to_wechat_draft
-from app.xhs_creation.service import create_xhs_publish_package
+from app.xhs_creation.service import create_xhs_publish_package, generate_xhs_topic_ideas
 
 
 settings = get_settings()
@@ -612,6 +614,20 @@ def create_xhs_publish_package_endpoint(
 ) -> XhsPublishPackage:
     try:
         return create_xhs_publish_package(db, settings, tenant.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AIServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/xhs/topic-ideas", response_model=XhsTopicIdeaResponse)
+def generate_xhs_topic_ideas_endpoint(
+    payload: XhsTopicIdeaRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return {"ideas": generate_xhs_topic_ideas(db, settings, tenant.id, payload)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AIServiceError as exc:

@@ -450,6 +450,27 @@ class XhsPublishPackageCreate(BaseModel):
     requested_image_count: int | None = Field(default=None, ge=1, le=9)
 
 
+class XhsTopicIdeaRequest(BaseModel):
+    skill_id: int
+    seed_topic: str = Field(default="", max_length=300)
+    target_audience: str = Field(default="", max_length=300)
+    content_goal: str = Field(default="", max_length=120)
+    keywords: str = Field(default="", max_length=500)
+
+
+class XhsTopicIdeaRead(BaseModel):
+    title: str
+    angle: str
+    target_audience: str
+    content_goal: str
+    keywords: list[str]
+    reason: str
+
+
+class XhsTopicIdeaResponse(BaseModel):
+    ideas: list[XhsTopicIdeaRead]
+
+
 class XhsPublishPackageRead(BaseModel):
     id: int
     tenant_id: int
