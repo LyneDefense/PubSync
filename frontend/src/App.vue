@@ -5,6 +5,7 @@ import {
   cancelTask,
   clearAuthToken,
   clearTenantId,
+  collectBlogger,
   createAdminUser,
   createBlogger,
   distillBlogger,
@@ -18,7 +19,8 @@ import {
   getTaskEvents,
   getWorkspaceConfig,
   listAdminUsers,
-  listBloggerPosts,
+  listBloggerCollectionPosts,
+  listBloggerCollectionRuns,
   listBloggerRuns,
   listBloggerSkills,
   listBloggers,
@@ -36,6 +38,7 @@ import type {
   AdminUserCreate,
   Article,
   ArticleUpdate,
+  BloggerCollectionRun,
   BloggerDistillationRun,
   BloggerPost,
   BloggerProfile,
@@ -50,7 +53,7 @@ import type {
   WorkspaceConfig
 } from './api/types'
 
-type TaskActionName = 'fetch' | 'generate' | 'distill'
+type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill'
 type NewsTab = string
 type ArticleTab = 'edit' | 'preview'
 type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -71,11 +74,13 @@ const news = ref<NewsItem[]>([])
 const article = ref<Article | null>(null)
 const bloggers = ref<BloggerProfile[]>([])
 const bloggerPosts = ref<BloggerPost[]>([])
+const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 const bloggerRuns = ref<BloggerDistillationRun[]>([])
 const bloggerSkills = ref<BloggerSkill[]>([])
 const adminUsers = ref<AdminUser[]>([])
 const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
+const selectedCollectionRunId = ref<number | null>(null)
 const selectedBloggerRunId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
@@ -105,6 +110,7 @@ const pageSize = 5
 const taskProgress = reactive<Record<TaskActionName, number>>({
   fetch: 0,
   generate: 0,
+  collect: 0,
   distill: 0
 })
 const progressTimers: Partial<Record<TaskActionName, number>> = {}
@@ -235,9 +241,13 @@ const pagedNews = computed(() => {
   return activeNews.value.slice(start, start + pageSize)
 })
 const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
+const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((run) => run.id === selectedCollectionRunId.value) || null)
 const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
 const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
+const selectedCollectionDistillationRuns = computed(() =>
+  selectedCollectionRunId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === selectedCollectionRunId.value) : []
+)
 const selectedRunCostLabel = computed(() => {
   const run = selectedBloggerRun.value
   if (!run) {
@@ -246,6 +256,9 @@ const selectedRunCostLabel = computed(() => {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
 })
 function runCostLabel(run: BloggerDistillationRun) {
+  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
+}
+function collectionCostLabel(run: BloggerCollectionRun) {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
 }
 function bloggerCommentLabel(post: BloggerPost) {
@@ -273,7 +286,9 @@ const visibleTaskEvents = computed(() => {
   return taskActionTab(taskEventsAction.value) === activeMainTab.value ? taskEvents.value : []
 })
 const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
-const isTaskRunning = computed(() => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'distill')
+const isTaskRunning = computed(
+  () => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'collect' || pendingAction.value === 'distill'
+)
 const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskActionTab(taskEventsAction.value) === activeMainTab.value
 )
@@ -283,6 +298,9 @@ const runningTaskName = computed(() => {
   }
   if (pendingAction.value === 'distill') {
     return '博主蒸馏'
+  }
+  if (pendingAction.value === 'collect') {
+    return '样本采集'
   }
   return '文章生成'
 })
@@ -377,7 +395,7 @@ function taskButtonStyle(name: TaskActionName) {
 }
 
 function taskActionTab(name: TaskActionName): MainTab {
-  if (name === 'distill') {
+  if (name === 'collect' || name === 'distill') {
     return 'xhs'
   }
   return 'wechat'
@@ -499,6 +517,7 @@ async function loadAll() {
   bloggerSkills.value = nextSkills
   if (selectedBloggerId.value && !nextBloggers.some((blogger) => blogger.id === selectedBloggerId.value)) {
     selectedBloggerId.value = null
+    selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
   }
   await refreshSelectedBlogger()
@@ -576,9 +595,11 @@ function handleLogout() {
   news.value = []
   bloggers.value = []
   bloggerPosts.value = []
+  bloggerCollectionRuns.value = []
   bloggerRuns.value = []
   bloggerSkills.value = []
   selectedBloggerId.value = null
+  selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
   currentUser.value = null
   adminUsers.value = []
@@ -618,6 +639,7 @@ async function refreshBloggers() {
   bloggerSkills.value = await listBloggerSkills()
   if (selectedBloggerId.value && !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
     selectedBloggerId.value = null
+    selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
   }
   await refreshSelectedBlogger()
@@ -626,18 +648,29 @@ async function refreshBloggers() {
 async function refreshSelectedBlogger() {
   if (!selectedBloggerId.value) {
     bloggerPosts.value = []
+    bloggerCollectionRuns.value = []
     bloggerRuns.value = []
+    selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
     return
   }
-  const [posts, runs, skills] = await Promise.all([
-    listBloggerPosts(selectedBloggerId.value),
+  const [collections, runs, skills] = await Promise.all([
+    listBloggerCollectionRuns(selectedBloggerId.value),
     listBloggerRuns(selectedBloggerId.value),
     listBloggerSkills()
   ])
-  bloggerPosts.value = posts
+  bloggerCollectionRuns.value = collections
   bloggerRuns.value = runs
   bloggerSkills.value = skills
+  if (selectedCollectionRunId.value && !collections.some((run) => run.id === selectedCollectionRunId.value)) {
+    selectedCollectionRunId.value = null
+    selectedBloggerRunId.value = null
+  }
+  if (selectedCollectionRunId.value) {
+    bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, selectedCollectionRunId.value)
+  } else {
+    bloggerPosts.value = []
+  }
   if (selectedBloggerRunId.value && !runs.some((run) => run.id === selectedBloggerRunId.value)) {
     selectedBloggerRunId.value = null
   }
@@ -688,13 +721,17 @@ async function handleDistillBlogger() {
     showMessage('请先选择博主', true)
     return
   }
+  if (!selectedCollectionRunId.value) {
+    showMessage('请先选择一个已完成的采集批次', true)
+    activeXhsWorkflowTab.value = 'collect'
+    return
+  }
   await runTaskAction(
     'distill',
     '已提交博主蒸馏任务',
     () =>
       distillBlogger(selectedBloggerId.value!, {
-        sample_limit: bloggerDistillForm.sample_limit,
-        comments_per_post: bloggerDistillForm.comments_per_post,
+        collection_run_id: selectedCollectionRunId.value!,
         asr_enabled: bloggerDistillForm.asr_enabled
       }),
     refreshSelectedBlogger,
@@ -702,11 +739,42 @@ async function handleDistillBlogger() {
   )
 }
 
+async function handleCollectBlogger() {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    activeXhsWorkflowTab.value = 'bloggers'
+    return
+  }
+  await runTaskAction(
+    'collect',
+    '已提交样本采集任务',
+    () =>
+      collectBlogger(selectedBloggerId.value!, {
+        sample_limit: bloggerDistillForm.sample_limit,
+        comments_per_post: bloggerDistillForm.comments_per_post
+      }),
+    async () => {
+      await refreshSelectedBlogger()
+      activeXhsWorkflowTab.value = 'collect'
+    },
+    '样本采集仍在后台执行，请稍后刷新页面查看采集批次'
+  )
+}
+
 async function selectBlogger(id: number) {
   selectedBloggerId.value = id
+  selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
-  activeXhsWorkflowTab.value = 'assets'
+  activeXhsWorkflowTab.value = 'collect'
   await refreshSelectedBlogger()
+}
+
+async function selectCollectionRun(id: number) {
+  selectedCollectionRunId.value = id
+  selectedBloggerRunId.value = null
+  if (selectedBloggerId.value) {
+    bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, id)
+  }
 }
 
 function selectBloggerRun(id: number) {
@@ -1253,16 +1321,25 @@ onUnmounted(() => {
             <p class="toolbar-subtitle">先维护博主档案，再配置样本采集和风格蒸馏；内容生成与发布包后续接入。</p>
           </div>
           <div class="actions">
-            <button type="button" @click="showBloggerModal = true">创建博主</button>
+            <button
+              type="button"
+              class="task-button"
+              :class="{ running: pendingAction === 'collect' }"
+              :style="taskButtonStyle('collect')"
+              :disabled="!selectedBloggerId || Boolean(pendingAction)"
+              @click="handleCollectBlogger"
+            >
+              <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
+            </button>
             <button
               type="button"
               class="task-button"
               :class="{ running: pendingAction === 'distill' }"
               :style="taskButtonStyle('distill')"
-              :disabled="!selectedBloggerId || Boolean(pendingAction)"
+              :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
               @click="handleDistillBlogger"
             >
-              <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '开始采集与蒸馏' }}</span>
+              <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
             </button>
             <button
               v-if="pendingAction === 'distill'"
@@ -1295,7 +1372,7 @@ onUnmounted(() => {
             >
               <span>02</span>
               <strong>样本采集</strong>
-              <small>笔记与评论数量</small>
+              <small>{{ selectedBlogger ? `${bloggerCollectionRuns.length} 个批次` : '笔记与评论数量' }}</small>
             </button>
             <span aria-hidden="true">→</span>
             <button
@@ -1305,7 +1382,7 @@ onUnmounted(() => {
             >
               <span>03</span>
               <strong>风格蒸馏</strong>
-              <small>ASR 与分析策略</small>
+              <small>{{ selectedCollectionRun ? `基于批次 #${selectedCollectionRun.id}` : '选择采集批次' }}</small>
             </button>
             <span aria-hidden="true">→</span>
             <button
@@ -1349,6 +1426,14 @@ onUnmounted(() => {
                   <span>样本采集</span>
                   <h3>配置采集范围</h3>
                 </div>
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="!selectedBloggerId || Boolean(pendingAction)"
+                  @click="handleCollectBlogger"
+                >
+                  {{ pendingAction === 'collect' ? '采集中' : '开始采集' }}
+                </button>
               </div>
               <div class="config-grid">
                 <label>
@@ -1361,17 +1446,34 @@ onUnmounted(() => {
                 </label>
               </div>
               <p class="form-hint">采集会读取公开笔记、互动数据和评论样本。评论数是每条笔记最多采集多少条评论，不代表平台真实评论总数。</p>
+              <div v-if="selectedBlogger" class="run-list collection-list" aria-label="采集批次">
+                <div class="run-list-header">
+                  <strong>采集批次</strong>
+                  <span>{{ bloggerCollectionRuns.length }} 次</span>
+                </div>
+                <button
+                  v-for="run in bloggerCollectionRuns"
+                  :key="run.id"
+                  type="button"
+                  :class="{ active: selectedCollectionRunId === run.id }"
+                  @click="selectCollectionRun(run.id)"
+                >
+                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · {{ collectionCostLabel(run) }}</span>
+                </button>
+                <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
+              </div>
               <div v-if="selectedBlogger" class="stage-result-grid">
                 <article class="stage-metric">
                   <span>当前博主</span>
                   <strong>{{ selectedBlogger.display_name }}</strong>
                 </article>
                 <article class="stage-metric">
-                  <span>已采集样本</span>
-                  <strong>{{ selectedBlogger.sample_count }}</strong>
+                  <span>当前批次样本</span>
+                  <strong>{{ selectedCollectionRun?.post_count || 0 }}</strong>
                 </article>
               </div>
-              <article v-if="selectedBlogger" class="distill-card">
+              <article v-if="selectedBlogger && selectedCollectionRun" class="distill-card">
                 <h3>爆款样本</h3>
                 <div v-if="bloggerPosts.length" class="sample-list">
                   <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
@@ -1382,33 +1484,52 @@ onUnmounted(() => {
                     </span>
                   </div>
                 </div>
-                <p v-else class="empty-region">选择博主并完成采集后，这里会显示样本。</p>
+                <p v-else class="empty-region">这个采集批次还没有可展示样本。</p>
               </article>
-              <p v-else class="empty-region">请先在“博主档案”里选择一个博主，再查看样本采集结果。</p>
+              <p v-if="selectedBlogger && !selectedCollectionRun" class="empty-region">选择一个采集批次后，这里会显示该批次的爆款样本。</p>
+              <p v-if="!selectedBlogger" class="empty-region">请先在“博主档案”里选择一个博主，再查看样本采集结果。</p>
             </section>
 
             <section v-if="activeXhsWorkflowTab === 'distill'" class="stage-panel">
               <div class="stage-header">
                 <div>
                   <span>风格蒸馏</span>
-                  <h3>配置分析策略</h3>
+                  <h3>选择采集批次并蒸馏</h3>
                 </div>
+              </div>
+              <div v-if="selectedBlogger" class="run-list collection-list" aria-label="可蒸馏采集批次">
+                <div class="run-list-header">
+                  <strong>选择采集批次</strong>
+                  <span>{{ bloggerCollectionRuns.length }} 次</span>
+                </div>
+                <button
+                  v-for="run in bloggerCollectionRuns"
+                  :key="run.id"
+                  type="button"
+                  :disabled="run.status !== 'succeeded'"
+                  :class="{ active: selectedCollectionRunId === run.id }"
+                  @click="selectCollectionRun(run.id)"
+                >
+                  <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 已生成 {{ bloggerRuns.filter((item) => item.collection_run_id === run.id).length }} 个蒸馏结果</span>
+                </button>
+                <p v-if="!bloggerCollectionRuns.length" class="empty-region">还没有采集批次，请先完成样本采集。</p>
               </div>
               <label class="checkbox-line">
                 <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
                 <span>启用视频字幕/ASR 分析</span>
               </label>
-              <p class="form-hint">开启后，视频笔记会优先使用字幕流；没有字幕时再尝试腾讯云长音频识别，失败时降级为标题、描述、评论和互动数据分析。</p>
+              <p class="form-hint">蒸馏会基于选中的采集批次执行；同一个采集批次可以生成多次不同蒸馏结果。</p>
               <div class="actions left">
                 <button
                   type="button"
                   class="task-button"
                   :class="{ running: pendingAction === 'distill' }"
                   :style="taskButtonStyle('distill')"
-                  :disabled="!selectedBloggerId || Boolean(pendingAction)"
+                  :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)"
                   @click="handleDistillBlogger"
                 >
-                  <span>{{ pendingAction === 'distill' ? `执行中 ${Math.round(taskProgress.distill)}%` : '开始采集与蒸馏' }}</span>
+                  <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
                 </button>
               </div>
             </section>
@@ -1424,11 +1545,11 @@ onUnmounted(() => {
               <div v-if="selectedBlogger" class="result-browser">
                 <aside class="run-list" aria-label="蒸馏记录">
                   <div class="run-list-header">
-                    <strong>蒸馏记录</strong>
-                    <span>{{ bloggerRuns.length }} 次</span>
+                    <strong>{{ selectedCollectionRun ? `批次 #${selectedCollectionRun.id} 的蒸馏结果` : '蒸馏记录' }}</strong>
+                    <span>{{ selectedCollectionDistillationRuns.length }} 次</span>
                   </div>
                   <button
-                    v-for="run in bloggerRuns"
+                    v-for="run in selectedCollectionDistillationRuns"
                     :key="run.id"
                     type="button"
                     :class="{ active: selectedBloggerRunId === run.id }"
@@ -1437,7 +1558,8 @@ onUnmounted(() => {
                     <strong>{{ formatDate(run.created_at) }}</strong>
                     <span>{{ run.status }} · 样本 {{ run.sample_count }} · 请求 {{ run.tikhub_request_count }} · {{ runCostLabel(run) }}</span>
                   </button>
-                  <p v-if="!bloggerRuns.length" class="empty-region">这个博主还没有蒸馏记录。</p>
+                  <p v-if="!selectedCollectionRun" class="empty-region">请先在“样本采集”里选择一个采集批次。</p>
+                  <p v-else-if="!selectedCollectionDistillationRuns.length" class="empty-region">这个采集批次还没有蒸馏结果。</p>
                 </aside>
 
                 <div class="run-detail">

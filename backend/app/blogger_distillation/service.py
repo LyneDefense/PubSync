@@ -28,7 +28,17 @@ from app.blogger_distillation.tikhub_client import (
     unwrap_payload,
 )
 from app.config import Settings
-from app.models import BloggerDistillationRun, BloggerPost, BloggerProfile, BloggerSkill, OperationTask, OperationTaskEvent, TaskStatus
+from app.models import (
+    BloggerCollectionPost,
+    BloggerCollectionRun,
+    BloggerDistillationRun,
+    BloggerPost,
+    BloggerProfile,
+    BloggerSkill,
+    OperationTask,
+    OperationTaskEvent,
+    TaskStatus,
+)
 from app.services.ai_service import AIServiceError, create_json_response
 
 
@@ -39,6 +49,11 @@ logger = logging.getLogger(__name__)
 class DistillationResult:
     run: BloggerDistillationRun
     skill: BloggerSkill
+
+
+@dataclass
+class CollectionResult:
+    run: BloggerCollectionRun
 
 
 class DistillationCancelled(Exception):
@@ -86,7 +101,7 @@ def ensure_distillation_not_cancelled(db: Session, tenant_id: int, task_id: str)
         return
     db.refresh(task)
     if task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
-        message = "用户已请求停止蒸馏，流程安全退出；已采集样本会保留，未发布新的 Skill"
+        message = "用户已请求停止流程，流程安全退出；已采集样本会保留，未发布新的 Skill"
         record_task_event(db, tenant_id, task_id, "停止蒸馏", "cancelled", message)
         raise DistillationCancelled(message)
 
@@ -128,7 +143,7 @@ def create_blogger(db: Session, tenant_id: int, display_name: str, homepage_url:
     return blogger
 
 
-def run_blogger_distillation(
+def run_blogger_collection(
     db: Session,
     settings: Settings,
     task_id: str,
@@ -136,34 +151,49 @@ def run_blogger_distillation(
     blogger_id: int,
     sample_limit: int = 50,
     comments_per_post: int = 20,
-    asr_enabled: bool | None = None,
-) -> DistillationResult:
+) -> CollectionResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("博主不存在或不属于当前工作空间")
 
-    run = BloggerDistillationRun(tenant_id=tenant_id, blogger_id=blogger.id, task_id=task_id, status="running")
+    run = BloggerCollectionRun(
+        tenant_id=tenant_id,
+        blogger_id=blogger.id,
+        task_id=task_id,
+        status="running",
+        sample_limit=sample_limit,
+        comments_per_post=comments_per_post,
+    )
     db.add(run)
     db.commit()
     db.refresh(run)
-    effective_settings = settings.model_copy(update={"asr_enabled": asr_enabled}) if asr_enabled is not None else settings
+    collection_settings = settings.model_copy(update={"asr_enabled": False})
 
     client: TikHubXhsClient | None = None
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        record_task_event(db, tenant_id, task_id, "博主采集", "running", "开始通过 TikHub 采集小红书公开笔记")
-        client = TikHubXhsClient(effective_settings)
-        user_info = client.get_user_info(blogger.homepage_url)
+        record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始通过 TikHub 采集小红书公开笔记")
+        client = TikHubXhsClient(collection_settings)
+        client.get_user_info(blogger.homepage_url)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         candidates = client.get_user_notes(blogger.homepage_url, sample_limit)
-        record_task_event(db, tenant_id, task_id, "博主采集", "running", f"已获取笔记候选 {len(candidates)} 条")
+        record_task_event(db, tenant_id, task_id, "样本采集", "running", f"已获取笔记候选 {len(candidates)} 条")
 
-        posts = collect_posts(db, tenant_id, task_id, blogger, client, effective_settings, candidates[:sample_limit], comments_per_post)
+        posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates[:sample_limit], comments_per_post)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         if not posts:
-            raise TikHubError("没有采集到可用于蒸馏的小红书笔记，请检查主页链接或 TikHub 接口返回")
+            raise TikHubError("没有采集到可用的小红书笔记，请检查主页链接或 TikHub 接口返回")
         blogger.sample_count = len(posts)
-        db.commit()
+        for position, post in enumerate(posts, 1):
+            db.add(
+                BloggerCollectionPost(
+                    tenant_id=tenant_id,
+                    blogger_id=blogger.id,
+                    collection_run_id=run.id,
+                    post_id=post.id,
+                    position=position,
+                )
+            )
         record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条笔记")
 
         quality = quality_report(posts, sample_limit)
@@ -174,6 +204,14 @@ def run_blogger_distillation(
 
         stats = analysis.analyze_posts(posts)
         stats["quality_report"] = quality
+        run.status = "succeeded"
+        run.post_count = len(posts)
+        run.hot_post_count = len(stats["hot_posts"])
+        run.comment_count = stats["comment_total"]
+        run.summary_json = json.dumps({"stats": stats, "quality_report": quality}, ensure_ascii=False, default=str)
+        apply_usage(run, client.usage)
+        db.commit()
+        db.refresh(run)
         record_task_event(
             db,
             tenant_id,
@@ -181,13 +219,88 @@ def run_blogger_distillation(
             "基础统计",
             "succeeded",
             f"基础统计完成：爆款={len(stats['hot_posts'])}，评论={stats['comment_total']}，标题模式={len(stats['title_patterns'])}",
+            {"collection_run_id": run.id},
         )
+        return CollectionResult(run=run)
+    except DistillationCancelled as exc:
+        run.status = "cancelled"
+        run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
+        db.commit()
+        raise
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
+        db.commit()
+        raise
 
+
+def run_blogger_distillation(
+    db: Session,
+    settings: Settings,
+    task_id: str,
+    tenant_id: int,
+    blogger_id: int,
+    collection_run_id: int,
+    asr_enabled: bool | None = None,
+) -> DistillationResult:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("博主不存在或不属于当前工作空间")
+    collection_run = db.get(BloggerCollectionRun, collection_run_id)
+    if not collection_run or collection_run.tenant_id != tenant_id or collection_run.blogger_id != blogger.id:
+        raise ValueError("采集批次不存在或不属于当前博主")
+    if collection_run.status != "succeeded":
+        raise ValueError("只能基于已完成的采集批次进行蒸馏")
+
+    run = BloggerDistillationRun(
+        tenant_id=tenant_id,
+        blogger_id=blogger.id,
+        collection_run_id=collection_run.id,
+        task_id=task_id,
+        status="running",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    effective_settings = settings.model_copy(update={"asr_enabled": asr_enabled}) if asr_enabled is not None else settings
+
+    try:
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        record_task_event(db, tenant_id, task_id, "采集批次", "succeeded", f"使用采集批次 #{collection_run.id}，样本={collection_run.post_count}")
+        post_ids = list(
+            db.scalars(
+                select(BloggerCollectionPost.post_id)
+                .where(BloggerCollectionPost.collection_run_id == collection_run.id)
+                .order_by(BloggerCollectionPost.position.asc(), BloggerCollectionPost.id.asc())
+            )
+        )
+        posts = list(
+            db.scalars(
+                select(BloggerPost)
+                .where(BloggerPost.id.in_(post_ids), BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger.id)
+                .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
+            )
+        )
+        if not posts:
+            raise ValueError("采集批次没有可用于蒸馏的样本")
         record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        stats = analysis.analyze_posts(posts)
+        try:
+            collection_summary = json.loads(collection_run.summary_json or "{}")
+            if isinstance(collection_summary, dict) and collection_summary.get("quality_report"):
+                stats["quality_report"] = collection_summary["quality_report"]
+        except json.JSONDecodeError:
+            pass
+        user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
         distillation = distill_with_llm(effective_settings, blogger, user_info, stats)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        report_html = artifacts.render_report_html(blogger, stats, distillation, client.usage)
+        usage = TikHubUsage()
+        report_html = artifacts.render_report_html(blogger, stats, distillation, usage)
         skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation)
         archive_active_skills(db, tenant_id, blogger.id)
         skill = BloggerSkill(
@@ -205,7 +318,10 @@ def run_blogger_distillation(
         run.sample_count = len(posts)
         run.hot_post_count = len(stats["hot_posts"])
         run.comment_count = stats["comment_total"]
-        apply_usage(run, client.usage)
+        run.tikhub_request_count = collection_run.tikhub_request_count
+        run.tikhub_estimated_cost_usd = collection_run.tikhub_estimated_cost_usd
+        run.tikhub_cost_min_usd = collection_run.tikhub_cost_min_usd
+        run.tikhub_cost_max_usd = collection_run.tikhub_cost_max_usd
         run.report_json = json.dumps({"stats": stats, "distillation": distillation}, ensure_ascii=False, default=str)
         run.report_html = report_html
         blogger.last_distilled_at = datetime.now(timezone.utc)
@@ -218,22 +334,18 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成：TikHub 请求={client.usage.request_count}，估算费用=${client.usage.estimated_cost_usd:.4f}",
-            {"run_id": run.id, "skill_id": skill.id},
+            f"蒸馏完成：基于采集批次 #{collection_run.id}，生成 Skill={skill.name}",
+            {"collection_run_id": collection_run.id, "run_id": run.id, "skill_id": skill.id},
         )
         return DistillationResult(run=run, skill=skill)
     except DistillationCancelled as exc:
         run.status = "cancelled"
         run.error_message = str(exc)
-        if client:
-            apply_usage(run, client.usage)
         db.commit()
         raise
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)
-        if client:
-            apply_usage(run, client.usage)
         db.commit()
         raise
 

@@ -250,9 +250,13 @@ export interface BloggerProfileCreate {
 }
 
 export interface BloggerDistillRequest {
+  collection_run_id: number
+  asr_enabled?: boolean | null
+}
+
+export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
-  asr_enabled?: boolean | null
 }
 
 export interface BloggerPost {
@@ -287,6 +291,7 @@ export interface BloggerDistillationRun {
   id: number
   tenant_id: number
   blogger_id: number
+  collection_run_id: number | null
   task_id: string | null
   status: string
   sample_count: number
@@ -298,6 +303,27 @@ export interface BloggerDistillationRun {
   tikhub_cost_max_usd: number
   report_json: string
   report_html: string
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BloggerCollectionRun {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  task_id: string | null
+  status: string
+  sample_limit: number
+  comments_per_post: number
+  post_count: number
+  hot_post_count: number
+  comment_count: number
+  tikhub_request_count: number
+  tikhub_estimated_cost_usd: number
+  tikhub_cost_min_usd: number
+  tikhub_cost_max_usd: number
+  summary_json: string
   error_message: string | null
   created_at: string
   updated_at: string

@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.blogger_distillation.service import DistillationCancelled, record_task_event, run_blogger_distillation
+from app.blogger_distillation.service import (
+    DistillationCancelled,
+    record_task_event,
+    run_blogger_collection,
+    run_blogger_distillation,
+)
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
 from app.harness import PubSyncHarness
@@ -31,6 +36,7 @@ TASK_MESSAGES = {
     "news_fetch": "已加入后台抓取任务",
     "article_generation": "已加入后台生成任务",
     "daily_publish": "已加入定时发布任务",
+    "blogger_collection": "已加入博主样本采集任务",
     "blogger_distillation": "已加入博主蒸馏任务",
 }
 
@@ -97,11 +103,52 @@ def run_article_generation_task(task_id: str) -> None:
         db.close()
 
 
-def run_blogger_distillation_task(
+def run_blogger_collection_task(
     task_id: str,
     blogger_id: int,
     sample_limit: int = 50,
     comments_per_post: int = 20,
+) -> None:
+    db = SessionLocal()
+    try:
+        logger.info("任务开始：任务ID=%s，类型=博主样本采集，博主ID=%s", task_id, blogger_id)
+        task = get_task(db, task_id)
+        if not task:
+            return
+
+        if task.status == TaskStatus.cancel_requested:
+            mark_task_cancelled(db, task, "博主样本采集已停止")
+            return
+        mark_task_running(db, task, "正在采集小红书样本")
+        result = run_blogger_collection(
+            db=db,
+            settings=get_settings(),
+            task_id=task_id,
+            tenant_id=task.tenant_id,
+            blogger_id=blogger_id,
+            sample_limit=sample_limit,
+            comments_per_post=comments_per_post,
+        )
+        mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
+        logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)
+    except DistillationCancelled as exc:
+        logger.info("任务停止：任务ID=%s，类型=博主样本采集，原因=%s", task_id, exc)
+        mark_task_cancelled_by_id(db, task_id, "博主样本采集已停止", str(exc))
+    except (ValueError, TikHubError) as exc:
+        logger.warning("任务失败：任务ID=%s，类型=博主样本采集，错误=%s", task_id, exc)
+        mark_task_failed_by_id(db, task_id, "博主样本采集失败", str(exc))
+    except Exception as exc:
+        logger.exception("任务异常：任务ID=%s，类型=博主样本采集", task_id)
+        mark_task_failed_by_id(db, task_id, "博主样本采集失败", f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        db.close()
+
+
+def run_blogger_distillation_task(
+    task_id: str,
+    blogger_id: int,
+    collection_run_id: int,
     asr_enabled: bool | None = None,
 ) -> None:
     db = SessionLocal()
@@ -114,15 +161,14 @@ def run_blogger_distillation_task(
         if task.status == TaskStatus.cancel_requested:
             mark_task_cancelled(db, task, "博主蒸馏已停止")
             return
-        mark_task_running(db, task, "正在采集小红书图文内容并蒸馏 Skill")
+        mark_task_running(db, task, "正在基于已采集样本蒸馏 Skill")
         result = run_blogger_distillation(
             db=db,
             settings=get_settings(),
             task_id=task_id,
             tenant_id=task.tenant_id,
             blogger_id=blogger_id,
-            sample_limit=sample_limit,
-            comments_per_post=comments_per_post,
+            collection_run_id=collection_run_id,
             asr_enabled=asr_enabled,
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，生成 Skill：{result.skill.name}")

@@ -442,8 +442,47 @@ def ensure_runtime_schema() -> None:
         "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS transcript_text TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS asr_status VARCHAR(30) NOT NULL DEFAULT 'not_required'",
         "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS asr_error TEXT NOT NULL DEFAULT ''",
+        """
+        CREATE TABLE IF NOT EXISTS blogger_collection_runs (
+            id SERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
+            task_id VARCHAR REFERENCES operation_tasks(id),
+            status VARCHAR(30) NOT NULL DEFAULT 'running',
+            sample_limit INTEGER NOT NULL DEFAULT 50,
+            comments_per_post INTEGER NOT NULL DEFAULT 20,
+            post_count INTEGER NOT NULL DEFAULT 0,
+            hot_post_count INTEGER NOT NULL DEFAULT 0,
+            comment_count INTEGER NOT NULL DEFAULT 0,
+            tikhub_request_count INTEGER NOT NULL DEFAULT 0,
+            tikhub_estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+            tikhub_cost_min_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+            tikhub_cost_max_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            error_message TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS blogger_collection_posts (
+            id SERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
+            collection_run_id INTEGER NOT NULL REFERENCES blogger_collection_runs(id),
+            post_id INTEGER NOT NULL REFERENCES blogger_posts(id),
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            CONSTRAINT uq_blogger_collection_posts UNIQUE (collection_run_id, post_id)
+        )
+        """,
+        "ALTER TABLE blogger_distillation_runs ADD COLUMN IF NOT EXISTS collection_run_id INTEGER REFERENCES blogger_collection_runs(id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_posts_tenant_id ON blogger_posts(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_posts_blogger_id ON blogger_posts(blogger_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_runs_tenant_id ON blogger_collection_runs(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_runs_blogger_id ON blogger_collection_runs(blogger_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_posts_collection_run_id ON blogger_collection_posts(collection_run_id)",
+        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_posts_post_id ON blogger_collection_posts(post_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_tenant_id ON blogger_distillation_runs(tenant_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_blogger_id ON blogger_distillation_runs(blogger_id)",
         "CREATE INDEX IF NOT EXISTS ix_blogger_skills_tenant_id ON blogger_skills(tenant_id)",

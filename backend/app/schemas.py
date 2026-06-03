@@ -339,9 +339,13 @@ class BloggerProfileRead(BaseModel):
 
 
 class BloggerDistillRequest(BaseModel):
+    collection_run_id: int
+    asr_enabled: bool | None = None
+
+
+class BloggerCollectRequest(BaseModel):
     sample_limit: int = Field(default=50, ge=5, le=200)
     comments_per_post: int = Field(default=20, ge=0, le=100)
-    asr_enabled: bool | None = None
 
 
 class BloggerPostRead(BaseModel):
@@ -373,10 +377,34 @@ class BloggerPostRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BloggerCollectionRunRead(BaseModel):
+    id: int
+    tenant_id: int
+    blogger_id: int
+    task_id: str | None
+    status: str
+    sample_limit: int
+    comments_per_post: int
+    post_count: int
+    hot_post_count: int
+    comment_count: int
+    tikhub_request_count: int
+    tikhub_estimated_cost_usd: float
+    tikhub_cost_min_usd: float
+    tikhub_cost_max_usd: float
+    summary_json: str
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BloggerDistillationRunRead(BaseModel):
     id: int
     tenant_id: int
     blogger_id: int
+    collection_run_id: int | None
     task_id: str | None
     status: str
     sample_count: int

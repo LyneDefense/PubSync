@@ -3,6 +3,8 @@ import type {
   AdminUserCreate,
   Article,
   ArticleUpdate,
+  BloggerCollectRequest,
+  BloggerCollectionRun,
   BloggerDistillationRun,
   BloggerDistillRequest,
   BloggerPost,
@@ -177,6 +179,21 @@ export function createBlogger(payload: BloggerProfileCreate) {
 
 export function listBloggerPosts(id: number) {
   return request<BloggerPost[]>(`/bloggers/${id}/posts`)
+}
+
+export function collectBlogger(id: number, payload: BloggerCollectRequest) {
+  return request<OperationTask>(`/bloggers/${id}/collect`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function listBloggerCollectionRuns(id: number) {
+  return request<BloggerCollectionRun[]>(`/bloggers/${id}/collection-runs`)
+}
+
+export function listBloggerCollectionPosts(id: number, collectionRunId: number) {
+  return request<BloggerPost[]>(`/bloggers/${id}/collection-runs/${collectionRunId}/posts`)
 }
 
 export function distillBlogger(id: number, payload: BloggerDistillRequest) {

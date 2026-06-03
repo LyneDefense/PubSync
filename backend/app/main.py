@@ -16,6 +16,8 @@ from app.database import create_db_and_tables, get_db
 from app.models import (
     AppSetting,
     Article,
+    BloggerCollectionPost,
+    BloggerCollectionRun,
     BloggerDistillationRun,
     BloggerPost,
     BloggerProfile,
@@ -35,6 +37,8 @@ from app.schemas import (
     AdminUserRead,
     ArticleRead,
     ArticleUpdate,
+    BloggerCollectRequest,
+    BloggerCollectionRunRead,
     BloggerDistillRequest,
     BloggerDistillationRunRead,
     BloggerPostRead,
@@ -70,6 +74,7 @@ from app.services.news_service import list_news
 from app.services.task_service import (
     create_operation_task,
     request_task_cancel,
+    run_blogger_collection_task,
     run_blogger_distillation_task,
     run_article_generation_task,
     run_news_fetch_task,
@@ -457,6 +462,70 @@ def list_blogger_posts_endpoint(
     )
 
 
+@app.post("/bloggers/{blogger_id}/collect", response_model=OperationTaskRead)
+def collect_blogger_endpoint(
+    blogger_id: int,
+    payload: BloggerCollectRequest,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    task = create_operation_task(db, "blogger_collection", tenant_id=tenant.id)
+    background_tasks.add_task(
+        run_blogger_collection_task,
+        task.id,
+        blogger.id,
+        payload.sample_limit,
+        payload.comments_per_post,
+    )
+    return task
+
+
+@app.get("/bloggers/{blogger_id}/collection-runs", response_model=list[BloggerCollectionRunRead])
+def list_blogger_collection_runs_endpoint(
+    blogger_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerCollectionRun]:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    return list(
+        db.scalars(
+            select(BloggerCollectionRun)
+            .where(BloggerCollectionRun.tenant_id == tenant.id, BloggerCollectionRun.blogger_id == blogger_id)
+            .order_by(BloggerCollectionRun.created_at.desc())
+        )
+    )
+
+
+@app.get("/bloggers/{blogger_id}/collection-runs/{collection_run_id}/posts", response_model=list[BloggerPostRead])
+def list_blogger_collection_posts_endpoint(
+    blogger_id: int,
+    collection_run_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[BloggerPost]:
+    collection_run = db.get(BloggerCollectionRun, collection_run_id)
+    if not collection_run or collection_run.tenant_id != tenant.id or collection_run.blogger_id != blogger_id:
+        raise HTTPException(status_code=404, detail="Collection run not found")
+    return list(
+        db.scalars(
+            select(BloggerPost)
+            .join(BloggerCollectionPost, BloggerCollectionPost.post_id == BloggerPost.id)
+            .where(
+                BloggerCollectionPost.collection_run_id == collection_run_id,
+                BloggerCollectionPost.tenant_id == tenant.id,
+                BloggerCollectionPost.blogger_id == blogger_id,
+            )
+            .order_by(BloggerCollectionPost.position.asc(), BloggerCollectionPost.id.asc())
+        )
+    )
+
+
 @app.post("/bloggers/{blogger_id}/distill", response_model=OperationTaskRead)
 def distill_blogger_endpoint(
     blogger_id: int,
@@ -468,13 +537,17 @@ def distill_blogger_endpoint(
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
+    collection_run = db.get(BloggerCollectionRun, payload.collection_run_id)
+    if not collection_run or collection_run.tenant_id != tenant.id or collection_run.blogger_id != blogger.id:
+        raise HTTPException(status_code=404, detail="Collection run not found")
+    if collection_run.status != "succeeded":
+        raise HTTPException(status_code=400, detail="只能基于已完成的采集批次进行蒸馏")
     task = create_operation_task(db, "blogger_distillation", tenant_id=tenant.id)
     background_tasks.add_task(
         run_blogger_distillation_task,
         task.id,
         blogger.id,
-        payload.sample_limit,
-        payload.comments_per_post,
+        payload.collection_run_id,
         payload.asr_enabled,
     )
     return task

@@ -352,12 +352,58 @@ class BloggerPost(Base):
     tenant: Mapped[Tenant] = relationship()
 
 
+class BloggerCollectionRun(Base):
+    __tablename__ = "blogger_collection_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("operation_tasks.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
+    sample_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    comments_per_post: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    post_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hot_post_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tikhub_request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tikhub_estimated_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    tikhub_cost_min_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    tikhub_cost_max_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    blogger: Mapped[BloggerProfile] = relationship()
+    task: Mapped[OperationTask | None] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerCollectionPost(Base):
+    __tablename__ = "blogger_collection_posts"
+    __table_args__ = (UniqueConstraint("collection_run_id", "post_id", name="uq_blogger_collection_posts"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    collection_run_id: Mapped[int] = mapped_column(ForeignKey("blogger_collection_runs.id"), nullable=False, index=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("blogger_posts.id"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    collection_run: Mapped[BloggerCollectionRun] = relationship()
+    post: Mapped[BloggerPost] = relationship()
+    blogger: Mapped[BloggerProfile] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
 class BloggerDistillationRun(Base):
     __tablename__ = "blogger_distillation_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    collection_run_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_collection_runs.id"), nullable=True, index=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("operation_tasks.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -374,6 +420,7 @@ class BloggerDistillationRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     blogger: Mapped[BloggerProfile] = relationship()
+    collection_run: Mapped[BloggerCollectionRun | None] = relationship()
     task: Mapped[OperationTask | None] = relationship()
     tenant: Mapped[Tenant] = relationship()
 
