@@ -1619,7 +1619,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav">
+      <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav xhs-module-subnav">
         <div class="tabs" role="tablist" aria-label="小红书模块">
           <button
             type="button"
