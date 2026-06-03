@@ -1277,7 +1277,7 @@ onUnmounted(() => {
         </div>
 
         <div class="xhs-workbench">
-          <aside class="xhs-rail" aria-label="小红书创作流程">
+          <div class="xhs-flow-map" aria-label="小红书创作流程">
             <button
               type="button"
               :class="{ active: activeXhsWorkflowTab === 'bloggers' }"
@@ -1287,6 +1287,7 @@ onUnmounted(() => {
               <strong>博主档案</strong>
               <small>{{ bloggers.length }} 个博主</small>
             </button>
+            <span aria-hidden="true">→</span>
             <button
               type="button"
               :class="{ active: activeXhsWorkflowTab === 'collect' }"
@@ -1296,6 +1297,7 @@ onUnmounted(() => {
               <strong>样本采集</strong>
               <small>笔记与评论数量</small>
             </button>
+            <span aria-hidden="true">→</span>
             <button
               type="button"
               :class="{ active: activeXhsWorkflowTab === 'distill' }"
@@ -1305,6 +1307,7 @@ onUnmounted(() => {
               <strong>风格蒸馏</strong>
               <small>ASR 与分析策略</small>
             </button>
+            <span aria-hidden="true">→</span>
             <button
               type="button"
               :class="{ active: activeXhsWorkflowTab === 'assets' }"
@@ -1314,7 +1317,7 @@ onUnmounted(() => {
               <strong>结果资产</strong>
               <small>{{ selectedBlogger ? `${selectedBloggerRunCount} 次记录` : '报告与 Skill' }}</small>
             </button>
-          </aside>
+          </div>
 
           <div class="xhs-stage">
             <section v-if="activeXhsWorkflowTab === 'bloggers'" class="stage-panel">
@@ -1358,6 +1361,30 @@ onUnmounted(() => {
                 </label>
               </div>
               <p class="form-hint">采集会读取公开笔记、互动数据和评论样本。评论数是每条笔记最多采集多少条评论，不代表平台真实评论总数。</p>
+              <div v-if="selectedBlogger" class="stage-result-grid">
+                <article class="stage-metric">
+                  <span>当前博主</span>
+                  <strong>{{ selectedBlogger.display_name }}</strong>
+                </article>
+                <article class="stage-metric">
+                  <span>已采集样本</span>
+                  <strong>{{ selectedBlogger.sample_count }}</strong>
+                </article>
+              </div>
+              <article v-if="selectedBlogger" class="distill-card">
+                <h3>爆款样本</h3>
+                <div v-if="bloggerPosts.length" class="sample-list">
+                  <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
+                    <strong>{{ post.title }}</strong>
+                    <span>
+                      {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
+                      <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
+                    </span>
+                  </div>
+                </div>
+                <p v-else class="empty-region">选择博主并完成采集后，这里会显示样本。</p>
+              </article>
+              <p v-else class="empty-region">请先在“博主档案”里选择一个博主，再查看样本采集结果。</p>
             </section>
 
             <section v-if="activeXhsWorkflowTab === 'distill'" class="stage-panel">
@@ -1431,36 +1458,22 @@ onUnmounted(() => {
 
                   <div v-if="selectedBloggerRun" class="distill-grid compact-result">
                     <article class="distill-card">
-                      <h3>爆款样本</h3>
-                      <div v-if="bloggerPosts.length" class="sample-list">
-                        <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
-                          <strong>{{ post.title }}</strong>
-                          <span>
-                            {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
-                            <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
-                          </span>
-                        </div>
-                      </div>
-                      <p v-else class="empty-region">这次蒸馏还没有可展示样本。</p>
-                    </article>
-
-                    <article class="distill-card">
                       <h3>蒸馏报告</h3>
                       <div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
                       <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
                     </article>
-                  </div>
 
-                  <article v-if="selectedBloggerRun" class="distill-card">
-                    <h3>Skill 输出</h3>
-                    <textarea
-                      v-if="selectedBloggerSkill"
-                      :value="selectedBloggerSkill.skill_markdown"
-                      readonly
-                      rows="18"
-                    ></textarea>
-                    <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
-                  </article>
+                    <article class="distill-card">
+                      <h3>Skill 输出</h3>
+                      <textarea
+                        v-if="selectedBloggerSkill"
+                        :value="selectedBloggerSkill.skill_markdown"
+                        readonly
+                        rows="18"
+                      ></textarea>
+                      <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
+                    </article>
+                  </div>
 
                   <p v-if="!selectedBloggerRun" class="empty-region result-placeholder">请选择左侧的一次蒸馏记录查看报告和 Skill。</p>
                 </div>
