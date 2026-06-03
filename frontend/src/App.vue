@@ -1994,34 +1994,11 @@ onUnmounted(() => {
           </button>
           <div class="creator-main">
             <div class="creator-step-header">
-              <span>{{ String(xhsCreationStep).padStart(2, '0') }}</span>
-              <h3>{{ xhsCreationStep }}. {{ xhsCreationStepTitle }}</h3>
-            </div>
-            <div class="creation-step-strip compact" aria-label="小红书 AI 创作流程">
-              <button type="button" :class="{ active: xhsCreationStep === 1, done: Boolean(xhsCreatorBloggerId) }" @click="xhsCreationStep = 1">
-            <span>01</span>
-                <strong>博主</strong>
-              </button>
-              <button type="button" :class="{ active: xhsCreationStep === 2, done: Boolean(selectedXhsSkill) }" @click="xhsCreationStep = 2">
-            <span>02</span>
-                <strong>Skill</strong>
-              </button>
-              <button type="button" :class="{ active: xhsCreationStep === 3, done: Boolean(selectedXhsTopicIdea) }" @click="xhsCreationStep = 3">
-            <span>03</span>
-                <strong>选题</strong>
-              </button>
-              <button type="button" :class="{ active: xhsCreationStep === 4, done: Boolean(selectedXhsPackage) }" @click="xhsCreationStep = 4">
-            <span>04</span>
-                <strong>正文</strong>
-              </button>
-              <button type="button" :class="{ active: xhsCreationStep === 5, done: Boolean(selectedXhsPackage) }" @click="xhsCreationStep = 5">
-            <span>05</span>
-                <strong>素材</strong>
-              </button>
-              <button type="button" :class="{ active: xhsCreationStep === 6, done: Boolean(selectedXhsPackage) }" @click="xhsCreationStep = 6">
-                <span>06</span>
-                <strong>发布包</strong>
-              </button>
+              <h3>{{ xhsCreationStepTitle }}</h3>
+              <span>步骤 {{ xhsCreationStep }} / 6</span>
+              <div class="creator-progress" aria-hidden="true">
+                <i :style="{ width: `${(xhsCreationStep / 6) * 100}%` }"></i>
+              </div>
             </div>
 
             <section v-if="xhsCreationStep === 1" class="creation-stage-card active">
