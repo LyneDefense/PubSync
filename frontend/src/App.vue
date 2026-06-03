@@ -128,6 +128,7 @@ const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
 const showBloggerModal = ref(false)
+const showUserMenu = ref(false)
 const previewImage = ref<{ url: string; caption: string } | null>(null)
 const newsPage = ref(1)
 const pageSize = 5
@@ -250,6 +251,16 @@ const publicationName = computed(() => profile.value?.publication_name || worksp
 const isAdmin = computed(() => Boolean(currentUser.value?.is_admin))
 const currentTenantName = computed(() => tenants.value.find((tenant) => String(tenant.id) === selectedTenantId.value)?.name || publicationName.value)
 const canSwitchTenant = computed(() => isAdmin.value && tenants.value.length > 1)
+const currentUsername = computed(() => currentUser.value?.username || '当前用户')
+const activePlatformLabel = computed(() => {
+  const labels: Record<MainTab, string> = {
+    wechat: '公众号',
+    xhs: '小红书',
+    douyin: '抖音',
+    admin: '后台管理'
+  }
+  return labels[activeMainTab.value] || '工作台'
+})
 const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -529,6 +540,7 @@ function closeImagePreview() {
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     closeImagePreview()
+    showUserMenu.value = false
   }
 }
 
@@ -812,10 +824,15 @@ function handleLogout() {
   profile.value = null
   contentGroups.value = []
   contentGroupForms.value = []
+  showUserMenu.value = false
   taskEvents.value = []
   taskEventsAction.value = null
   setArticle(null)
   showMessage('')
+}
+
+function toggleUserMenu() {
+  showUserMenu.value = !showUserMenu.value
 }
 
 async function handleTenantChange() {
@@ -1408,11 +1425,16 @@ onUnmounted(() => {
       <div class="brand-block">
         <div class="brand-mark" aria-hidden="true">PS</div>
         <div>
-          <p class="brand-context">内容自动化工作台</p>
-          <h1>{{ workspaceTitle }}</h1>
+          <p class="brand-context">PubSync 工作台</p>
+          <h1>多平台内容自动化</h1>
+          <p class="brand-subtitle">采集、蒸馏、创作与发布管理</p>
         </div>
       </div>
       <div class="topbar-controls">
+        <div class="platform-context">
+          <span>当前模块</span>
+          <strong>{{ activePlatformLabel }}</strong>
+        </div>
         <label v-if="canSwitchTenant" class="tenant-switcher">
           工作空间
           <select v-model="selectedTenantId" @change="handleTenantChange">
@@ -1425,7 +1447,21 @@ onUnmounted(() => {
           <span>工作空间</span>
           <strong>{{ currentTenantName }}</strong>
         </div>
-        <button type="button" @click="handleLogout">退出登录</button>
+        <div class="user-menu" @mouseleave="showUserMenu = false">
+          <button
+            type="button"
+            class="user-menu-trigger"
+            :aria-expanded="showUserMenu"
+            aria-haspopup="menu"
+            @click="toggleUserMenu"
+          >
+            <span>当前用户</span>
+            <strong>{{ currentUsername }}</strong>
+          </button>
+          <div v-if="showUserMenu" class="user-menu-popover" role="menu">
+            <button type="button" role="menuitem" @click="handleLogout">退出登录</button>
+          </div>
+        </div>
       </div>
     </header>
 
