@@ -2224,7 +2224,6 @@ onUnmounted(() => {
                   <span>01 选择博主</span>
                   <h3>选择要借鉴风格的博主</h3>
                 </div>
-                <button type="button" class="primary" @click="showBloggerModal = true">创建博主</button>
               </div>
               <div v-if="bloggers.length" class="blogger-list compact">
                 <button
@@ -2238,7 +2237,7 @@ onUnmounted(() => {
                   <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
                 </button>
               </div>
-              <p v-else class="empty-region">还没有博主档案。点击“创建博主”添加小红书主页。</p>
+              <p v-else class="empty-region">还没有可用于创作的博主。请先到“博主蒸馏 / 数据采集”创建博主并完成采集。</p>
             </section>
 
             <section v-if="xhsCreationStep === 2" class="creation-stage-card active">
