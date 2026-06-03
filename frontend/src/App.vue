@@ -261,6 +261,9 @@ function runCostLabel(run: BloggerDistillationRun) {
 function collectionCostLabel(run: BloggerCollectionRun) {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
 }
+function collectionDistillationCount(collectionRunId: number) {
+  return bloggerRuns.value.filter((run) => run.collection_run_id === collectionRunId).length
+}
 function bloggerCommentLabel(post: BloggerPost) {
   if (post.comment_count > 0) {
     return `评论 ${post.comment_count}`
@@ -313,7 +316,7 @@ const taskSummaryStep = computed(() => {
 })
 const taskSummaryMessage = computed(() => {
   if (latestTaskEvent.value) {
-    return latestTaskEvent.value.message
+    return compactTaskMessage(latestTaskEvent.value)
   }
   return '等待任务事件同步'
 })
@@ -348,6 +351,24 @@ const layoutPreviewSectionStyle = computed(() => ({
 function showMessage(text: string, error = false) {
   message.value = text
   isError.value = error
+}
+
+function compactTaskMessage(event: OperationTaskEvent) {
+  const payload = parseEventPayload(event)
+  const progress = payload?.current && payload?.total ? `${payload.current}/${payload.total}` : ''
+  const message = progress ? `${event.message} ${progress}` : event.message
+  return message.length > 42 ? `${message.slice(0, 42)}...` : message
+}
+
+function parseEventPayload(event: OperationTaskEvent) {
+  if (!event.payload_json) {
+    return null
+  }
+  try {
+    return JSON.parse(event.payload_json) as Record<string, unknown>
+  } catch {
+    return null
+  }
 }
 
 async function runAction(name: string, label: string, action: () => Promise<void>) {
@@ -402,19 +423,18 @@ function taskActionTab(name: TaskActionName): MainTab {
 }
 
 function eventPayloadSummary(event: OperationTaskEvent) {
-  if (!event.payload_json) {
+  const payload = parseEventPayload(event)
+  if (!payload) {
     return ''
   }
-  try {
-    const payload = JSON.parse(event.payload_json) as Record<string, unknown>
-    const entries = Object.entries(payload)
-      .filter(([, value]) => value !== null && value !== '' && value !== undefined)
-      .slice(0, 6)
-      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
-    return entries.join(' · ')
-  } catch {
-    return event.payload_json
+  if (payload.current && payload.total) {
+    return `${payload.current}/${payload.total}`
   }
+  const entries = Object.entries(payload)
+    .filter(([, value]) => value !== null && value !== '' && value !== undefined)
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+  return entries.join(' · ')
 }
 
 async function runTaskAction(
@@ -770,6 +790,12 @@ async function selectBlogger(id: number) {
 }
 
 async function selectCollectionRun(id: number) {
+  if (selectedCollectionRunId.value === id) {
+    selectedCollectionRunId.value = null
+    selectedBloggerRunId.value = null
+    bloggerPosts.value = []
+    return
+  }
   selectedCollectionRunId.value = id
   selectedBloggerRunId.value = null
   if (selectedBloggerId.value) {
@@ -1117,7 +1143,7 @@ onUnmounted(() => {
         <ol v-if="showTaskEventDetails">
           <li v-for="event in visibleTaskEvents" :key="event.id" :class="`event-${event.status}`">
             <span>{{ event.step_name }}</span>
-            <strong>{{ event.message }}</strong>
+            <strong>{{ compactTaskMessage(event) }}</strong>
             <small v-if="eventPayloadSummary(event)">{{ eventPayloadSummary(event) }}</small>
             <time>{{ formatDate(event.created_at) }}</time>
           </li>
@@ -1466,7 +1492,7 @@ onUnmounted(() => {
                   @click="selectCollectionRun(run.id)"
                 >
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · {{ collectionCostLabel(run) }}</span>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 蒸馏结果 {{ collectionDistillationCount(run.id) }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · {{ collectionCostLabel(run) }}</span>
                 </button>
                 <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
               </div>
@@ -1481,7 +1507,16 @@ onUnmounted(() => {
                 </article>
               </div>
               <article v-if="selectedBlogger && selectedCollectionRun" class="distill-card">
-                <h3>爆款样本</h3>
+                <div class="inline-card-header">
+                  <h3>爆款样本</h3>
+                  <button
+                    v-if="collectionDistillationCount(selectedCollectionRun.id)"
+                    type="button"
+                    @click="activeXhsWorkflowTab = 'assets'"
+                  >
+                    查看对应结果
+                  </button>
+                </div>
                 <div v-if="bloggerPosts.length" class="sample-list">
                   <div v-for="post in bloggerPosts.slice(0, 5)" :key="post.id">
                     <strong>{{ post.title }}</strong>
@@ -1518,7 +1553,7 @@ onUnmounted(() => {
                   @click="selectCollectionRun(run.id)"
                 >
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · 已生成 {{ bloggerRuns.filter((item) => item.collection_run_id === run.id).length }} 个蒸馏结果</span>
+                  <span>{{ run.status }} · 样本 {{ run.post_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }} · 已生成 {{ collectionDistillationCount(run.id) }} 个蒸馏结果</span>
                 </button>
                 <p v-if="!bloggerCollectionRuns.length" class="empty-region">还没有采集批次，请先完成样本采集。</p>
               </div>
@@ -1559,7 +1594,7 @@ onUnmounted(() => {
                     @click="selectBloggerRun(run.id)"
                   >
                     <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>{{ run.status }} · 样本 {{ run.sample_count }} · 请求 {{ run.tikhub_request_count }} · {{ runCostLabel(run) }}</span>
+                    <span>来源批次 #{{ run.collection_run_id || '旧数据' }} · {{ run.status }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
                   </button>
                   <p v-if="!selectedCollectionRun" class="empty-region">请先在“样本采集”里选择一个采集批次。</p>
                   <p v-else-if="!selectedCollectionDistillationRuns.length" class="empty-region">这个采集批次还没有蒸馏结果。</p>

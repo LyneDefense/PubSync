@@ -333,7 +333,7 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成：基于采集批次 #{collection_run.id}，生成 Skill={skill.name}",
+            f"蒸馏完成：批次 #{collection_run.id}",
             {"collection_run_id": collection_run.id, "run_id": run.id, "skill_id": skill.id},
         )
         return DistillationResult(run=run, skill=skill)
@@ -380,7 +380,8 @@ def collect_posts(
             task_id,
             "笔记详情",
             "running",
-            f"采集第 {index}/{total} 条：类型={candidate.note_type}，note_id={candidate.external_id}",
+            f"采集 {index}/{total}",
+            {"current": index, "total": total, "type": candidate.note_type, "note_id": candidate.external_id},
         )
         try:
             detail_payload = client.get_image_note_detail(candidate)
@@ -421,8 +422,8 @@ def collect_posts(
             task_id,
             "样本入库",
             "succeeded",
-            f"已保存样本：类型={normalized['content_type']}，标题={normalized['title'][:40]}，ASR={normalized['asr_status']}",
-            {"post_id": post.id, "note_id": candidate.external_id},
+            f"已保存样本 {index}/{total}",
+            {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"]},
         )
     db.commit()
     return posts

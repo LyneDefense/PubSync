@@ -466,17 +466,16 @@ p {
 .task-summary,
 .task-events li {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
+  grid-template-columns: 8px minmax(88px, auto) minmax(0, 1fr) auto auto;
   gap: var(--space-xs);
   align-items: center;
   border: var(--rule-hair);
   border-radius: var(--radius-sm);
   background: var(--color-paper-2);
-  padding: var(--space-xs) var(--space-sm);
+  padding: 10px var(--space-sm);
 }
 
 .task-summary {
-  grid-template-columns: 120px minmax(0, 1fr) auto;
   margin-bottom: var(--space-xs);
 }
 
@@ -493,7 +492,7 @@ p {
 
 .task-summary > span,
 .task-events li > span {
-  margin-left: var(--space-sm);
+  margin-left: 0;
 }
 
 .task-summary.event-running::before,
@@ -525,21 +524,26 @@ p {
 
 .task-summary strong,
 .task-events strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   overflow-wrap: anywhere;
 }
 
 .task-summary small,
 .task-events small {
-  grid-column: 2 / 3;
+  grid-column: 4;
   color: var(--color-ink-3);
   font-size: var(--text-xs);
   line-height: 1.5;
+  white-space: nowrap;
   overflow-wrap: anywhere;
 }
 
 .task-summary time,
 .task-events time {
-  grid-column: 3;
+  grid-column: 5;
   grid-row: 1;
   color: var(--color-ink-3);
   font-size: var(--text-xs);
@@ -547,7 +551,7 @@ p {
 }
 
 .task-summary .live-tail {
-  grid-column: 2 / 4;
+  grid-column: 3 / 6;
 }
 
 .live-tail {
@@ -847,6 +851,19 @@ p {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-lg);
+}
+
+.inline-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.inline-card-header button {
+  min-height: 34px;
+  padding: 0 var(--space-xs);
+  font-size: var(--text-sm);
 }
 
 .checkbox-line {
