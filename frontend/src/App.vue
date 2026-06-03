@@ -82,6 +82,7 @@ const currentUser = ref<CurrentUser | null>(null)
 const selectedBloggerId = ref<number | null>(null)
 const selectedCollectionRunId = ref<number | null>(null)
 const selectedBloggerRunId = ref<number | null>(null)
+const resultCollectionFilterId = ref<number | null>(null)
 const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
@@ -242,12 +243,14 @@ const pagedNews = computed(() => {
 })
 const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
 const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((run) => run.id === selectedCollectionRunId.value) || null)
+const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
 const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
 const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
-const selectedCollectionDistillationRuns = computed(() =>
-  selectedCollectionRunId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === selectedCollectionRunId.value) : []
+const visibleBloggerRuns = computed(() =>
+  resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
 )
+const visibleBloggerRunCount = computed(() => visibleBloggerRuns.value.length)
 const selectedRunCostLabel = computed(() => {
   const run = selectedBloggerRun.value
   if (!run) {
@@ -263,6 +266,16 @@ function collectionCostLabel(run: BloggerCollectionRun) {
 }
 function collectionDistillationCount(collectionRunId: number) {
   return bloggerRuns.value.filter((run) => run.collection_run_id === collectionRunId).length
+}
+function distillationStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    running: '进行中',
+    succeeded: '已完成',
+    failed: '失败',
+    cancelled: '已停止',
+    cancel_requested: '停止中'
+  }
+  return labels[status] || status
 }
 function bloggerCommentLabel(post: BloggerPost) {
   if (post.comment_count > 0) {
@@ -537,6 +550,7 @@ async function loadAll() {
     selectedBloggerId.value = null
     selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
+    resultCollectionFilterId.value = null
   }
   await refreshSelectedBlogger()
   if (isAdmin.value) {
@@ -619,6 +633,7 @@ function handleLogout() {
   selectedBloggerId.value = null
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
+  resultCollectionFilterId.value = null
   currentUser.value = null
   adminUsers.value = []
   tenants.value = []
@@ -659,6 +674,7 @@ async function refreshBloggers() {
     selectedBloggerId.value = null
     selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
+    resultCollectionFilterId.value = null
   }
   await refreshSelectedBlogger()
 }
@@ -670,6 +686,7 @@ async function refreshSelectedBlogger() {
     bloggerRuns.value = []
     selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
+    resultCollectionFilterId.value = null
     return
   }
   const [collections, runs, skills] = await Promise.all([
@@ -683,6 +700,9 @@ async function refreshSelectedBlogger() {
   if (selectedCollectionRunId.value && !collections.some((run) => run.id === selectedCollectionRunId.value)) {
     selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
+  }
+  if (resultCollectionFilterId.value && !collections.some((run) => run.id === resultCollectionFilterId.value)) {
+    resultCollectionFilterId.value = null
   }
   if (selectedCollectionRunId.value) {
     bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, selectedCollectionRunId.value)
@@ -704,6 +724,7 @@ async function handleCreateBlogger() {
     })
     selectedBloggerId.value = blogger.id
     selectedBloggerRunId.value = null
+    resultCollectionFilterId.value = null
     activeXhsWorkflowTab.value = 'assets'
     bloggerForm.display_name = ''
     bloggerForm.homepage_url = ''
@@ -753,7 +774,7 @@ async function handleDistillBlogger() {
       }),
     async () => {
       await refreshSelectedBlogger()
-      selectLatestRunForCollection()
+      showCollectionResults(selectedCollectionRunId.value)
       activeXhsWorkflowTab.value = 'assets'
     },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看报告和 Skill'
@@ -787,6 +808,7 @@ async function selectBlogger(id: number) {
   selectedBloggerId.value = id
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
+  resultCollectionFilterId.value = null
   activeXhsWorkflowTab.value = 'collect'
   await refreshSelectedBlogger()
 }
@@ -810,13 +832,27 @@ function selectBloggerRun(id: number) {
   selectedBloggerRunId.value = id
 }
 
-function selectLatestRunForCollection() {
-  if (!selectedCollectionRunId.value) {
+function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.value) {
+  if (!collectionRunId) {
     selectedBloggerRunId.value = null
     return
   }
-  const latestRun = bloggerRuns.value.find((run) => run.collection_run_id === selectedCollectionRunId.value)
+  const latestRun = bloggerRuns.value.find((run) => run.collection_run_id === collectionRunId)
   selectedBloggerRunId.value = latestRun?.id || null
+}
+
+function showCollectionResults(collectionRunId: number | null) {
+  resultCollectionFilterId.value = collectionRunId
+  activeXhsWorkflowTab.value = 'assets'
+  if (collectionRunId) {
+    selectLatestRunForCollection(collectionRunId)
+  } else {
+    selectedBloggerRunId.value = bloggerRuns.value[0]?.id || null
+  }
+}
+
+function showAllBloggerRuns() {
+  showCollectionResults(null)
 }
 
 async function handleFetchNews() {
@@ -1493,7 +1529,7 @@ onUnmounted(() => {
                   <button
                     v-if="collectionDistillationCount(selectedCollectionRun.id)"
                     type="button"
-                    @click="activeXhsWorkflowTab = 'assets'"
+                    @click="showCollectionResults(selectedCollectionRun.id)"
                   >
                     查看对应结果
                   </button>
@@ -1573,21 +1609,26 @@ onUnmounted(() => {
               <div v-if="selectedBlogger" class="result-browser">
                 <aside class="run-list" aria-label="蒸馏记录">
                   <div class="run-list-header">
-                    <strong>{{ selectedCollectionRun ? `批次 #${selectedCollectionRun.id} 的蒸馏结果` : '蒸馏记录' }}</strong>
-                    <span>{{ selectedCollectionDistillationRuns.length }} 次</span>
+                    <strong>{{ resultCollectionFilter ? `采集批次 #${resultCollectionFilter.id} 的蒸馏结果` : '全部蒸馏记录' }}</strong>
+                    <span>{{ resultCollectionFilter ? `${visibleBloggerRunCount} / ${selectedBloggerRunCount} 次` : `${selectedBloggerRunCount} 次记录` }}</span>
+                  </div>
+                  <div v-if="resultCollectionFilter" class="filter-bar">
+                    <span>已筛选：批次 #{{ resultCollectionFilter.id }}</span>
+                    <button type="button" @click="showAllBloggerRuns">查看全部记录</button>
                   </div>
                   <button
-                    v-for="run in selectedCollectionDistillationRuns"
+                    v-for="run in visibleBloggerRuns"
                     :key="run.id"
                     type="button"
-                    :class="{ active: selectedBloggerRunId === run.id }"
+                    :class="{ active: selectedBloggerRunId === run.id, failed: run.status === 'failed' }"
                     @click="selectBloggerRun(run.id)"
                   >
                     <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>来源批次 #{{ run.collection_run_id || '旧数据' }} · {{ run.status }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
+                    <span>来源批次 #{{ run.collection_run_id || '旧数据' }} · {{ distillationStatusLabel(run.status) }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
+                    <em v-if="run.status === 'failed'" class="run-error">失败原因：{{ run.error_message || '未记录失败原因' }}</em>
                   </button>
-                  <p v-if="!selectedCollectionRun" class="empty-region">请先在“样本采集”里选择一个采集批次。</p>
-                  <p v-else-if="!selectedCollectionDistillationRuns.length" class="empty-region">这个采集批次还没有蒸馏结果。</p>
+                  <p v-if="!visibleBloggerRuns.length && resultCollectionFilter" class="empty-region">这个采集批次还没有蒸馏结果。</p>
+                  <p v-else-if="!visibleBloggerRuns.length" class="empty-region">这个博主还没有蒸馏记录。</p>
                 </aside>
 
                 <div class="run-detail">
@@ -1609,7 +1650,11 @@ onUnmounted(() => {
                   <div v-if="selectedBloggerRun" class="distill-grid compact-result">
                     <article class="distill-card">
                       <h3>蒸馏报告</h3>
-                      <div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
+                      <div v-if="selectedBloggerRun.status === 'failed'" class="failure-panel">
+                        <strong>蒸馏失败</strong>
+                        <p>{{ selectedBloggerRun.error_message || '这次蒸馏没有记录失败原因，请查看任务日志。' }}</p>
+                      </div>
+                      <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
                       <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
                     </article>
 
@@ -1621,6 +1666,7 @@ onUnmounted(() => {
                         readonly
                         rows="18"
                       ></textarea>
+                      <p v-else-if="selectedBloggerRun.status === 'failed'" class="empty-region">蒸馏失败后不会生成 Skill。</p>
                       <p v-else class="empty-region">这次蒸馏没有生成 Skill。</p>
                     </article>
                   </div>

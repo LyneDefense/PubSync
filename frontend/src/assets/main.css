@@ -1018,6 +1018,25 @@ p {
   font-size: var(--text-xs);
 }
 
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2xs);
+  border: var(--rule-hair);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--color-accent), transparent 90%);
+  padding: var(--space-2xs);
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+}
+
+.filter-bar button {
+  min-height: 30px;
+  padding: 0 var(--space-2xs);
+  font-size: var(--text-xs);
+}
+
 .run-list button {
   display: grid;
   height: auto;
@@ -1033,9 +1052,24 @@ p {
   background: var(--color-accent-soft);
 }
 
+.run-list button.failed {
+  border-color: color-mix(in oklab, var(--color-danger), var(--color-rule) 45%);
+}
+
 .run-list button span {
   color: var(--color-ink-3);
   font-size: var(--text-xs);
+}
+
+.run-list button em,
+.run-error {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .run-detail {
@@ -1057,6 +1091,25 @@ p {
   border-radius: var(--radius-md);
   background: var(--color-paper);
   text-align: center;
+}
+
+.failure-panel {
+  display: grid;
+  gap: var(--space-2xs);
+  border: 1px solid color-mix(in oklab, var(--color-danger), var(--color-rule) 45%);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--color-danger), transparent 90%);
+  padding: var(--space-sm);
+}
+
+.failure-panel strong {
+  color: var(--color-danger);
+}
+
+.failure-panel p {
+  margin: 0;
+  color: var(--color-ink-2);
+  overflow-wrap: anywhere;
 }
 
 .modal-backdrop {
