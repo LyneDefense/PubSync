@@ -1471,11 +1471,13 @@ onUnmounted(() => {
                 </div>
                 <button
                   type="button"
-                  class="primary"
+                  class="task-button primary"
+                  :class="{ running: pendingAction === 'collect' }"
+                  :style="taskButtonStyle('collect')"
                   :disabled="!selectedBloggerId || Boolean(pendingAction)"
                   @click="handleCollectBlogger"
                 >
-                  {{ pendingAction === 'collect' ? '采集中' : '开始采集' }}
+                  <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
                 </button>
               </div>
               <div class="config-grid">
