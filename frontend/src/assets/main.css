@@ -1119,10 +1119,59 @@ p {
   align-items: start;
 }
 
+.creator-shell {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.creator-main {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.creator-step-header {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-xs);
+  text-align: center;
+}
+
+.creator-step-header span {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 900;
+}
+
+.creator-step-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+}
+
+.creator-arrow {
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xl);
+  font-weight: 900;
+}
+
 .creation-step-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-2xs);
+}
+
+.creation-step-strip.compact {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .creation-step-strip button {
@@ -1135,6 +1184,15 @@ p {
   background: var(--color-paper-2);
   text-align: left;
   white-space: normal;
+}
+
+.creation-step-strip.compact button {
+  min-height: 68px;
+  align-content: center;
+}
+
+.creation-step-strip.compact small {
+  display: none;
 }
 
 .creation-step-strip button.active {
@@ -1310,6 +1368,10 @@ p {
   gap: var(--space-sm);
   align-items: start;
   min-width: 0;
+}
+
+.history-browser {
+  grid-template-columns: minmax(260px, 0.28fr) minmax(0, 1fr);
 }
 
 .package-list button strong {
@@ -1753,7 +1815,20 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .creator-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creator-arrow {
+    width: 100%;
+    min-width: 0;
+  }
+
   .creation-step-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .creation-step-strip.compact {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -1783,6 +1858,10 @@ dd {
   .creation-step-strip,
   .asset-output-grid {
     grid-template-columns: 1fr;
+  }
+
+  .creation-step-strip.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .xhs-flow-map {
