@@ -72,7 +72,18 @@ class TikHubXhsClient:
         cursor = ""
         seen_ids: set[str] = set()
         for page in range(20):
-            page_data = self.fetch_user_notes_page(link, cursor, min(20, max(limit, 1)))
+            try:
+                page_data = self.fetch_user_notes_page(link, cursor, min(20, max(limit, 1)))
+            except TikHubError:
+                if candidates:
+                    logger.warning(
+                        "小红书主页笔记分页中断，保留已获取候选：page=%s，cursor=%s，已获取=%s",
+                        page + 1,
+                        cursor or "<empty>",
+                        len(candidates),
+                    )
+                    break
+                raise
             notes = page_data["notes"]
             logger.info(
                 "小红书主页笔记分页：page=%s，cursor=%s，解析=%s，has_more=%s，next_cursor=%s",
@@ -655,9 +666,10 @@ def extract_note_page(payload: dict[str, Any]) -> dict[str, Any]:
         return {"notes": [], "next_cursor": "", "has_more": False}
     notes = [normalize_feed_item(item) for item in extract_container_items(page)]
     notes = [item for item in notes if first_str(item, ["note_id", "id", "noteId", "display_title", "title"])]
+    note_ids = collect_note_ids(notes)
     return {
         "notes": notes,
-        "next_cursor": find_container_cursor(page, notes) or find_cursor(payload),
+        "next_cursor": find_container_cursor(page, note_ids) or find_payload_page_cursor(payload, note_ids),
         "has_more": first_bool(page, HAS_MORE_KEYS) or first_bool_recursive(payload, HAS_MORE_KEYS),
     }
 
@@ -674,6 +686,7 @@ CURSOR_KEYS = (
     "cursor_id",
     "cursorId",
 )
+PAGE_CURSOR_KEYS = tuple(key for key in CURSOR_KEYS if key != "cursor")
 
 
 def score_note_page(page_data: dict[str, Any], requested_count: int) -> int:
@@ -748,16 +761,60 @@ def extract_xsec_token(value: Any) -> str:
     return ""
 
 
-def find_container_cursor(container: dict[str, Any], notes: list[dict[str, Any]]) -> str:
+def find_container_cursor(container: dict[str, Any], note_ids: set[str]) -> str:
     for key in CURSOR_KEYS:
-        value = container.get(key)
-        if isinstance(value, (str, int)) and str(value).strip():
-            return str(value).strip()
-    for note in reversed(notes):
-        value = note.get("cursor")
-        if isinstance(value, (str, int)) and str(value).strip():
-            return str(value).strip()
+        cursor = clean_page_cursor(container.get(key), note_ids)
+        if cursor:
+            return cursor
     return ""
+
+
+def find_payload_page_cursor(payload: dict[str, Any], note_ids: set[str]) -> str:
+    def visit(node: Any) -> str:
+        if isinstance(node, dict):
+            if is_note_like_cursor_node(node):
+                return ""
+            for key in PAGE_CURSOR_KEYS:
+                cursor = clean_page_cursor(node.get(key), note_ids)
+                if cursor:
+                    return cursor
+            for child in node.values():
+                cursor = visit(child)
+                if cursor:
+                    return cursor
+        elif isinstance(node, list):
+            for child in node:
+                cursor = visit(child)
+                if cursor:
+                    return cursor
+        return ""
+
+    return visit(payload)
+
+
+def is_note_like_cursor_node(node: dict[str, Any]) -> bool:
+    if any(key in node for key in ("items", "notes", "feeds", "list")):
+        return False
+    return any(key in node for key in ("noteCard", "note_card", "note", "note_id", "noteId", "display_title", "title"))
+
+
+def clean_page_cursor(value: Any, note_ids: set[str]) -> str:
+    if not isinstance(value, (str, int)):
+        return ""
+    cursor = str(value).strip()
+    if not cursor or cursor in note_ids:
+        return ""
+    return cursor
+
+
+def collect_note_ids(notes: list[dict[str, Any]]) -> set[str]:
+    ids: set[str] = set()
+    for note in notes:
+        for key in ("note_id", "id", "noteId", "note_id_str"):
+            value = note.get(key)
+            if isinstance(value, (str, int)) and str(value).strip():
+                ids.add(str(value).strip())
+    return ids
 
 
 def extract_interaction_counts(value: dict[str, Any]) -> dict[str, int]:
