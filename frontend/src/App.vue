@@ -55,6 +55,7 @@ import type {
   NewsItem,
   OperationTask,
   OperationTaskEvent,
+  SocialPlatform,
   Tenant,
   WorkspaceConfig,
   XhsPublishContentType,
@@ -69,7 +70,7 @@ type ArticleTab = 'edit' | 'preview'
 type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
 type XhsTab = 'collect' | 'distill' | 'assets' | 'packages' | 'history' | 'records' | 'settings'
-type DouyinTab = 'ai' | 'packages' | 'records' | 'settings'
+type DouyinTab = XhsTab
 type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 type XhsScriptSegment = {
   start?: string
@@ -116,6 +117,7 @@ const pendingAction = ref<string | null>(null)
 const runningTaskId = ref<string | null>(null)
 const taskEvents = ref<OperationTaskEvent[]>([])
 const taskEventsAction = ref<TaskActionName | null>(null)
+const taskEventsMainTab = ref<MainTab | null>(null)
 const showTaskEventDetails = ref(false)
 const isAuthenticated = ref(Boolean(getAuthToken()))
 const isLoggingIn = ref(false)
@@ -123,7 +125,7 @@ const loginMessage = ref('')
 const activeMainTab = ref<MainTab>('wechat')
 const activeWechatTab = ref<WeChatTab>('brief')
 const activeXhsTab = ref<XhsTab>('collect')
-const activeDouyinTab = ref<DouyinTab>('ai')
+const activeDouyinTab = ref<DouyinTab>('collect')
 const xhsCollectStep = ref(1)
 const xhsDistillStep = ref(1)
 const activeNewsTab = ref<NewsTab>('')
@@ -264,6 +266,10 @@ const activePlatformLabel = computed(() => {
   }
   return labels[activeMainTab.value] || '工作台'
 })
+const isSocialPlatform = computed(() => activeMainTab.value === 'xhs' || activeMainTab.value === 'douyin')
+const currentSocialPlatform = computed<SocialPlatform>(() => (activeMainTab.value === 'douyin' ? 'douyin' : 'xhs'))
+const currentSocialPlatformName = computed(() => (currentSocialPlatform.value === 'douyin' ? '抖音' : '小红书'))
+const currentSocialTab = computed<XhsTab>(() => (activeMainTab.value === 'douyin' ? activeDouyinTab.value : activeXhsTab.value))
 const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -455,14 +461,14 @@ const visibleTaskEvents = computed(() => {
   if (!taskEventsAction.value) {
     return []
   }
-  return taskActionTab(taskEventsAction.value) === activeMainTab.value ? taskEvents.value : []
+  return taskEventsMainTab.value === activeMainTab.value ? taskEvents.value : []
 })
 const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 const isTaskRunning = computed(
   () => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'collect' || pendingAction.value === 'distill'
 )
 const isVisibleTaskRunning = computed(
-  () => isTaskRunning.value && taskEventsAction.value !== null && taskActionTab(taskEventsAction.value) === activeMainTab.value
+  () => isTaskRunning.value && taskEventsAction.value !== null && taskEventsMainTab.value === activeMainTab.value
 )
 const runningTaskName = computed(() => {
   if (pendingAction.value === 'fetch') {
@@ -664,13 +670,6 @@ function taskButtonStyle(name: TaskActionName) {
   return { '--progress': `${taskProgress[name]}%` }
 }
 
-function taskActionTab(name: TaskActionName): MainTab {
-  if (name === 'collect' || name === 'distill' || name === 'xhs-package') {
-    return 'xhs'
-  }
-  return 'wechat'
-}
-
 function eventPayloadSummary(event: OperationTaskEvent) {
   const payload = parseEventPayload(event)
   if (!payload) {
@@ -693,6 +692,7 @@ async function runTaskAction(
 ) {
   pendingAction.value = name
   taskEventsAction.value = name
+  taskEventsMainTab.value = activeMainTab.value
   showTaskEventDetails.value = false
   startFakeProgress(name)
   showMessage(label)
@@ -772,8 +772,8 @@ async function loadAll() {
     getWorkspaceConfig(),
     listNews(),
     getLatestArticle(),
-    listBloggers(),
-    listBloggerSkills(),
+    listBloggers(currentSocialPlatform.value),
+    listBloggerSkills(currentSocialPlatform.value),
     listXhsPublishPackages()
   ])
   setWorkspaceConfig(nextConfig)
@@ -914,8 +914,8 @@ async function refreshArticle() {
 }
 
 async function refreshBloggers() {
-  bloggers.value = await listBloggers()
-  bloggerSkills.value = await listBloggerSkills()
+  bloggers.value = await listBloggers(currentSocialPlatform.value)
+  bloggerSkills.value = await listBloggerSkills(currentSocialPlatform.value)
   syncXhsPackageSelection()
   if (selectedBloggerId.value && !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {
     selectedBloggerId.value = null
@@ -1028,7 +1028,7 @@ async function refreshSelectedBlogger() {
   const [collections, runs, skills] = await Promise.all([
     listBloggerCollectionRuns(selectedBloggerId.value),
     listBloggerRuns(selectedBloggerId.value),
-    listBloggerSkills()
+    listBloggerSkills(currentSocialPlatform.value)
   ])
   bloggerCollectionRuns.value = collections
   bloggerRuns.value = runs
@@ -1058,6 +1058,7 @@ async function refreshXhsPackages(selectedId?: number) {
 async function handleCreateBlogger() {
   await runAction('blogger', '正在保存博主档案', async () => {
     const blogger = await createBlogger({
+      platform: currentSocialPlatform.value,
       display_name: bloggerForm.display_name,
       homepage_url: bloggerForm.homepage_url,
       niche: bloggerForm.niche,
@@ -1103,7 +1104,7 @@ async function handleDistillBlogger() {
   }
   if (!selectedCollectionRunId.value) {
     showMessage('请先选择一个已完成的采集批次', true)
-    activeXhsTab.value = 'distill'
+    setCurrentSocialTab('distill')
     xhsDistillStep.value = 2
     return
   }
@@ -1233,9 +1234,9 @@ async function selectBlogger(id: number) {
   selectedCollectionRunId.value = null
   selectedBloggerRunId.value = null
   resultCollectionFilterId.value = null
-  if (activeXhsTab.value === 'distill') {
+  if (currentSocialTab.value === 'distill') {
     xhsDistillStep.value = 2
-  } else if (activeXhsTab.value === 'collect') {
+  } else if (currentSocialTab.value === 'collect') {
     xhsCollectStep.value = 2
   }
   await refreshSelectedBlogger()
@@ -1269,7 +1270,7 @@ async function handleConfirmBloggerRun() {
     const run = await confirmBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    activeXhsTab.value = 'assets'
+    setCurrentSocialTab('assets')
     showMessage('蒸馏结果已保存，Skill 已进入 AI 创作')
   })
 }
@@ -1283,7 +1284,7 @@ async function handleAbandonBloggerRun() {
     const run = await abandonBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    activeXhsTab.value = 'assets'
+    setCurrentSocialTab('assets')
     showMessage('已放弃本次蒸馏结果')
   })
 }
@@ -1299,7 +1300,7 @@ function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.
 
 function showCollectionResults(collectionRunId: number | null) {
   resultCollectionFilterId.value = collectionRunId
-  activeXhsTab.value = 'assets'
+  setCurrentSocialTab('assets')
   if (collectionRunId) {
     selectLatestRunForCollection(collectionRunId)
   } else {
@@ -1485,6 +1486,14 @@ function groupLabel(groupKey: string) {
   return contentGroups.value.find((group) => group.group_key === groupKey)?.name || groupKey || '未分组'
 }
 
+function setCurrentSocialTab(tab: XhsTab) {
+  if (activeMainTab.value === 'douyin') {
+    activeDouyinTab.value = tab
+    return
+  }
+  activeXhsTab.value = tab
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
   if (isAuthenticated.value) {
@@ -1512,6 +1521,24 @@ watch(
   ],
   () => {
     currentXhsDraft.value = null
+  }
+)
+
+watch(
+  () => currentSocialPlatform.value,
+  async () => {
+    if (!isAuthenticated.value || !isSocialPlatform.value) {
+      return
+    }
+    selectedBloggerId.value = null
+    selectedCollectionRunId.value = null
+    selectedBloggerRunId.value = null
+    resultCollectionFilterId.value = null
+    bloggerPosts.value = []
+    bloggerCollectionRuns.value = []
+    bloggerRuns.value = []
+    resetXhsTopicIdeas()
+    await refreshBloggers()
   }
 )
 
@@ -1617,42 +1644,33 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeMainTab === 'xhs'" class="module-subnav platform-subnav xhs-module-subnav">
-        <div class="tabs" role="tablist" aria-label="小红书模块">
+      <div v-if="isSocialPlatform" class="module-subnav platform-subnav xhs-module-subnav">
+        <div class="tabs" role="tablist" :aria-label="`${currentSocialPlatformName}模块`">
           <button
             type="button"
-            :class="{ active: ['collect', 'distill', 'assets'].includes(activeXhsTab) }"
-            @click="activeXhsTab = 'collect'"
+            :class="{ active: ['collect', 'distill', 'assets'].includes(currentSocialTab) }"
+            @click="setCurrentSocialTab('collect')"
           >
             博主蒸馏
           </button>
           <button
             type="button"
-            :class="{ active: ['packages', 'history'].includes(activeXhsTab) }"
-            @click="activeXhsTab = 'packages'"
+            :class="{ active: ['packages', 'history'].includes(currentSocialTab) }"
+            @click="setCurrentSocialTab('packages')"
           >
             AI 创作
           </button>
-          <button type="button" :class="{ active: activeXhsTab === 'records' }" @click="activeXhsTab = 'records'">发布记录</button>
-          <button type="button" :class="{ active: activeXhsTab === 'settings' }" @click="activeXhsTab = 'settings'">设置</button>
+          <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')">发布记录</button>
+          <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')">设置</button>
         </div>
-        <div v-if="['collect', 'distill', 'assets'].includes(activeXhsTab)" class="tabs sub-tabs" role="tablist" aria-label="小红书博主蒸馏子模块">
-          <button type="button" :class="{ active: activeXhsTab === 'collect' }" @click="activeXhsTab = 'collect'">数据采集</button>
-          <button type="button" :class="{ active: activeXhsTab === 'distill' }" @click="activeXhsTab = 'distill'">蒸馏</button>
-          <button type="button" :class="{ active: activeXhsTab === 'assets' }" @click="activeXhsTab = 'assets'">博主资产</button>
+        <div v-if="['collect', 'distill', 'assets'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName}博主蒸馏子模块`">
+          <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')">数据采集</button>
+          <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')">蒸馏</button>
+          <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')">博主资产</button>
         </div>
-        <div v-if="['packages', 'history'].includes(activeXhsTab)" class="tabs sub-tabs" role="tablist" aria-label="小红书 AI 创作子模块">
-          <button type="button" :class="{ active: activeXhsTab === 'packages' }" @click="activeXhsTab = 'packages'">创作流程</button>
-          <button type="button" :class="{ active: activeXhsTab === 'history' }" @click="activeXhsTab = 'history'">发布包历史</button>
-        </div>
-      </div>
-
-      <div v-if="activeMainTab === 'douyin'" class="module-subnav platform-subnav">
-        <div class="tabs" role="tablist" aria-label="抖音模块">
-          <button type="button" :class="{ active: activeDouyinTab === 'ai' }" @click="activeDouyinTab = 'ai'">AI 创作</button>
-          <button type="button" :class="{ active: activeDouyinTab === 'packages' }" @click="activeDouyinTab = 'packages'">发布包</button>
-          <button type="button" :class="{ active: activeDouyinTab === 'records' }" @click="activeDouyinTab = 'records'">发布记录</button>
-          <button type="button" :class="{ active: activeDouyinTab === 'settings' }" @click="activeDouyinTab = 'settings'">设置</button>
+        <div v-if="['packages', 'history'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName} AI 创作子模块`">
+          <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">创作流程</button>
+          <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="setCurrentSocialTab('history')">发布包历史</button>
         </div>
       </div>
 
@@ -1877,10 +1895,10 @@ onUnmounted(() => {
         <p class="empty-region">发布记录模块暂未开放。</p>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'collect'" class="panel">
+      <section v-if="isSocialPlatform && currentSocialTab === 'collect'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书数据采集</h2>
+            <h2>{{ currentSocialPlatformName }}数据采集</h2>
             <p class="toolbar-subtitle">先选择博主，再配置采样数量、评论数量和 ASR；采集结果会进入博主资产。</p>
           </div>
         </div>
@@ -1936,7 +1954,7 @@ onUnmounted(() => {
             <section v-if="xhsCollectStep === 4" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div><span>04 查看结果</span><h3>采集批次和样本预览</h3></div>
-                <button type="button" @click="activeXhsTab = 'assets'">查看博主资产</button>
+                <button type="button" @click="setCurrentSocialTab('assets')">查看博主资产</button>
               </div>
               <div v-if="selectedBlogger" class="stage-result-grid">
                 <article class="stage-metric"><span>当前博主</span><strong>{{ selectedBlogger.display_name }}</strong></article>
@@ -1956,10 +1974,10 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'distill'" class="panel">
+      <section v-if="isSocialPlatform && currentSocialTab === 'distill'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书博主蒸馏</h2>
+            <h2>{{ currentSocialPlatformName }}博主蒸馏</h2>
             <p class="toolbar-subtitle">选择博主和采集批次，生成报告与 Skill；保存后才进入 AI 创作可选列表。</p>
           </div>
         </div>
@@ -2022,10 +2040,10 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'assets'" class="panel">
+      <section v-if="isSocialPlatform && currentSocialTab === 'assets'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书博主资产</h2>
+            <h2>{{ currentSocialPlatformName }}博主资产</h2>
             <p class="toolbar-subtitle">集中查看博主信息、采集历史、蒸馏历史、报告和 Skill。</p>
           </div>
         </div>
@@ -2627,14 +2645,14 @@ onUnmounted(() => {
         <p class="empty-region">该模块暂未开放。</p>
       </section>
 
-      <section v-if="activeMainTab === 'douyin'" class="panel">
+      <section v-if="activeMainTab === 'douyin' && ['packages', 'history', 'records', 'settings'].includes(currentSocialTab)" class="panel">
         <div class="section-header">
           <div>
-            <h2>抖音{{ activeDouyinTab === 'ai' ? ' AI 创作' : activeDouyinTab === 'packages' ? '发布包' : activeDouyinTab === 'records' ? '发布记录' : '设置' }}</h2>
-            <p class="toolbar-subtitle">抖音会复用“样本采集、风格蒸馏、脚本生成、发布包”的结构，当前先预留入口。</p>
+            <h2>{{ currentSocialTab === 'packages' ? '抖音 AI 创作' : currentSocialTab === 'history' ? '抖音发布包历史' : currentSocialTab === 'records' ? '抖音发布记录' : '抖音设置' }}</h2>
+            <p class="toolbar-subtitle">抖音会复用“样本采集、风格蒸馏、脚本生成、发布包”的结构；当前已接入博主资产与任务入口，脚本发布包后续接入。</p>
           </div>
         </div>
-        <p class="empty-region">该模块暂未开放。</p>
+        <p class="empty-region">该模块暂未开放。请先使用“博主蒸馏 / 数据采集”建立抖音博主样本资产。</p>
       </section>
 
       <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'settings'" class="panel">
@@ -3052,7 +3070,7 @@ onUnmounted(() => {
       </section>
 
       <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
-        <form class="modal-panel" role="dialog" aria-modal="true" aria-label="创建小红书博主" @submit.prevent="handleCreateBlogger">
+        <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`创建${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">
           <div class="section-header">
             <div>
               <h2>创建博主</h2>
@@ -3065,8 +3083,13 @@ onUnmounted(() => {
             <input v-model="bloggerForm.display_name" type="text" required />
           </label>
           <label>
-            小红书主页链接
-            <input v-model="bloggerForm.homepage_url" type="url" required placeholder="https://www.xiaohongshu.com/user/profile/..." />
+            {{ currentSocialPlatformName }}主页链接
+            <input
+              v-model="bloggerForm.homepage_url"
+              type="url"
+              required
+              :placeholder="currentSocialPlatform === 'douyin' ? 'https://www.douyin.com/user/...' : 'https://www.xiaohongshu.com/user/profile/...'"
+            />
           </label>
           <label>
             领域/赛道

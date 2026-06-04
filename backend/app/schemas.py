@@ -316,6 +316,7 @@ class NewsSourceRead(BaseModel):
 
 
 class BloggerProfileCreate(BaseModel):
+    platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
     display_name: str = Field(min_length=1, max_length=160)
     homepage_url: str = Field(min_length=1, max_length=1000)
     niche: str = Field(default="", max_length=160)

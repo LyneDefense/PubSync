@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.blogger_distillation import analysis
 from app.blogger_distillation import artifacts
 from app.blogger_distillation.asr import ASRError, build_asr_provider
+from app.blogger_distillation.providers import ensure_collection_provider_available, validate_platform
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.quality import evaluate_post_quality, quality_report
 from app.blogger_distillation.tikhub_client import (
@@ -118,11 +119,21 @@ def archive_active_skills(db: Session, tenant_id: int, blogger_id: int) -> None:
         skill.status = "archived"
 
 
-def create_blogger(db: Session, tenant_id: int, display_name: str, homepage_url: str, niche: str, description: str) -> BloggerProfile:
+def create_blogger(
+    db: Session,
+    tenant_id: int,
+    platform: str,
+    display_name: str,
+    homepage_url: str,
+    niche: str,
+    description: str,
+) -> BloggerProfile:
+    platform = validate_platform(platform)
     existing = db.scalar(
         select(BloggerProfile).where(BloggerProfile.tenant_id == tenant_id, BloggerProfile.homepage_url == homepage_url)
     )
     if existing:
+        existing.platform = platform
         existing.display_name = display_name
         existing.niche = niche
         existing.description = description
@@ -131,7 +142,7 @@ def create_blogger(db: Session, tenant_id: int, display_name: str, homepage_url:
         return existing
     blogger = BloggerProfile(
         tenant_id=tenant_id,
-        platform="xhs",
+        platform=platform,
         display_name=display_name,
         homepage_url=homepage_url,
         niche=niche,
@@ -175,6 +186,7 @@ def run_blogger_collection(
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始采集数据")
+        ensure_collection_provider_available(blogger)
         client = TikHubXhsClient(collection_settings)
         client.get_user_info(blogger.homepage_url)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)

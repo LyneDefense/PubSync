@@ -17,6 +17,7 @@ import type {
   NewsItem,
   OperationTask,
   OperationTaskEvent,
+  SocialPlatform,
   Tenant,
   WorkspaceConfig,
   WorkspaceConfigUpdate,
@@ -172,8 +173,8 @@ export function sendArticleToWechat(id: number) {
   return request<Article>(`/articles/${id}/send-to-wechat`, { method: 'POST' })
 }
 
-export function listBloggers() {
-  return request<BloggerProfile[]>('/bloggers')
+export function listBloggers(platform: SocialPlatform = 'xhs') {
+  return request<BloggerProfile[]>(`/bloggers?platform=${encodeURIComponent(platform)}`)
 }
 
 export function createBlogger(payload: BloggerProfileCreate) {
@@ -221,8 +222,8 @@ export function abandonBloggerRun(bloggerId: number, runId: number) {
   return request<BloggerDistillationRun>(`/bloggers/${bloggerId}/distillation-runs/${runId}/abandon`, { method: 'POST' })
 }
 
-export function listBloggerSkills() {
-  return request<BloggerSkill[]>('/blogger-skills')
+export function listBloggerSkills(platform: SocialPlatform = 'xhs') {
+  return request<BloggerSkill[]>(`/blogger-skills?platform=${encodeURIComponent(platform)}`)
 }
 
 export function listXhsPublishPackages() {

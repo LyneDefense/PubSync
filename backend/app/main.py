@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -437,13 +437,14 @@ def generate_article_endpoint(
 
 @app.get("/bloggers", response_model=list[BloggerProfileRead])
 def list_bloggers_endpoint(
+    platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerProfile]:
     return list(
         db.scalars(
             select(BloggerProfile)
-            .where(BloggerProfile.tenant_id == tenant.id)
+            .where(BloggerProfile.tenant_id == tenant.id, BloggerProfile.platform == platform)
             .order_by(BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
         )
     )
@@ -455,7 +456,18 @@ def create_blogger_endpoint(
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> BloggerProfile:
-    return create_blogger(db, tenant.id, payload.display_name, payload.homepage_url, payload.niche, payload.description)
+    try:
+        return create_blogger(
+            db,
+            tenant.id,
+            payload.platform,
+            payload.display_name,
+            payload.homepage_url,
+            payload.niche,
+            payload.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/bloggers/{blogger_id}/posts", response_model=list[BloggerPostRead])
@@ -619,13 +631,15 @@ def abandon_blogger_run_endpoint(
 
 @app.get("/blogger-skills", response_model=list[BloggerSkillRead])
 def list_blogger_skills_endpoint(
+    platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerSkill]:
     return list(
         db.scalars(
             select(BloggerSkill)
-            .where(BloggerSkill.tenant_id == tenant.id)
+            .join(BloggerProfile, BloggerProfile.id == BloggerSkill.blogger_id)
+            .where(BloggerSkill.tenant_id == tenant.id, BloggerProfile.platform == platform)
             .order_by(BloggerSkill.created_at.desc())
         )
     )

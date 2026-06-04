@@ -1,6 +1,7 @@
 export type ArticleStatus = 'draft' | 'generated' | 'sent_to_wechat' | 'failed'
 export type TaskStatus = 'queued' | 'running' | 'cancel_requested' | 'cancelled' | 'succeeded' | 'failed'
 export type TenantStatus = 'active' | 'disabled'
+export type SocialPlatform = 'xhs' | 'douyin'
 
 export interface Tenant {
   id: number
@@ -243,6 +244,7 @@ export interface BloggerProfile {
 }
 
 export interface BloggerProfileCreate {
+  platform?: SocialPlatform
   display_name: string
   homepage_url: string
   niche: string
