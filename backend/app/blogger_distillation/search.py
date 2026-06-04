@@ -56,6 +56,7 @@ class TikHubUserSearchClient:
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
+        method = str(params.pop("_method", "GET")).upper()
         headers = {
             "Authorization": f"Bearer {self.settings.tikhub_api_key}",
             "Accept": "application/json",
@@ -66,7 +67,11 @@ class TikHubUserSearchClient:
             for attempt in range(3):
                 if attempt:
                     time.sleep(1.2 * attempt)
-                response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
+                clean_params = {key: value for key, value in params.items() if value is not None}
+                if method == "POST":
+                    response = client.post(url, headers=headers, json=clean_params)
+                else:
+                    response = client.get(url, headers=headers, params=clean_params)
                 try:
                     data = response.json()
                 except ValueError as exc:
