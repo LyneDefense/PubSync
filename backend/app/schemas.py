@@ -317,8 +317,11 @@ class NewsSourceRead(BaseModel):
 
 class BloggerProfileCreate(BaseModel):
     platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
+    external_id: str | None = Field(default=None, max_length=200)
     display_name: str = Field(min_length=1, max_length=160)
     homepage_url: str = Field(min_length=1, max_length=1000)
+    avatar_url: str = Field(default="", max_length=1000)
+    follower_count: int = Field(default=0, ge=0)
     niche: str = Field(default="", max_length=160)
     description: str = ""
 
@@ -327,8 +330,11 @@ class BloggerProfileRead(BaseModel):
     id: int
     tenant_id: int
     platform: str
+    external_id: str | None
     display_name: str
     homepage_url: str
+    avatar_url: str
+    follower_count: int
     niche: str
     description: str
     sample_count: int

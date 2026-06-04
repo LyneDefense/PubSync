@@ -53,9 +53,9 @@ class TikHubXhsClient:
         self.user_id = ""
         self.profile_xsec_token = ""
 
-    def get_user_info(self, homepage_url: str) -> dict[str, Any]:
+    def get_user_info(self, homepage_url: str, external_id: str | None = None) -> dict[str, Any]:
         link = parse_xhs_profile_link(homepage_url)
-        self.user_id = self.user_id or link["user_id"]
+        self.user_id = self.user_id or (external_id or "").strip() or link["user_id"]
         self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
         payload = self.router.call(
             "user_info",
@@ -64,9 +64,9 @@ class TikHubXhsClient:
         self.user_id = self.user_id or find_user_id(payload)
         return payload
 
-    def get_user_notes(self, homepage_url: str, limit: int) -> list[XhsPostCandidate]:
+    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> list[XhsPostCandidate]:
         link = parse_xhs_profile_link(homepage_url)
-        self.user_id = self.user_id or link["user_id"]
+        self.user_id = self.user_id or (external_id or "").strip() or link["user_id"]
         self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
         candidates: list[XhsPostCandidate] = []
         cursor = ""

@@ -480,8 +480,11 @@ def create_blogger_endpoint(
             db,
             tenant.id,
             payload.platform,
+            payload.external_id,
             payload.display_name,
             payload.homepage_url,
+            payload.avatar_url,
+            payload.follower_count,
             payload.niche,
             payload.description,
         )

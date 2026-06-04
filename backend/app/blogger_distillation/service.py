@@ -123,19 +123,35 @@ def create_blogger(
     db: Session,
     tenant_id: int,
     platform: str,
+    external_id: str | None,
     display_name: str,
     homepage_url: str,
+    avatar_url: str,
+    follower_count: int,
     niche: str,
     description: str,
 ) -> BloggerProfile:
     platform = validate_platform(platform)
-    existing = db.scalar(
+    clean_external_id = (external_id or "").strip() or None
+    existing = None
+    if clean_external_id:
+        existing = db.scalar(
+            select(BloggerProfile).where(
+                BloggerProfile.tenant_id == tenant_id,
+                BloggerProfile.platform == platform,
+                BloggerProfile.external_id == clean_external_id,
+            )
+        )
+    existing = existing or db.scalar(
         select(BloggerProfile).where(BloggerProfile.tenant_id == tenant_id, BloggerProfile.homepage_url == homepage_url)
     )
     if existing:
         existing.platform = platform
+        existing.external_id = clean_external_id or existing.external_id
         existing.display_name = display_name
         existing.niche = niche
+        existing.avatar_url = avatar_url
+        existing.follower_count = max(follower_count, 0)
         existing.description = description
         db.commit()
         db.refresh(existing)
@@ -143,8 +159,11 @@ def create_blogger(
     blogger = BloggerProfile(
         tenant_id=tenant_id,
         platform=platform,
+        external_id=clean_external_id,
         display_name=display_name,
         homepage_url=homepage_url,
+        avatar_url=avatar_url,
+        follower_count=max(follower_count, 0),
         niche=niche,
         description=description,
     )
@@ -188,9 +207,9 @@ def run_blogger_collection(
         record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始采集数据")
         ensure_collection_provider_available(blogger)
         client = TikHubXhsClient(collection_settings)
-        client.get_user_info(blogger.homepage_url)
+        client.get_user_info(blogger.homepage_url, blogger.external_id)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        candidates = client.get_user_notes(blogger.homepage_url, sample_limit)
+        candidates = client.get_user_notes(blogger.homepage_url, sample_limit, blogger.external_id)
         record_task_event(db, tenant_id, task_id, "样本采集", "running", f"已获取笔记候选 {len(candidates)} 条")
 
         posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates[:sample_limit], comments_per_post)

@@ -233,8 +233,11 @@ export interface BloggerProfile {
   id: number
   tenant_id: number
   platform: string
+  external_id: string | null
   display_name: string
   homepage_url: string
+  avatar_url: string
+  follower_count: number
   niche: string
   description: string
   sample_count: number
@@ -245,8 +248,11 @@ export interface BloggerProfile {
 
 export interface BloggerProfileCreate {
   platform?: SocialPlatform
+  external_id?: string | null
   display_name: string
   homepage_url: string
+  avatar_url?: string
+  follower_count?: number
   niche: string
   description: string
 }

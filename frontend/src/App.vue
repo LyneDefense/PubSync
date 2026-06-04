@@ -171,8 +171,11 @@ const form = reactive<ArticleUpdate>({
 })
 
 const bloggerForm = reactive({
+  external_id: '',
   display_name: '',
   homepage_url: '',
+  avatar_url: '',
+  follower_count: 0,
   niche: '',
   description: ''
 })
@@ -1083,8 +1086,11 @@ async function handleSearchBloggerCandidates() {
 
 function selectBloggerCandidate(candidate: BloggerSearchResult) {
   selectedBloggerCandidate.value = candidate
+  bloggerForm.external_id = candidate.external_id
   bloggerForm.display_name = candidate.display_name
   bloggerForm.homepage_url = candidate.homepage_url
+  bloggerForm.avatar_url = candidate.avatar_url
+  bloggerForm.follower_count = candidate.follower_count
   bloggerForm.description = candidate.description || bloggerForm.description
 }
 
@@ -1096,8 +1102,11 @@ async function handleCreateBlogger() {
   await runAction('blogger', '正在保存博主档案', async () => {
     const blogger = await createBlogger({
       platform: currentSocialPlatform.value,
+      external_id: bloggerForm.external_id,
       display_name: bloggerForm.display_name,
       homepage_url: bloggerForm.homepage_url,
+      avatar_url: bloggerForm.avatar_url,
+      follower_count: bloggerForm.follower_count,
       niche: bloggerForm.niche,
       description: bloggerForm.description
     })
@@ -1105,8 +1114,11 @@ async function handleCreateBlogger() {
     selectedBloggerRunId.value = null
     resultCollectionFilterId.value = null
     xhsCollectStep.value = 2
+    bloggerForm.external_id = ''
     bloggerForm.display_name = ''
     bloggerForm.homepage_url = ''
+    bloggerForm.avatar_url = ''
+    bloggerForm.follower_count = 0
     bloggerForm.niche = ''
     bloggerForm.description = ''
     showBloggerModal.value = false
