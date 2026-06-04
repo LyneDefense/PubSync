@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -55,7 +56,7 @@ class TikHubUserSearchClient:
             if "空数据" in str(exc):
                 return []
             raise
-        users = extract_user_items(payload)
+        users = adapt_douyin_user_items(payload) if self.platform == "douyin" else extract_user_items(payload)
         results = [result for item in users if (result := normalize_user(self.platform, item))]
         if not results:
             logger.warning(
@@ -105,6 +106,97 @@ class TikHubUserSearchClient:
 
 def search_bloggers(settings: Settings, platform: str, keyword: str, page: int = 1) -> list[BloggerSearchResult]:
     return TikHubUserSearchClient(settings, platform).search(keyword, page)
+
+
+def adapt_douyin_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    endpoint = str(payload.get("_endpoint_group") or payload.get("_endpoint_used") or "")
+    if "search_v2" in endpoint:
+        return adapt_douyin_search_v2(payload)
+    if "creator" in endpoint:
+        return adapt_douyin_creator_search(payload)
+    if "search_v1" in endpoint or "fetch_user_search" in endpoint:
+        return adapt_douyin_search_v1(payload)
+    return extract_user_items(payload)
+
+
+def adapt_douyin_search_v2(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    inner_data = dig(payload, "data", "data", default={})
+    user_list = inner_data.get("user_list") if isinstance(inner_data, dict) else []
+    users: list[dict[str, Any]] = []
+    for item in user_list or []:
+        if not isinstance(item, dict):
+            continue
+        users.append(
+            {
+                "id": str(item.get("user_id", "")).strip(),
+                "nickname": item.get("nick_name", ""),
+                "avatar": item.get("avatar_url", ""),
+                "fans": normalize_count(item.get("fans_cnt", 0)),
+                "description": "",
+                "unique_id": "",
+                "_raw_platform": "douyin",
+                "raw": item,
+            }
+        )
+    return users
+
+
+def adapt_douyin_search_v1(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    data = dig(payload, "data", default={})
+    user_list = data.get("user_list") if isinstance(data, dict) else []
+    users: list[dict[str, Any]] = []
+    for item in user_list or []:
+        if not isinstance(item, dict):
+            continue
+        dynamic_patch = item.get("dynamic_patch") or {}
+        raw_data = dynamic_patch.get("raw_data") if isinstance(dynamic_patch, dict) else ""
+        if not raw_data:
+            continue
+        try:
+            parsed = json.loads(raw_data)
+        except (TypeError, ValueError):
+            continue
+        user_info = parsed.get("user_info") if isinstance(parsed, dict) else {}
+        if not isinstance(user_info, dict) or not user_info:
+            continue
+        avatar_thumb = user_info.get("avatar_thumb") or {}
+        url_list = avatar_thumb.get("url_list") if isinstance(avatar_thumb, dict) else []
+        users.append(
+            {
+                "id": user_info.get("sec_uid", ""),
+                "nickname": user_info.get("nickname", ""),
+                "avatar": url_list[0] if url_list else "",
+                "fans": normalize_count(user_info.get("follower_count", 0)),
+                "description": user_info.get("signature", ""),
+                "unique_id": user_info.get("unique_id", ""),
+                "_raw_platform": "douyin",
+                "raw": item,
+            }
+        )
+    return users
+
+
+def adapt_douyin_creator_search(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    data = dig(payload, "data", default={})
+    user_infos = data.get("user_infos") if isinstance(data, dict) else []
+    users: list[dict[str, Any]] = []
+    for item in user_infos or []:
+        if not isinstance(item, dict):
+            continue
+        users.append(
+            {
+                "id": str(item.get("user_id", "")).strip(),
+                "nickname": item.get("nick_name", ""),
+                "avatar": item.get("avatar", ""),
+                "fans": normalize_count(item.get("fans", 0)),
+                "description": "",
+                "unique_id": item.get("short_id", ""),
+                "_raw_platform": "douyin",
+                "_id_type": "uid",
+                "raw": item,
+            }
+        )
+    return users
 
 
 def extract_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -173,22 +265,22 @@ def looks_like_user(item: dict[str, Any]) -> bool:
 
 def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult | None:
     if platform == "douyin":
-        external_id = deep_first_str(item, ["sec_uid", "secUid", "sec_uid_str", "secUidStr", "uid", "user_id", "userId", "id"])
+        external_id = first_str(item, ["id"]) or deep_first_str(item, ["sec_uid", "secUid", "sec_uid_str", "secUidStr", "uid", "user_id", "userId"])
     else:
         external_id = deep_first_str(item, ["user_id", "userId", "userid", "uid", "id"])
-    display_name = deep_first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
+    display_name = first_str(item, ["nickname"]) or deep_first_str(item, ["nick_name", "name", "display_name", "displayName"])
     if not external_id or not display_name:
         return None
     homepage_url = deep_first_str(item, ["homepage_url", "share_url", "shareUrl", "url"])
     if not homepage_url:
         homepage_url = build_homepage_url(platform, external_id)
-    avatar_url = deep_first_str(
+    avatar_url = first_str(item, ["avatar"]) or deep_first_str(
         item,
         ["avatar", "avatar_url", "avatarUrl", "image", "image_url"],
         list_keys=["url_list", "urlList"],
     )
-    description = deep_first_str(item, ["desc", "description", "signature", "user_desc", "userDesc", "signature_extra"])
-    follower_count = deep_first_int(item, ["follower_count", "fans_count", "fansCount", "followerCount", "followers", "fans"])
+    description = first_str(item, ["description"]) or deep_first_str(item, ["desc", "signature", "user_desc", "userDesc", "signature_extra"])
+    follower_count = first_int(item, ["fans"]) or deep_first_int(item, ["follower_count", "fans_count", "fansCount", "followerCount", "followers"])
     return BloggerSearchResult(
         platform=platform,
         external_id=external_id,
@@ -205,6 +297,39 @@ def build_homepage_url(platform: str, external_id: str) -> str:
     if platform == "douyin":
         return f"https://www.douyin.com/user/{external_id}"
     return f"https://www.xiaohongshu.com/user/profile/{external_id}"
+
+
+def dig(data: dict[str, Any], *path: str, default: Any = None) -> Any:
+    current: Any = data
+    for key in path:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+    return current
+
+
+def normalize_count(value: Any) -> str:
+    if value is None or value == "":
+        return "0"
+    if isinstance(value, (int, float)):
+        return str(int(value))
+    text = str(value).replace(",", "").strip()
+    if text.endswith(("w", "W", "万")):
+        try:
+            return str(int(float(text[:-1]) * 10000))
+        except (TypeError, ValueError):
+            return "0"
+    if text.endswith("亿"):
+        try:
+            return str(int(float(text[:-1]) * 100_000_000))
+        except (TypeError, ValueError):
+            return "0"
+    try:
+        return str(int(text))
+    except (TypeError, ValueError):
+        return "0"
 
 
 def deep_first_str(data: Any, keys: list[str], *, list_keys: list[str] | None = None) -> str:

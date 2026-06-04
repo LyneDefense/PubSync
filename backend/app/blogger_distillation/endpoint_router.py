@@ -85,7 +85,12 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
 DOUYIN_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
     "search_users": [
         Endpoint(
-            "search",
+            "search_v2",
+            "/api/v1/douyin/search/fetch_user_search_v2",
+            {"_method": "POST", "keyword": "${keyword}", "cursor": "${cursor}"},
+        ),
+        Endpoint(
+            "search_v1",
             "/api/v1/douyin/search/fetch_user_search",
             {
                 "_method": "POST",
@@ -96,7 +101,7 @@ DOUYIN_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
                 "search_id": "",
             },
         ),
-        Endpoint("creator", "/api/v1/douyin/creator/fetch_user_search", {"user_name": "${keyword}"}),
+        Endpoint("creator", "/api/v1/douyin/creator/fetch_user_search", {"user_name": "${keyword}", "cursor": "${cursor}", "count": "${count}"}),
     ],
 }
 
