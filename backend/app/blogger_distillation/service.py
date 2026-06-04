@@ -18,6 +18,7 @@ from app.blogger_distillation.providers import ensure_collection_provider_availa
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.quality import evaluate_post_quality, quality_report
 from app.blogger_distillation.tikhub_client import (
+    TikHubDouyinClient,
     TikHubError,
     TikHubUsage,
     TikHubXhsClient,
@@ -201,12 +202,12 @@ def run_blogger_collection(
     db.refresh(run)
     collection_settings = settings.model_copy(update={"asr_enabled": asr_enabled})
 
-    client: TikHubXhsClient | None = None
+    client: TikHubXhsClient | TikHubDouyinClient | None = None
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始采集数据")
         ensure_collection_provider_available(blogger)
-        client = TikHubXhsClient(collection_settings)
+        client = build_collection_client(collection_settings, blogger.platform)
         client.get_user_info(blogger.homepage_url, blogger.external_id)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         candidates = client.get_user_notes(blogger.homepage_url, sample_limit, blogger.external_id)
@@ -215,7 +216,7 @@ def run_blogger_collection(
         posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates[:sample_limit], comments_per_post)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         if not posts:
-            raise TikHubError("没有采集到可用的小红书笔记，请检查主页链接或 TikHub 接口返回")
+            raise TikHubError(f"没有采集到可用的{platform_collection_label(blogger.platform)}样本，请检查主页链接或 TikHub 接口返回")
         blogger.sample_count = len(posts)
         for position, post in enumerate(posts, 1):
             db.add(
@@ -227,7 +228,7 @@ def run_blogger_collection(
                     position=position,
                 )
             )
-        record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条笔记")
+        record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条样本")
 
         quality = quality_report(posts, sample_limit)
         if quality["warnings"]:
@@ -269,6 +270,16 @@ def run_blogger_collection(
             apply_usage(run, client.usage)
         db.commit()
         raise
+
+
+def build_collection_client(settings: Settings, platform: str) -> TikHubXhsClient | TikHubDouyinClient:
+    if platform == "douyin":
+        return TikHubDouyinClient(settings)
+    return TikHubXhsClient(settings)
+
+
+def platform_collection_label(platform: str) -> str:
+    return "抖音作品" if platform == "douyin" else "小红书笔记"
 
 
 def run_blogger_distillation(
@@ -436,7 +447,7 @@ def collect_posts(
     tenant_id: int,
     task_id: str,
     blogger: BloggerProfile,
-    client: TikHubXhsClient,
+    client: TikHubXhsClient | TikHubDouyinClient,
     settings: Settings,
     candidates: list[XhsPostCandidate],
     comments_per_post: int,
@@ -451,7 +462,7 @@ def collect_posts(
             record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"ASR 初始化失败，将降级分析视频：{exc}")
             asr_provider = None
     else:
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频笔记将使用标题、描述、评论和互动数据参与蒸馏")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频样本将使用标题、描述、评论和互动数据参与蒸馏")
 
     total = len(candidates)
     for index, candidate in enumerate(candidates, 1):
@@ -577,7 +588,7 @@ def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str
     return fallback
 
 
-def supplement_video_detail_with_url(client: TikHubXhsClient, candidate: XhsPostCandidate, fallback: dict[str, Any]) -> dict[str, Any]:
+def supplement_video_detail_with_url(client: TikHubXhsClient | TikHubDouyinClient, candidate: XhsPostCandidate, fallback: dict[str, Any]) -> dict[str, Any]:
     for detail in client.get_video_note_detail_variants(candidate):
         if extract_video_url(detail):
             logger.info("视频 URL 补取成功：note_id=%s，端点=%s", candidate.external_id, detail.get("_endpoint_used", "<unknown>"))
@@ -713,7 +724,7 @@ def handle_video_asr(
 def normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "content": first_str(item, ["content", "text", "comment_content", "desc"]),
-        "like_count": first_int(item, ["like_count", "liked_count", "likes"]),
+        "like_count": first_int(item, ["like_count", "liked_count", "digg_count", "likes"]),
         "created_at": str(parse_timestamp(item.get("create_time") or item.get("time")) or ""),
     }
 
@@ -727,7 +738,7 @@ def upsert_post(db: Session, tenant_id: int, blogger: BloggerProfile, data: dict
         )
     )
     if not post:
-        post = BloggerPost(tenant_id=tenant_id, blogger_id=blogger.id, platform="xhs", **data)
+        post = BloggerPost(tenant_id=tenant_id, blogger_id=blogger.id, platform=blogger.platform, **data)
         db.add(post)
         db.flush()
         return post

@@ -309,7 +309,11 @@ const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((
 const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
 const selectedXhsSkill = computed(() => bloggerSkills.value.find((skill) => skill.id === xhsPackageForm.skill_id) || null)
-const selectedXhsPackage = computed(() => xhsPackages.value.find((item) => item.id === selectedXhsPackageId.value) || xhsPackages.value[0] || null)
+const visibleXhsPackages = computed(() => {
+  const bloggerIds = new Set(bloggers.value.map((blogger) => blogger.id))
+  return xhsPackages.value.filter((item) => bloggerIds.has(item.blogger_id))
+})
+const selectedXhsPackage = computed(() => visibleXhsPackages.value.find((item) => item.id === selectedXhsPackageId.value) || visibleXhsPackages.value[0] || null)
 const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
 const visibleBloggerRuns = computed(() =>
   resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
@@ -2260,10 +2264,10 @@ onUnmounted(() => {
 
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'packages'" class="panel">
+      <section v-if="isSocialPlatform && currentSocialTab === 'packages'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书 AI 创作</h2>
+            <h2>{{ currentSocialPlatformName }} AI 创作</h2>
             <p class="toolbar-subtitle">按步骤生成一条新内容；历史结果请到“发布包历史”查看。</p>
           </div>
         </div>
@@ -2478,7 +2482,7 @@ onUnmounted(() => {
                     class="image-preview-trigger"
                     @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
                   >
-                    <img :src="String(url)" alt="小红书发布包配图" />
+                    <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
                   </button>
                   <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                 </figure>
@@ -2548,7 +2552,7 @@ onUnmounted(() => {
                       class="image-preview-trigger"
                       @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
                     >
-                      <img :src="String(url)" alt="小红书发布包配图" />
+                      <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
                     </button>
                     <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                   </figure>
@@ -2580,21 +2584,21 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="activeMainTab === 'xhs' && activeXhsTab === 'history'" class="panel">
+      <section v-if="isSocialPlatform && currentSocialTab === 'history'" class="panel">
         <div class="section-header">
           <div>
-            <h2>小红书发布包历史</h2>
+            <h2>{{ currentSocialPlatformName }}发布包历史</h2>
             <p class="toolbar-subtitle">这里专门查看、复制和管理历史生成结果，不进入生成流程。</p>
           </div>
-        </div>
+          </div>
         <div class="package-browser history-browser">
           <aside class="run-list package-list" aria-label="发布包记录">
             <div class="run-list-header">
               <strong>发布包记录</strong>
-              <span>{{ xhsPackages.length }} 条</span>
+              <span>{{ visibleXhsPackages.length }} 条</span>
             </div>
             <button
-              v-for="pack in xhsPackages"
+              v-for="pack in visibleXhsPackages"
               :key="pack.id"
               type="button"
               :class="{ active: selectedXhsPackage?.id === pack.id }"
@@ -2603,7 +2607,7 @@ onUnmounted(() => {
               <strong>{{ pack.title || pack.topic }}</strong>
               <span>{{ xhsContentTypeLabel(pack.content_type) }} · {{ formatDate(pack.created_at) }}</span>
             </button>
-            <p v-if="!xhsPackages.length" class="empty-region">还没有发布包。到“AI 创作”生成后会出现在这里。</p>
+            <p v-if="!visibleXhsPackages.length" class="empty-region">还没有发布包。到“AI 创作”生成后会出现在这里。</p>
           </aside>
 
           <article v-if="selectedXhsPackage" class="package-preview">
@@ -2656,7 +2660,7 @@ onUnmounted(() => {
                     class="image-preview-trigger"
                     @click="openImagePreview(url, xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}`)"
                   >
-                    <img :src="String(url)" alt="小红书发布包配图" />
+                    <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
                   </button>
                   <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
                 </figure>
@@ -2695,14 +2699,14 @@ onUnmounted(() => {
         <p class="empty-region">该模块暂未开放。</p>
       </section>
 
-      <section v-if="activeMainTab === 'douyin' && ['packages', 'history', 'records', 'settings'].includes(currentSocialTab)" class="panel">
+      <section v-if="activeMainTab === 'douyin' && (currentSocialTab === 'records' || currentSocialTab === 'settings')" class="panel">
         <div class="section-header">
           <div>
-            <h2>{{ currentSocialTab === 'packages' ? '抖音 AI 创作' : currentSocialTab === 'history' ? '抖音发布包历史' : currentSocialTab === 'records' ? '抖音发布记录' : '抖音设置' }}</h2>
-            <p class="toolbar-subtitle">抖音会复用“样本采集、风格蒸馏、脚本生成、发布包”的结构；当前已接入博主资产与任务入口，脚本发布包后续接入。</p>
+            <h2>{{ currentSocialTab === 'records' ? '抖音发布记录' : '抖音设置' }}</h2>
+            <p class="toolbar-subtitle">发布记录和平台设置能力后续开放。</p>
           </div>
         </div>
-        <p class="empty-region">该模块暂未开放。请先使用“博主蒸馏 / 数据采集”建立抖音博主样本资产。</p>
+        <p class="empty-region">该模块暂未开放。</p>
       </section>
 
       <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'settings'" class="panel">

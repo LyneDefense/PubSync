@@ -27,9 +27,11 @@ def generate_xhs_publish_package_draft(
     payload: XhsPublishPackageCreate,
 ) -> dict[str, Any]:
     skill, blogger = validate_xhs_package_request(db, settings, tenant_id, payload)
+    platform_name = social_platform_name(blogger.platform)
 
     logger.info(
-        "小红书发布包草稿生成开始：租户=%s，博主=%s，skill_id=%s，类型=%s，主题=%s",
+        "%s发布包草稿生成开始：租户=%s，博主=%s，skill_id=%s，类型=%s，主题=%s",
+        platform_name,
         tenant_id,
         blogger.display_name,
         skill.id,
@@ -51,11 +53,11 @@ def generate_xhs_publish_package_draft(
             if not prompt:
                 continue
             try:
-                image_url = generate_image(settings, prompt, f"xhs-package-{skill.id}-{index}")
+                image_url = generate_image(settings, prompt, f"{blogger.platform}-package-{skill.id}-{index}")
                 if image_url:
                     image_urls.append(image_url)
             except Exception as exc:  # noqa: BLE001 - keep the package usable if image generation fails.
-                logger.warning("小红书发布包配图生成失败：skill_id=%s，序号=%s，错误=%s", skill.id, index, exc)
+                logger.warning("%s发布包配图生成失败：skill_id=%s，序号=%s，错误=%s", platform_name, skill.id, index, exc)
                 error_message = f"部分配图生成失败：{exc}"
 
     draft = {
@@ -79,7 +81,7 @@ def generate_xhs_publish_package_draft(
         "status": "draft",
         "error_message": error_message,
     }
-    logger.info("小红书发布包草稿生成完成：skill_id=%s，图片=%s", skill.id, len(image_urls))
+    logger.info("%s发布包草稿生成完成：skill_id=%s，图片=%s", platform_name, skill.id, len(image_urls))
     return draft
 
 
@@ -119,7 +121,7 @@ def create_xhs_publish_package(
     db.add(package)
     db.commit()
     db.refresh(package)
-    logger.info("小红书发布包保存完成：package_id=%s，skill_id=%s", package.id, skill.id)
+    logger.info("%s发布包保存完成：package_id=%s，skill_id=%s", social_platform_name(blogger.platform), package.id, skill.id)
     return package
 
 
@@ -156,16 +158,18 @@ def generate_xhs_topic_ideas(
         raise ValueError("Skill 对应的博主不存在")
     if not is_ai_enabled(settings):
         raise AIServiceError("未配置可用的大模型 API Key")
+    platform_name = social_platform_name(blogger.platform)
 
     logger.info(
-        "小红书选题方案生成开始：租户=%s，博主=%s，skill_id=%s，种子主题=%s",
+        "%s选题方案生成开始：租户=%s，博主=%s，skill_id=%s，种子主题=%s",
+        platform_name,
         tenant_id,
         blogger.display_name,
         skill.id,
         payload.seed_topic,
     )
     prompt = f"""
-你是小红书选题策划。请基于“博主蒸馏 Skill”为用户生成 5 个可执行的选题方案。
+你是{platform_name}选题策划。请基于“博主蒸馏 Skill”为用户生成 5 个可执行的选题方案。
 
 要求：
 - 只学习 Skill 的选题方法、标题结构、切入角度，不要冒充原博主，不要复制原文。
@@ -212,7 +216,7 @@ def generate_xhs_topic_ideas(
     normalized = [item for item in normalized if item["title"] and item["angle"]]
     if not normalized:
         raise AIServiceError("AI 返回的选题方案为空")
-    logger.info("小红书选题方案生成完成：skill_id=%s，数量=%s", skill.id, len(normalized))
+    logger.info("%s选题方案生成完成：skill_id=%s，数量=%s", platform_name, skill.id, len(normalized))
     return normalized[:5]
 
 
@@ -222,6 +226,7 @@ def generate_package_content(
     skill: BloggerSkill,
     payload: XhsPublishPackageCreate,
 ) -> dict[str, Any]:
+    platform_name = social_platform_name(blogger.platform)
     content_type_label = CONTENT_TYPE_LABELS.get(payload.content_type, payload.content_type)
     image_instruction = (
         "如果内容类型是图文笔记加配图，请决定 suitable_image_count，范围 1-9。"
@@ -229,12 +234,12 @@ def generate_package_content(
         else f"如果内容类型是图文笔记加配图，必须规划 {payload.requested_image_count or 1} 张配图。"
     )
     prompt = f"""
-你是小红书内容主编。请基于“博主蒸馏 Skill”生成一个可人工发布的小红书发布包。
+你是{platform_name}内容主编。请基于“博主蒸馏 Skill”生成一个可人工发布的{platform_name}发布包。
 
 重要边界：
 - 只能学习 Skill 中的结构、节奏、表达方法，不要冒充原博主，不要复制原文。
 - 内容必须围绕用户给定主题，不能编造专业事实；不确定的信息要用温和表达。
-- 适合小红书：标题要具体，正文要分段，标签要可用，结尾要有轻量互动引导。
+- 适合{platform_name}：标题要具体，正文要分段，标签要可用，结尾要有轻量互动引导。
 - 输出必须是合法 JSON，不要 Markdown，不要解释文字。
 - {image_instruction}
 - 生成图片 prompt 时不要出现真实人物姓名、真人肖像、logo、品牌标识、平台 UI 截图；使用干净、生活化、可商用的概念图或场景图。
@@ -261,8 +266,8 @@ def generate_package_content(
 
 输出 JSON 字段：
 {{
-  "title": "小红书标题，最多 28 个汉字",
-  "body_text": "可直接复制的小红书正文。图文笔记用正文；脚本类型也要给一段发布说明。",
+  "title": "{platform_name}标题，最多 28 个汉字",
+  "body_text": "可直接复制的{platform_name}正文。图文笔记用正文；脚本类型也要给一段发布说明。",
   "hashtags": ["话题标签，不要带#号"],
   "cover_text": "封面文案，最多 18 个汉字",
   "suitable_image_count": 0,
@@ -331,19 +336,23 @@ def normalize_image_plan(value: Any) -> list[dict[str, Any]]:
 
 
 def build_fallback_image_plan(generated: dict[str, Any], target_count: int) -> list[dict[str, Any]]:
-    title = str(generated.get("title") or "xiaohongshu lifestyle note")
+    title = str(generated.get("title") or "social media lifestyle note")
     return [
         {
             "slot": index,
             "purpose": "补充正文视觉层次",
             "caption": title[:18],
             "prompt": (
-                "Clean Xiaohongshu lifestyle editorial image, soft natural light, practical knowledge sharing scene, "
+                "Clean social media lifestyle editorial image, soft natural light, practical knowledge sharing scene, "
                 "warm composition, no human face, no celebrity, no logo, no brand mark, no UI screenshot, no text"
             ),
         }
         for index in range(1, target_count + 1)
     ]
+
+
+def social_platform_name(platform: str) -> str:
+    return "抖音" if platform == "douyin" else "小红书"
 
 
 def normalize_string_list(value: Any) -> list[str]:

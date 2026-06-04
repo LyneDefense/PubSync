@@ -16,8 +16,6 @@ def platform_label(platform: str) -> str:
 
 
 def ensure_collection_provider_available(blogger: BloggerProfile) -> None:
-    if blogger.platform == "xhs":
+    if blogger.platform in {"xhs", "douyin"}:
         return
-    if blogger.platform == "douyin":
-        raise TikHubError("抖音采集器待接入：当前已完成平台隔离和任务流程，请接入 TikHub 抖音作品列表、评论和视频详情接口")
     raise TikHubError(f"{platform_label(blogger.platform)}采集器待接入")

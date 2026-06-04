@@ -103,6 +103,23 @@ DOUYIN_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
         ),
         Endpoint("creator", "/api/v1/douyin/creator/fetch_user_search", {"user_name": "${keyword}", "cursor": "${cursor}", "count": "${count}"}),
     ],
+    "user_info": [
+        Endpoint("app", "/api/v1/douyin/app/v3/handler_user_profile", {"sec_user_id": "${user_id}"}),
+        Endpoint("web", "/api/v1/douyin/web/handler_user_profile", {"sec_user_id": "${user_id}"}),
+    ],
+    "user_videos": [
+        Endpoint("app", "/api/v1/douyin/app/v3/fetch_user_post_videos", {"sec_user_id": "${user_id}", "max_cursor": "${cursor}", "count": "${count}"}),
+        Endpoint("web", "/api/v1/douyin/web/fetch_user_post_videos", {"sec_uid": "${user_id}", "max_cursor": "${cursor}", "count": "${count}"}),
+        Endpoint("app_v2", "/api/v1/douyin/app/v2/fetch_user_post", {"sec_user_id": "${user_id}", "max_cursor": "${cursor}"}),
+    ],
+    "video_detail": [
+        Endpoint("app", "/api/v1/douyin/app/v3/fetch_one_video", {"aweme_id": "${video_id}"}),
+        Endpoint("web", "/api/v1/douyin/web/fetch_video_detail", {"aweme_id": "${video_id}"}),
+    ],
+    "comments": [
+        Endpoint("app", "/api/v1/douyin/app/v3/fetch_video_comments", {"aweme_id": "${video_id}", "cursor": "${cursor}", "count": "${count}"}),
+        Endpoint("web", "/api/v1/douyin/web/fetch_video_comments", {"aweme_id": "${video_id}", "cursor": "${cursor}", "count": "${count}"}),
+    ],
 }
 
 
