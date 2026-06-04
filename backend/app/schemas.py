@@ -339,6 +339,17 @@ class BloggerProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BloggerSearchResultRead(BaseModel):
+    platform: str
+    external_id: str
+    display_name: str
+    homepage_url: str
+    avatar_url: str
+    description: str
+    follower_count: int
+    raw: dict
+
+
 class BloggerDistillRequest(BaseModel):
     collection_run_id: int
 

@@ -33,6 +33,7 @@ import {
   login,
   sendArticleToWechat,
   saveXhsPublishPackage,
+  searchBloggers,
   setTenantId,
   startXhsPublishPackageDraftTask,
   updateArticle,
@@ -48,6 +49,7 @@ import type {
   BloggerDistillationRun,
   BloggerPost,
   BloggerProfile,
+  BloggerSearchResult,
   BloggerSkill,
   ContentGroup,
   ContentProfile,
@@ -132,6 +134,9 @@ const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
 const showBloggerModal = ref(false)
+const bloggerSearchKeyword = ref('')
+const bloggerSearchResults = ref<BloggerSearchResult[]>([])
+const selectedBloggerCandidate = ref<BloggerSearchResult | null>(null)
 const showUserMenu = ref(false)
 const previewImage = ref<{ url: string; caption: string } | null>(null)
 const newsPage = ref(1)
@@ -1055,7 +1060,39 @@ async function refreshXhsPackages(selectedId?: number) {
   selectedXhsPackageId.value = selectedId || xhsPackages.value[0]?.id || null
 }
 
+function resetBloggerSearch() {
+  bloggerSearchKeyword.value = ''
+  bloggerSearchResults.value = []
+  selectedBloggerCandidate.value = null
+}
+
+async function handleSearchBloggerCandidates() {
+  const keyword = bloggerSearchKeyword.value.trim()
+  if (!keyword) {
+    showMessage('请输入博主名称或关键词', true)
+    return
+  }
+  await runAction('blogger-search', '正在搜索博主', async () => {
+    bloggerSearchResults.value = await searchBloggers(currentSocialPlatform.value, keyword)
+    selectedBloggerCandidate.value = null
+    if (!bloggerSearchResults.value.length) {
+      showMessage('没有搜索到匹配的博主', true)
+    }
+  })
+}
+
+function selectBloggerCandidate(candidate: BloggerSearchResult) {
+  selectedBloggerCandidate.value = candidate
+  bloggerForm.display_name = candidate.display_name
+  bloggerForm.homepage_url = candidate.homepage_url
+  bloggerForm.description = candidate.description || bloggerForm.description
+}
+
 async function handleCreateBlogger() {
+  if (!bloggerForm.homepage_url.trim()) {
+    showMessage('请先搜索并选择一个博主', true)
+    return
+  }
   await runAction('blogger', '正在保存博主档案', async () => {
     const blogger = await createBlogger({
       platform: currentSocialPlatform.value,
@@ -1073,6 +1110,7 @@ async function handleCreateBlogger() {
     bloggerForm.niche = ''
     bloggerForm.description = ''
     showBloggerModal.value = false
+    resetBloggerSearch()
     await refreshBloggers()
   })
 }
@@ -3069,18 +3107,44 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false">
+      <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false; resetBloggerSearch()">
         <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`创建${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">
           <div class="section-header">
             <div>
               <h2>创建博主</h2>
-              <p class="toolbar-subtitle">只保存主页和领域信息；采集数量与 ASR 在后续步骤配置。</p>
+              <p class="toolbar-subtitle">先搜索并选择博主，再补充领域和备注。</p>
             </div>
-            <button type="button" class="ghost" @click="showBloggerModal = false">关闭</button>
+            <button type="button" class="ghost" @click="showBloggerModal = false; resetBloggerSearch()">关闭</button>
           </div>
+          <div class="search-row">
+            <label>
+              搜索{{ currentSocialPlatformName }}博主
+              <input v-model="bloggerSearchKeyword" type="search" placeholder="输入昵称或关键词" @keydown.enter.prevent="handleSearchBloggerCandidates" />
+            </label>
+            <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleSearchBloggerCandidates">
+              {{ pendingAction === 'blogger-search' ? '搜索中' : '搜索' }}
+            </button>
+          </div>
+          <div v-if="bloggerSearchResults.length" class="candidate-list" aria-label="博主搜索结果">
+            <button
+              v-for="candidate in bloggerSearchResults"
+              :key="`${candidate.platform}-${candidate.external_id}`"
+              type="button"
+              :class="{ active: selectedBloggerCandidate?.external_id === candidate.external_id }"
+              @click="selectBloggerCandidate(candidate)"
+            >
+              <img v-if="candidate.avatar_url" :src="candidate.avatar_url" alt="" />
+              <span>
+                <strong>{{ candidate.display_name }}</strong>
+                <small>{{ candidate.description || '暂无简介' }}</small>
+              </span>
+              <em>{{ candidate.follower_count ? `${candidate.follower_count} 粉丝` : '粉丝未知' }}</em>
+            </button>
+          </div>
+          <p v-else-if="bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
           <label>
             博主名称
-            <input v-model="bloggerForm.display_name" type="text" required />
+            <input v-model="bloggerForm.display_name" type="text" required readonly />
           </label>
           <label>
             {{ currentSocialPlatformName }}主页链接
@@ -3088,6 +3152,7 @@ onUnmounted(() => {
               v-model="bloggerForm.homepage_url"
               type="url"
               required
+              readonly
               :placeholder="currentSocialPlatform === 'douyin' ? 'https://www.douyin.com/user/...' : 'https://www.xiaohongshu.com/user/profile/...'"
             />
           </label>
@@ -3100,8 +3165,8 @@ onUnmounted(() => {
             <textarea v-model="bloggerForm.description" rows="3"></textarea>
           </label>
           <div class="actions">
-            <button type="button" @click="showBloggerModal = false">取消</button>
-            <button type="submit" class="primary" :disabled="Boolean(pendingAction)">
+            <button type="button" @click="showBloggerModal = false; resetBloggerSearch()">取消</button>
+            <button type="submit" class="primary" :disabled="Boolean(pendingAction) || !bloggerForm.homepage_url">
               {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
             </button>
           </div>

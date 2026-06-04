@@ -82,6 +82,13 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
 }
 
 
+DOUYIN_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
+    "search_users": [
+        Endpoint("search", "/api/v1/douyin/search/fetch_user_search", {"keyword": "${keyword}", "cursor": "${cursor}", "count": "${count}"}),
+    ],
+}
+
+
 class EndpointRouter:
     degradable_status_codes = {400, 404, 422, 500, 502, 503, 504}
     blocking_status_codes = {401, 402, 403}

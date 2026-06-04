@@ -251,6 +251,17 @@ export interface BloggerProfileCreate {
   description: string
 }
 
+export interface BloggerSearchResult {
+  platform: SocialPlatform
+  external_id: string
+  display_name: string
+  homepage_url: string
+  avatar_url: string
+  description: string
+  follower_count: number
+  raw: Record<string, unknown>
+}
+
 export interface BloggerDistillRequest {
   collection_run_id: number
 }

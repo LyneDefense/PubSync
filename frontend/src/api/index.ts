@@ -10,6 +10,7 @@ import type {
   BloggerPost,
   BloggerProfile,
   BloggerProfileCreate,
+  BloggerSearchResult,
   BloggerSkill,
   ContentProfile,
   CurrentUser,
@@ -175,6 +176,12 @@ export function sendArticleToWechat(id: number) {
 
 export function listBloggers(platform: SocialPlatform = 'xhs') {
   return request<BloggerProfile[]>(`/bloggers?platform=${encodeURIComponent(platform)}`)
+}
+
+export function searchBloggers(platform: SocialPlatform, keyword: string, page = 1) {
+  return request<BloggerSearchResult[]>(
+    `/bloggers/search?platform=${encodeURIComponent(platform)}&keyword=${encodeURIComponent(keyword)}&page=${page}`
+  )
 }
 
 export function createBlogger(payload: BloggerProfileCreate) {

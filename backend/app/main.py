@@ -45,6 +45,7 @@ from app.schemas import (
     BloggerPostRead,
     BloggerProfileCreate,
     BloggerProfileRead,
+    BloggerSearchResultRead,
     BloggerSkillRead,
     ContentProfileRead,
     CurrentUserRead,
@@ -90,6 +91,8 @@ from app.services.task_service import (
     scheduled_workspace_publish,
 )
 from app.blogger_distillation.service import abandon_blogger_distillation, confirm_blogger_distillation, create_blogger
+from app.blogger_distillation.search import search_bloggers
+from app.blogger_distillation.tikhub_client import TikHubError
 from app.services.tenant_service import (
     ensure_tenant_defaults,
     get_content_groups,
@@ -448,6 +451,22 @@ def list_bloggers_endpoint(
             .order_by(BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
         )
     )
+
+
+@app.get("/bloggers/search", response_model=list[BloggerSearchResultRead])
+def search_bloggers_endpoint(
+    platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
+    keyword: str = Query(min_length=1, max_length=100),
+    page: int = Query(default=1, ge=1, le=20),
+    tenant: Tenant = Depends(current_tenant),
+) -> list:
+    _ = tenant
+    try:
+        return search_bloggers(settings, platform, keyword, page)
+    except TikHubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/bloggers", response_model=BloggerProfileRead)

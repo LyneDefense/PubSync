@@ -2052,7 +2052,7 @@ p {
 }
 
 .modal-panel {
-  width: min(620px, 100%);
+  width: min(760px, 100%);
   max-height: min(760px, 92vh);
   overflow: auto;
   border: var(--rule-hair);
@@ -2060,6 +2060,67 @@ p {
   background: var(--color-surface-solid);
   padding: var(--space-md);
   box-shadow: var(--shadow-panel);
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-xs);
+  align-items: end;
+}
+
+.candidate-list {
+  display: grid;
+  gap: var(--space-2xs);
+  max-height: 280px;
+  overflow: auto;
+  border: var(--rule-hair);
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  padding: var(--space-xs);
+}
+
+.candidate-list button {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 68px;
+  height: auto;
+  padding: var(--space-xs);
+  text-align: left;
+}
+
+.candidate-list button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.candidate-list img {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-paper-3);
+}
+
+.candidate-list span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.candidate-list small {
+  overflow: hidden;
+  color: var(--color-ink-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-list em {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-style: normal;
 }
 
 .distill-report {
