@@ -612,8 +612,24 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 function compactTaskMessage(event: OperationTaskEvent) {
   const payload = parseEventPayload(event)
   const progress = payload?.current && payload?.total ? `${payload.current}/${payload.total}` : ''
+  if (taskEventsAction.value === 'collect' && progress) {
+    return progress
+  }
+  if (taskEventsAction.value === 'collect') {
+    return latestCollectionProgressText() || '采集中'
+  }
   const message = progress ? `${event.message} ${progress}` : event.message
   return message.length > 42 ? `${message.slice(0, 42)}...` : message
+}
+
+function latestCollectionProgressText() {
+  for (let index = taskEvents.value.length - 1; index >= 0; index -= 1) {
+    const payload = parseEventPayload(taskEvents.value[index])
+    if (payload?.current && payload?.total) {
+      return `${payload.current}/${payload.total}`
+    }
+  }
+  return ''
 }
 
 function parseEventPayload(event: OperationTaskEvent) {
@@ -689,6 +705,7 @@ function eventPayloadSummary(event: OperationTaskEvent) {
   }
   const entries = Object.entries(payload)
     .filter(([key]) => !['current', 'total'].includes(key))
+    .filter(() => taskEventsAction.value !== 'collect')
     .filter(([, value]) => value !== null && value !== '' && value !== undefined)
     .slice(0, 3)
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)

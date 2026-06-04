@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -282,6 +283,19 @@ def platform_collection_label(platform: str) -> str:
     return "抖音作品" if platform == "douyin" else "小红书笔记"
 
 
+def build_distillation_diagnostics(posts: list[BloggerPost], stats: dict[str, Any]) -> dict[str, int]:
+    stats_json = json.dumps(stats, ensure_ascii=False, default=str)
+    return {
+        "sample_count": len(posts),
+        "video_count": sum(1 for post in posts if post.content_type == "video"),
+        "transcript_count": sum(1 for post in posts if (post.transcript_text or "").strip()),
+        "transcript_chars": sum(len(post.transcript_text or "") for post in posts),
+        "comment_total": int(stats.get("comment_total") or 0),
+        "stats_json_chars": len(stats_json),
+        "stats_prompt_chars": min(len(stats_json), 18000),
+    }
+
+
 def run_blogger_distillation(
     db: Session,
     settings: Settings,
@@ -338,7 +352,34 @@ def run_blogger_distillation(
         except json.JSONDecodeError:
             pass
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
+        diagnostics = build_distillation_diagnostics(posts, stats)
+        logger.info(
+            "认知蒸馏诊断：任务ID=%s，平台=%s，博主ID=%s，批次ID=%s，样本=%s，视频=%s，转写样本=%s，总转写字数=%s，评论=%s，stats字符=%s，发送字符=%s，模型=%s",
+            task_id,
+            blogger.platform,
+            blogger.id,
+            collection_run.id,
+            diagnostics["sample_count"],
+            diagnostics["video_count"],
+            diagnostics["transcript_count"],
+            diagnostics["transcript_chars"],
+            diagnostics["comment_total"],
+            diagnostics["stats_json_chars"],
+            diagnostics["stats_prompt_chars"],
+            settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model,
+        )
+        llm_started_at = time.perf_counter()
+        logger.info("认知蒸馏请求已发送：任务ID=%s，平台=%s，模型=%s", task_id, blogger.platform, settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model)
         distillation = distill_with_llm(settings, blogger, user_info, stats)
+        llm_elapsed = time.perf_counter() - llm_started_at
+        logger.info(
+            "认知蒸馏返回：任务ID=%s，平台=%s，耗时=%.2fs，输出字段=%s，输出字符=%s",
+            task_id,
+            blogger.platform,
+            llm_elapsed,
+            len(distillation),
+            len(json.dumps(distillation, ensure_ascii=False, default=str)),
+        )
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         usage = TikHubUsage()
         report_html = artifacts.render_report_html(blogger, stats, distillation, usage)
