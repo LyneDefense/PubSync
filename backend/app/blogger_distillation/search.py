@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +11,9 @@ from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, Endp
 from app.blogger_distillation.providers import validate_platform
 from app.blogger_distillation.tikhub_client import TikHubError, first_int, first_str
 from app.config import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,7 +56,16 @@ class TikHubUserSearchClient:
                 return []
             raise
         users = extract_user_items(payload)
-        return [result for item in users if (result := normalize_user(self.platform, item))]
+        results = [result for item in users if (result := normalize_user(self.platform, item))]
+        if not results:
+            logger.warning(
+                "博主搜索没有解析出结果：平台=%s，关键词=%s，endpoint=%s，顶层字段=%s",
+                self.platform,
+                clean_keyword,
+                payload.get("_endpoint_used", "<unknown>"),
+                ",".join(payload.keys()),
+            )
+        return results
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
@@ -99,7 +112,23 @@ def extract_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
     def visit(node: Any) -> None:
         if isinstance(node, dict):
-            for key in ("users", "user_list", "userList", "items", "list", "data"):
+            normalized = normalize_container_item(node)
+            if normalized is not node and looks_like_user(normalized):
+                candidates.append((1, [normalized]))
+            for key in (
+                "users",
+                "user_list",
+                "userList",
+                "user_info_list",
+                "userInfoList",
+                "user_data",
+                "userData",
+                "items",
+                "item_list",
+                "itemList",
+                "list",
+                "data",
+            ):
                 value = node.get(key)
                 if isinstance(value, list):
                     users = [normalize_container_item(item) for item in value if isinstance(item, dict)]
@@ -123,10 +152,11 @@ def extract_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def normalize_container_item(item: dict[str, Any]) -> dict[str, Any]:
-    for key in ("user", "user_info", "userInfo", "author", "author_info", "card"):
+    for key in ("user", "user_info", "userInfo", "author", "author_info", "authorInfo", "card", "user_card", "userCard"):
         value = item.get(key)
         if isinstance(value, dict):
-            merged = dict(value)
+            nested = normalize_container_item(value)
+            merged = dict(nested)
             for raw_key, raw_value in item.items():
                 if raw_key not in merged and raw_value not in (None, "", [], {}):
                     merged[raw_key] = raw_value
@@ -135,20 +165,30 @@ def normalize_container_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def looks_like_user(item: dict[str, Any]) -> bool:
-    return bool(first_str(item, ["user_id", "userId", "uid", "sec_uid", "secUid", "id"]) and first_str(item, ["nickname", "nick_name", "name", "display_name"]))
+    return bool(
+        deep_first_str(item, ["sec_uid", "secUid", "uid", "user_id", "userId", "userid", "id"])
+        and deep_first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
+    )
 
 
 def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult | None:
-    external_id = first_str(item, ["user_id", "userId", "uid", "sec_uid", "secUid", "id"])
-    display_name = first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
+    if platform == "douyin":
+        external_id = deep_first_str(item, ["sec_uid", "secUid", "sec_uid_str", "secUidStr", "uid", "user_id", "userId", "id"])
+    else:
+        external_id = deep_first_str(item, ["user_id", "userId", "userid", "uid", "id"])
+    display_name = deep_first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
     if not external_id or not display_name:
         return None
-    homepage_url = first_str(item, ["homepage_url", "share_url", "shareUrl", "url"])
+    homepage_url = deep_first_str(item, ["homepage_url", "share_url", "shareUrl", "url"])
     if not homepage_url:
         homepage_url = build_homepage_url(platform, external_id)
-    avatar_url = first_str(item, ["avatar", "avatar_url", "avatarUrl", "image", "image_url"])
-    description = first_str(item, ["desc", "description", "signature", "user_desc", "userDesc"])
-    follower_count = first_int(item, ["follower_count", "fans_count", "fansCount", "followerCount", "followers", "fans"])
+    avatar_url = deep_first_str(
+        item,
+        ["avatar", "avatar_url", "avatarUrl", "image", "image_url"],
+        list_keys=["url_list", "urlList"],
+    )
+    description = deep_first_str(item, ["desc", "description", "signature", "user_desc", "userDesc", "signature_extra"])
+    follower_count = deep_first_int(item, ["follower_count", "fans_count", "fansCount", "followerCount", "followers", "fans"])
     return BloggerSearchResult(
         platform=platform,
         external_id=external_id,
@@ -165,3 +205,43 @@ def build_homepage_url(platform: str, external_id: str) -> str:
     if platform == "douyin":
         return f"https://www.douyin.com/user/{external_id}"
     return f"https://www.xiaohongshu.com/user/profile/{external_id}"
+
+
+def deep_first_str(data: Any, keys: list[str], *, list_keys: list[str] | None = None) -> str:
+    if isinstance(data, dict):
+        direct = first_str(data, keys)
+        if direct:
+            return direct
+        for key in list_keys or []:
+            value = data.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, (str, int)) and str(item).strip():
+                        return str(item).strip()
+        for value in data.values():
+            nested = deep_first_str(value, keys, list_keys=list_keys)
+            if nested:
+                return nested
+    elif isinstance(data, list):
+        for item in data:
+            nested = deep_first_str(item, keys, list_keys=list_keys)
+            if nested:
+                return nested
+    return ""
+
+
+def deep_first_int(data: Any, keys: list[str]) -> int:
+    if isinstance(data, dict):
+        direct = first_int(data, keys)
+        if direct:
+            return direct
+        for value in data.values():
+            nested = deep_first_int(value, keys)
+            if nested:
+                return nested
+    elif isinstance(data, list):
+        for item in data:
+            nested = deep_first_int(item, keys)
+            if nested:
+                return nested
+    return 0
