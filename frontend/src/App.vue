@@ -10,6 +10,7 @@ import {
   confirmBloggerRun,
   createAdminUser,
   createBlogger,
+  deleteBlogger,
   distillBlogger,
   fetchNews,
   generateArticle,
@@ -37,6 +38,8 @@ import {
   setTenantId,
   startXhsPublishPackageDraftTask,
   updateArticle,
+  updateBlogger,
+  updateBloggerFavorite,
   updateNewsSelection,
   updateWorkspaceConfig
 } from './api'
@@ -134,6 +137,7 @@ const activeNewsTab = ref<NewsTab>('')
 const activeArticleTab = ref<ArticleTab>('preview')
 const activeSettingsTab = ref<SettingsTab>('general')
 const showBloggerModal = ref(false)
+const editingBloggerId = ref<number | null>(null)
 const bloggerSearchKeyword = ref('')
 const bloggerSearchResults = ref<BloggerSearchResult[]>([])
 const selectedBloggerCandidate = ref<BloggerSearchResult | null>(null)
@@ -304,6 +308,7 @@ const pagedNews = computed(() => {
   return activeNews.value.slice(start, start + pageSize)
 })
 const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
+const editingBlogger = computed(() => bloggers.value.find((item) => item.id === editingBloggerId.value) || null)
 const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((run) => run.id === selectedCollectionRunId.value) || null)
 const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
 const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
@@ -1090,6 +1095,43 @@ function resetBloggerSearch() {
   selectedBloggerCandidate.value = null
 }
 
+function resetBloggerForm() {
+  bloggerForm.external_id = ''
+  bloggerForm.display_name = ''
+  bloggerForm.homepage_url = ''
+  bloggerForm.avatar_url = ''
+  bloggerForm.follower_count = 0
+  bloggerForm.niche = ''
+  bloggerForm.description = ''
+}
+
+function closeBloggerModal() {
+  showBloggerModal.value = false
+  editingBloggerId.value = null
+  resetBloggerSearch()
+  resetBloggerForm()
+}
+
+function openCreateBloggerModal() {
+  editingBloggerId.value = null
+  resetBloggerForm()
+  resetBloggerSearch()
+  showBloggerModal.value = true
+}
+
+function openEditBloggerModal(blogger: BloggerProfile) {
+  editingBloggerId.value = blogger.id
+  bloggerForm.external_id = blogger.external_id || ''
+  bloggerForm.display_name = blogger.display_name
+  bloggerForm.homepage_url = blogger.homepage_url
+  bloggerForm.avatar_url = blogger.avatar_url
+  bloggerForm.follower_count = blogger.follower_count
+  bloggerForm.niche = blogger.niche
+  bloggerForm.description = blogger.description
+  resetBloggerSearch()
+  showBloggerModal.value = true
+}
+
 async function handleSearchBloggerCandidates() {
   const keyword = bloggerSearchKeyword.value.trim()
   if (!keyword) {
@@ -1116,35 +1158,69 @@ function selectBloggerCandidate(candidate: BloggerSearchResult) {
 }
 
 async function handleCreateBlogger() {
-  if (!bloggerForm.homepage_url.trim()) {
+  if (!bloggerForm.display_name.trim() || !bloggerForm.homepage_url.trim()) {
     showMessage('请先搜索并选择一个博主', true)
     return
   }
   await runAction('blogger', '正在保存博主档案', async () => {
-    const blogger = await createBlogger({
-      platform: currentSocialPlatform.value,
-      external_id: bloggerForm.external_id,
+    const payload = {
+      external_id: bloggerForm.external_id || null,
       display_name: bloggerForm.display_name,
       homepage_url: bloggerForm.homepage_url,
       avatar_url: bloggerForm.avatar_url,
       follower_count: bloggerForm.follower_count,
       niche: bloggerForm.niche,
       description: bloggerForm.description
-    })
+    }
+    const isEditing = Boolean(editingBloggerId.value)
+    const blogger = isEditing
+      ? await updateBlogger(editingBloggerId.value!, payload)
+      : await createBlogger({
+          platform: currentSocialPlatform.value,
+          ...payload
+        })
     selectedBloggerId.value = blogger.id
     selectedBloggerRunId.value = null
     resultCollectionFilterId.value = null
-    xhsCollectStep.value = 2
-    bloggerForm.external_id = ''
-    bloggerForm.display_name = ''
-    bloggerForm.homepage_url = ''
-    bloggerForm.avatar_url = ''
-    bloggerForm.follower_count = 0
-    bloggerForm.niche = ''
-    bloggerForm.description = ''
-    showBloggerModal.value = false
-    resetBloggerSearch()
+    if (!isEditing) {
+      xhsCollectStep.value = 2
+    }
+    closeBloggerModal()
     await refreshBloggers()
+    showMessage(isEditing ? '博主信息已更新' : '博主档案已保存')
+  })
+}
+
+async function handleToggleBloggerFavorite(blogger: BloggerProfile) {
+  await runAction('blogger-favorite', blogger.is_favorite ? '正在取消标记' : '正在标记博主', async () => {
+    const updated = await updateBloggerFavorite(blogger.id, !blogger.is_favorite)
+    await refreshBloggers()
+    selectedBloggerId.value = updated.id
+    showMessage(updated.is_favorite ? '已标记博主' : '已取消标记')
+  })
+}
+
+async function handleDeleteBlogger(blogger: BloggerProfile) {
+  const confirmed = window.confirm(
+    `确认删除“${blogger.display_name}”吗？\n\n删除后会同时删除这个博主的采集批次、样本、蒸馏记录、Skill 和发布包，且无法在页面内恢复。`
+  )
+  if (!confirmed) {
+    return
+  }
+  await runAction('blogger-delete', '正在删除博主资产', async () => {
+    await deleteBlogger(blogger.id)
+    if (selectedBloggerId.value === blogger.id) {
+      selectedBloggerId.value = null
+      selectedCollectionRunId.value = null
+      selectedBloggerRunId.value = null
+      resultCollectionFilterId.value = null
+      bloggerPosts.value = []
+      bloggerCollectionRuns.value = []
+      bloggerRuns.value = []
+    }
+    await refreshBloggers()
+    await refreshXhsPackages()
+    showMessage('博主及关联资产已删除')
   })
 }
 
@@ -1985,7 +2061,7 @@ onUnmounted(() => {
             <section v-if="xhsCollectStep === 1" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div><span>01 选择博主</span><h3>选择要采集的博主</h3></div>
-                <button type="button" class="primary" @click="showBloggerModal = true">创建博主</button>
+                <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
               </div>
               <div v-if="bloggers.length" class="blogger-list compact">
                 <button v-for="blogger in bloggers" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
@@ -2133,7 +2209,7 @@ onUnmounted(() => {
               @click="selectBlogger(blogger.id)"
             >
               <strong>{{ blogger.display_name }}</strong>
-              <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
+              <span>{{ blogger.is_favorite ? '已标记 · ' : '' }}{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
             </button>
             <p v-if="!bloggers.length" class="empty-region">还没有博主档案。请先到“数据采集”创建博主。</p>
           </aside>
@@ -2141,9 +2217,16 @@ onUnmounted(() => {
           <div v-if="selectedBlogger" class="asset-detail">
             <div class="asset-hero">
               <div>
-                <span>博主资产</span>
+                <span>{{ selectedBlogger.is_favorite ? '已标记博主' : '博主资产' }}</span>
                 <h3>{{ selectedBlogger.display_name }}</h3>
                 <p>{{ selectedBlogger.description || selectedBlogger.niche || '暂无备注' }}</p>
+              </div>
+              <div class="asset-actions">
+                <button type="button" @click="handleToggleBloggerFavorite(selectedBlogger)">
+                  {{ selectedBlogger.is_favorite ? '取消标记' : '标记博主' }}
+                </button>
+                <button type="button" @click="openEditBloggerModal(selectedBlogger)">编辑信息</button>
+                <button type="button" class="danger" @click="handleDeleteBlogger(selectedBlogger)">删除博主</button>
               </div>
             </div>
 
@@ -3140,16 +3223,16 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="showBloggerModal = false; resetBloggerSearch()">
-        <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`创建${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">
+      <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="closeBloggerModal">
+        <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`${editingBlogger ? '编辑' : '创建'}${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">
           <div class="section-header">
             <div>
-              <h2>创建博主</h2>
-              <p class="toolbar-subtitle">先搜索并选择博主，再补充领域和备注。</p>
+              <h2>{{ editingBlogger ? '编辑博主信息' : '创建博主' }}</h2>
+              <p class="toolbar-subtitle">{{ editingBlogger ? '只能编辑基础信息，不会修改已有采集和蒸馏结果。' : '先搜索并选择博主，再补充领域和备注。' }}</p>
             </div>
-            <button type="button" class="ghost" @click="showBloggerModal = false; resetBloggerSearch()">关闭</button>
+            <button type="button" class="ghost" @click="closeBloggerModal">关闭</button>
           </div>
-          <div class="search-row">
+          <div v-if="!editingBlogger" class="search-row">
             <label>
               搜索{{ currentSocialPlatformName }}博主
               <input v-model="bloggerSearchKeyword" type="search" placeholder="输入昵称或关键词" @keydown.enter.prevent="handleSearchBloggerCandidates" />
@@ -3158,7 +3241,7 @@ onUnmounted(() => {
               {{ pendingAction === 'blogger-search' ? '搜索中' : '搜索' }}
             </button>
           </div>
-          <div v-if="bloggerSearchResults.length" class="candidate-list" aria-label="博主搜索结果">
+          <div v-if="!editingBlogger && bloggerSearchResults.length" class="candidate-list" aria-label="博主搜索结果">
             <button
               v-for="candidate in bloggerSearchResults"
               :key="`${candidate.platform}-${candidate.external_id}`"
@@ -3174,10 +3257,10 @@ onUnmounted(() => {
               <em>{{ candidate.follower_count ? `${candidate.follower_count} 粉丝` : '粉丝未知' }}</em>
             </button>
           </div>
-          <p v-else-if="bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
+          <p v-else-if="!editingBlogger && bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
           <label>
             博主名称
-            <input v-model="bloggerForm.display_name" type="text" required readonly />
+            <input v-model="bloggerForm.display_name" type="text" required :readonly="!editingBlogger" />
           </label>
           <label>
             {{ currentSocialPlatformName }}主页链接
@@ -3185,10 +3268,24 @@ onUnmounted(() => {
               v-model="bloggerForm.homepage_url"
               type="url"
               required
-              readonly
+              :readonly="!editingBlogger"
               :placeholder="currentSocialPlatform === 'douyin' ? 'https://www.douyin.com/user/...' : 'https://www.xiaohongshu.com/user/profile/...'"
             />
           </label>
+          <div v-if="editingBlogger" class="config-grid">
+            <label>
+              平台 ID
+              <input v-model="bloggerForm.external_id" type="text" />
+            </label>
+            <label>
+              头像 URL
+              <input v-model="bloggerForm.avatar_url" type="url" />
+            </label>
+            <label>
+              粉丝数
+              <input v-model.number="bloggerForm.follower_count" type="number" min="0" />
+            </label>
+          </div>
           <label>
             领域/赛道
             <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
@@ -3198,9 +3295,9 @@ onUnmounted(() => {
             <textarea v-model="bloggerForm.description" rows="3"></textarea>
           </label>
           <div class="actions">
-            <button type="button" @click="showBloggerModal = false; resetBloggerSearch()">取消</button>
+            <button type="button" @click="closeBloggerModal">取消</button>
             <button type="submit" class="primary" :disabled="Boolean(pendingAction) || !bloggerForm.homepage_url">
-              {{ pendingAction === 'blogger' ? '保存中' : '保存博主' }}
+              {{ pendingAction === 'blogger' ? '保存中' : editingBlogger ? '保存修改' : '保存博主' }}
             </button>
           </div>
         </form>

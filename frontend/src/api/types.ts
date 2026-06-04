@@ -240,6 +240,7 @@ export interface BloggerProfile {
   follower_count: number
   niche: string
   description: string
+  is_favorite: boolean
   sample_count: number
   last_distilled_at: string | null
   created_at: string
@@ -255,6 +256,16 @@ export interface BloggerProfileCreate {
   follower_count?: number
   niche: string
   description: string
+}
+
+export interface BloggerProfileUpdate {
+  external_id?: string | null
+  display_name?: string
+  homepage_url?: string
+  avatar_url?: string
+  follower_count?: number
+  niche?: string
+  description?: string
 }
 
 export interface BloggerSearchResult {

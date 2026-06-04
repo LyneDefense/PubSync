@@ -42,9 +42,11 @@ from app.schemas import (
     BloggerCollectionRunRead,
     BloggerDistillRequest,
     BloggerDistillationRunRead,
+    BloggerFavoriteUpdate,
     BloggerPostRead,
     BloggerProfileCreate,
     BloggerProfileRead,
+    BloggerProfileUpdate,
     BloggerSearchResultRead,
     BloggerSkillRead,
     ContentProfileRead,
@@ -90,7 +92,14 @@ from app.services.task_service import (
     run_xhs_package_draft_task,
     scheduled_workspace_publish,
 )
-from app.blogger_distillation.service import abandon_blogger_distillation, confirm_blogger_distillation, create_blogger
+from app.blogger_distillation.service import (
+    abandon_blogger_distillation,
+    confirm_blogger_distillation,
+    create_blogger,
+    delete_blogger,
+    set_blogger_favorite,
+    update_blogger,
+)
 from app.blogger_distillation.search import search_bloggers
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.services.tenant_service import (
@@ -448,7 +457,7 @@ def list_bloggers_endpoint(
         db.scalars(
             select(BloggerProfile)
             .where(BloggerProfile.tenant_id == tenant.id, BloggerProfile.platform == platform)
-            .order_by(BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
+            .order_by(BloggerProfile.is_favorite.desc(), BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
         )
     )
 
@@ -490,6 +499,45 @@ def create_blogger_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/bloggers/{blogger_id}", response_model=BloggerProfileRead)
+def update_blogger_endpoint(
+    blogger_id: int,
+    payload: BloggerProfileUpdate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerProfile:
+    updates = payload.model_dump(exclude_unset=True)
+    try:
+        return update_blogger(db, tenant.id, blogger_id, **updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/bloggers/{blogger_id}/favorite", response_model=BloggerProfileRead)
+def update_blogger_favorite_endpoint(
+    blogger_id: int,
+    payload: BloggerFavoriteUpdate,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerProfile:
+    try:
+        return set_blogger_favorite(db, tenant.id, blogger_id, payload.is_favorite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/bloggers/{blogger_id}", status_code=204)
+def delete_blogger_endpoint(
+    blogger_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> None:
+    try:
+        delete_blogger(db, tenant.id, blogger_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/bloggers/{blogger_id}/posts", response_model=list[BloggerPostRead])

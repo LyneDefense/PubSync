@@ -326,6 +326,20 @@ class BloggerProfileCreate(BaseModel):
     description: str = ""
 
 
+class BloggerProfileUpdate(BaseModel):
+    external_id: str | None = Field(default=None, max_length=200)
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    homepage_url: str | None = Field(default=None, min_length=1, max_length=1000)
+    avatar_url: str | None = Field(default=None, max_length=1000)
+    follower_count: int | None = Field(default=None, ge=0)
+    niche: str | None = Field(default=None, max_length=160)
+    description: str | None = None
+
+
+class BloggerFavoriteUpdate(BaseModel):
+    is_favorite: bool
+
+
 class BloggerProfileRead(BaseModel):
     id: int
     tenant_id: int
@@ -337,6 +351,7 @@ class BloggerProfileRead(BaseModel):
     follower_count: int
     niche: str
     description: str
+    is_favorite: bool
     sample_count: int
     last_distilled_at: datetime | None
     created_at: datetime

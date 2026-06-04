@@ -313,6 +313,7 @@ class BloggerProfile(Base):
     follower_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     niche: Mapped[str] = mapped_column(String(160), nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_favorite: Mapped[bool] = mapped_column(default=False)
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_distilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

@@ -441,6 +441,7 @@ def ensure_runtime_schema() -> None:
         "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS external_id VARCHAR(200)",
         "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(1000) NOT NULL DEFAULT ''",
         "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS follower_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false",
         "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_external_id ON blogger_profiles(external_id)",
         "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS content_type VARCHAR(30) NOT NULL DEFAULT 'image'",
         "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS transcript_text TEXT NOT NULL DEFAULT ''",

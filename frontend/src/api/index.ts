@@ -10,6 +10,7 @@ import type {
   BloggerPost,
   BloggerProfile,
   BloggerProfileCreate,
+  BloggerProfileUpdate,
   BloggerSearchResult,
   BloggerSkill,
   ContentProfile,
@@ -82,6 +83,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(detail)
   }
 
+  if (response.status === 204) {
+    return undefined as T
+  }
   return response.json() as Promise<T>
 }
 
@@ -189,6 +193,24 @@ export function createBlogger(payload: BloggerProfileCreate) {
     method: 'POST',
     body: JSON.stringify(payload)
   })
+}
+
+export function updateBlogger(id: number, payload: BloggerProfileUpdate) {
+  return request<BloggerProfile>(`/bloggers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function updateBloggerFavorite(id: number, isFavorite: boolean) {
+  return request<BloggerProfile>(`/bloggers/${id}/favorite`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_favorite: isFavorite })
+  })
+}
+
+export function deleteBlogger(id: number) {
+  return request<void>(`/bloggers/${id}`, { method: 'DELETE' })
 }
 
 export function listBloggerPosts(id: number) {
