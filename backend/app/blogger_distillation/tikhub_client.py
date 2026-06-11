@@ -17,6 +17,27 @@ from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, Endp
 logger = logging.getLogger(__name__)
 
 
+_http_client: httpx.Client | None = None
+
+
+def shared_http_client() -> httpx.Client:
+    """Process-wide pooled httpx client.
+
+    The TikHub clients issue many sequential requests per collection run; opening a
+    fresh ``httpx.Client`` per request (the previous behaviour) threw away connection
+    pooling and TLS session reuse. A single shared client is thread-safe for sending
+    requests, so it is safe to reuse across the background-task threadpool. Per-request
+    timeouts are still passed at call sites that need a non-default value.
+    """
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.Client(
+            timeout=60,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _http_client
+
+
 class TikHubError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -238,27 +259,27 @@ class TikHubXhsClient:
             "User-Agent": "Mozilla/5.0 PubSync/1.0",
         }
         last_error: TikHubError | None = None
-        with httpx.Client(timeout=60) as client:
-            for attempt in range(3):
-                if attempt:
-                    time.sleep(1.5 * attempt)
-                response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
-                self.record_request(response)
-                try:
-                    data = response.json()
-                except ValueError as exc:
-                    raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
-                if response.status_code == 429:
-                    last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
-                    continue
-                if response.status_code >= 400:
-                    raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
-                if not isinstance(data, dict):
-                    raise TikHubError("TikHub 返回格式不正确")
-                status_code = data.get("code")
-                if status_code not in (None, 0, 200):
-                    raise TikHubError(f"TikHub 业务错误：{data}")
-                return data
+        client = shared_http_client()
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.5 * attempt)
+            response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
+            self.record_request(response)
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
+            if response.status_code == 429:
+                last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
+                continue
+            if response.status_code >= 400:
+                raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
+            if not isinstance(data, dict):
+                raise TikHubError("TikHub 返回格式不正确")
+            status_code = data.get("code")
+            if status_code not in (None, 0, 200):
+                raise TikHubError(f"TikHub 业务错误：{data}")
+            return data
         raise last_error or TikHubError("TikHub 请求失败")
 
     def record_request(self, response: httpx.Response) -> None:
@@ -388,27 +409,27 @@ class TikHubDouyinClient:
             "User-Agent": "Mozilla/5.0 PubSync/1.0",
         }
         last_error: TikHubError | None = None
-        with httpx.Client(timeout=60) as client:
-            for attempt in range(3):
-                if attempt:
-                    time.sleep(1.5 * attempt)
-                response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
-                self.record_request(response)
-                try:
-                    data = response.json()
-                except ValueError as exc:
-                    raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
-                if response.status_code == 429:
-                    last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
-                    continue
-                if response.status_code >= 400:
-                    raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
-                if not isinstance(data, dict):
-                    raise TikHubError("TikHub 返回格式不正确")
-                status_code = data.get("code")
-                if status_code not in (None, 0, 200):
-                    raise TikHubError(f"TikHub 业务错误：{data}")
-                return data
+        client = shared_http_client()
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.5 * attempt)
+            response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
+            self.record_request(response)
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
+            if response.status_code == 429:
+                last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
+                continue
+            if response.status_code >= 400:
+                raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
+            if not isinstance(data, dict):
+                raise TikHubError("TikHub 返回格式不正确")
+            status_code = data.get("code")
+            if status_code not in (None, 0, 200):
+                raise TikHubError(f"TikHub 业务错误：{data}")
+            return data
         raise last_error or TikHubError("TikHub 请求失败")
 
     def record_request(self, response: httpx.Response) -> None:
