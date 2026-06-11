@@ -73,6 +73,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
+    // Centralized auth handling: an expired/invalid session anywhere clears the
+    // stored credentials and returns to the login screen. The login request is
+    // excluded so a wrong password does not trigger a reload loop.
+    if (response.status === 401 && path !== '/auth/login') {
+      clearAuthToken()
+      clearTenantId()
+      if (typeof window !== 'undefined') {
+        window.location.reload()
+      }
+    }
     let detail = response.statusText
     try {
       const body = (await response.json()) as { detail?: string }

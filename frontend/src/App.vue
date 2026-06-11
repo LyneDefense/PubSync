@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import { sanitizeHtml } from './utils/sanitize'
 import {
   abandonBloggerRun,
   cancelTask,
@@ -2025,7 +2026,7 @@ onUnmounted(() => {
           <img v-if="form.cover_image_url" class="cover" :src="form.cover_image_url" alt="文章封面预览" />
           <h3>{{ form.title || '尚未生成文章' }}</h3>
           <p class="intro-preview">{{ form.intro }}</p>
-          <div v-if="form.content_html" class="article-preview" v-html="form.content_html"></div>
+          <div v-if="form.content_html" class="article-preview" v-html="sanitizeHtml(form.content_html)"></div>
           <div v-else class="article-preview">
             <p>生成文章后，这里会显示公众号图文预览。</p>
           </div>
@@ -2177,7 +2178,7 @@ onUnmounted(() => {
                 </div>
               </div>
               <div v-if="selectedBloggerRun" class="distill-grid compact-result">
-                <article class="distill-card"><h3>蒸馏报告</h3><div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div><p v-else class="empty-region">暂无报告。</p></article>
+                <article class="distill-card"><h3>蒸馏报告</h3><div v-if="selectedBloggerRun.report_html" class="distill-report" v-html="sanitizeHtml(selectedBloggerRun.report_html)"></div><p v-else class="empty-region">暂无报告。</p></article>
                 <article class="distill-card"><h3>Skill 输出</h3><textarea v-if="selectedBloggerSkill" :value="selectedBloggerSkill.skill_markdown" readonly rows="18"></textarea><p v-else class="empty-region">暂无 Skill。</p></article>
               </div>
               <p v-else class="empty-region">完成一次蒸馏后，这里会显示待确认结果。</p>
@@ -2340,7 +2341,7 @@ onUnmounted(() => {
                     <strong>蒸馏失败</strong>
                     <p>{{ selectedBloggerRun.error_message || '这次蒸馏没有记录失败原因，请查看任务日志。' }}</p>
                   </div>
-                  <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="selectedBloggerRun.report_html"></div>
+                  <div v-else-if="selectedBloggerRun.report_html" class="distill-report" v-html="sanitizeHtml(selectedBloggerRun.report_html)"></div>
                   <p v-else class="empty-region">这次蒸馏没有生成报告。</p>
                 </article>
 
