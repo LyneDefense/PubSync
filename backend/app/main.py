@@ -23,7 +23,6 @@ from app.models import (
     BloggerProfile,
     BloggerSkill,
     ContentProfile,
-    LayoutSettings,
     NewsItem,
     OperationTask,
     OperationTaskEvent,
@@ -105,7 +104,6 @@ from app.blogger_distillation.tikhub_client import TikHubError
 from app.services.tenant_service import (
     ensure_tenant_defaults,
     get_content_groups,
-    get_default_tenant,
     get_layout_settings,
     get_profile,
     get_publishing_settings,
@@ -318,6 +316,21 @@ def normalize_tenant_slug(value: str) -> str:
     return slug[:80] or "workspace"
 
 
+def apply_pagination(stmt, limit: int | None, offset: int):
+    """Apply optional offset/limit to a select statement.
+
+    When ``limit`` is None the statement is returned unchanged, preserving the
+    original "return everything" behaviour for backward compatibility.
+    """
+    if limit is not None:
+        stmt = stmt.offset(offset).limit(limit)
+    return stmt
+
+
+LimitQuery = Query(default=None, ge=1, le=500, description="每页条数；不传则返回全部")
+OffsetQuery = Query(default=0, ge=0, description="偏移量，与 limit 搭配使用")
+
+
 @app.get("/profile", response_model=ContentProfileRead)
 def get_profile_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> ContentProfile:
     return get_profile(db, tenant)
@@ -415,8 +428,13 @@ def fetch_news_endpoint(
 
 
 @app.get("/news", response_model=list[NewsItemRead])
-def list_news_endpoint(tenant: Tenant = Depends(current_tenant), db: Session = Depends(get_db)) -> list[NewsItem]:
-    return list_news(db, tenant.id)
+def list_news_endpoint(
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> list[NewsItem]:
+    return list_news(db, tenant.id, limit=limit, offset=offset)
 
 
 @app.patch("/news/{news_id}", response_model=NewsItemRead)
@@ -450,16 +468,17 @@ def generate_article_endpoint(
 @app.get("/bloggers", response_model=list[BloggerProfileRead])
 def list_bloggers_endpoint(
     platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerProfile]:
-    return list(
-        db.scalars(
-            select(BloggerProfile)
-            .where(BloggerProfile.tenant_id == tenant.id, BloggerProfile.platform == platform)
-            .order_by(BloggerProfile.is_favorite.desc(), BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
-        )
+    stmt = (
+        select(BloggerProfile)
+        .where(BloggerProfile.tenant_id == tenant.id, BloggerProfile.platform == platform)
+        .order_by(BloggerProfile.is_favorite.desc(), BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.get("/bloggers/search", response_model=list[BloggerSearchResultRead])
@@ -543,19 +562,20 @@ def delete_blogger_endpoint(
 @app.get("/bloggers/{blogger_id}/posts", response_model=list[BloggerPostRead])
 def list_blogger_posts_endpoint(
     blogger_id: int,
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerPost]:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
-    return list(
-        db.scalars(
-            select(BloggerPost)
-            .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id)
-            .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
-        )
+    stmt = (
+        select(BloggerPost)
+        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id)
+        .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.post("/bloggers/{blogger_id}/collect", response_model=OperationTaskRead)
@@ -584,43 +604,45 @@ def collect_blogger_endpoint(
 @app.get("/bloggers/{blogger_id}/collection-runs", response_model=list[BloggerCollectionRunRead])
 def list_blogger_collection_runs_endpoint(
     blogger_id: int,
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerCollectionRun]:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
-    return list(
-        db.scalars(
-            select(BloggerCollectionRun)
-            .where(BloggerCollectionRun.tenant_id == tenant.id, BloggerCollectionRun.blogger_id == blogger_id)
-            .order_by(BloggerCollectionRun.created_at.desc())
-        )
+    stmt = (
+        select(BloggerCollectionRun)
+        .where(BloggerCollectionRun.tenant_id == tenant.id, BloggerCollectionRun.blogger_id == blogger_id)
+        .order_by(BloggerCollectionRun.created_at.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.get("/bloggers/{blogger_id}/collection-runs/{collection_run_id}/posts", response_model=list[BloggerPostRead])
 def list_blogger_collection_posts_endpoint(
     blogger_id: int,
     collection_run_id: int,
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerPost]:
     collection_run = db.get(BloggerCollectionRun, collection_run_id)
     if not collection_run or collection_run.tenant_id != tenant.id or collection_run.blogger_id != blogger_id:
         raise HTTPException(status_code=404, detail="Collection run not found")
-    return list(
-        db.scalars(
-            select(BloggerPost)
-            .join(BloggerCollectionPost, BloggerCollectionPost.post_id == BloggerPost.id)
-            .where(
-                BloggerCollectionPost.collection_run_id == collection_run_id,
-                BloggerCollectionPost.tenant_id == tenant.id,
-                BloggerCollectionPost.blogger_id == blogger_id,
-            )
-            .order_by(BloggerCollectionPost.position.asc(), BloggerCollectionPost.id.asc())
+    stmt = (
+        select(BloggerPost)
+        .join(BloggerCollectionPost, BloggerCollectionPost.post_id == BloggerPost.id)
+        .where(
+            BloggerCollectionPost.collection_run_id == collection_run_id,
+            BloggerCollectionPost.tenant_id == tenant.id,
+            BloggerCollectionPost.blogger_id == blogger_id,
         )
+        .order_by(BloggerCollectionPost.position.asc(), BloggerCollectionPost.id.asc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.post("/bloggers/{blogger_id}/distill", response_model=OperationTaskRead)
@@ -652,19 +674,20 @@ def distill_blogger_endpoint(
 @app.get("/bloggers/{blogger_id}/distillation-runs", response_model=list[BloggerDistillationRunRead])
 def list_blogger_runs_endpoint(
     blogger_id: int,
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerDistillationRun]:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
-    return list(
-        db.scalars(
-            select(BloggerDistillationRun)
-            .where(BloggerDistillationRun.tenant_id == tenant.id, BloggerDistillationRun.blogger_id == blogger_id)
-            .order_by(BloggerDistillationRun.created_at.desc())
-        )
+    stmt = (
+        select(BloggerDistillationRun)
+        .where(BloggerDistillationRun.tenant_id == tenant.id, BloggerDistillationRun.blogger_id == blogger_id)
+        .order_by(BloggerDistillationRun.created_at.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.post("/bloggers/{blogger_id}/distillation-runs/{run_id}/confirm", response_model=BloggerDistillationRunRead)
@@ -702,31 +725,33 @@ def abandon_blogger_run_endpoint(
 @app.get("/blogger-skills", response_model=list[BloggerSkillRead])
 def list_blogger_skills_endpoint(
     platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[BloggerSkill]:
-    return list(
-        db.scalars(
-            select(BloggerSkill)
-            .join(BloggerProfile, BloggerProfile.id == BloggerSkill.blogger_id)
-            .where(BloggerSkill.tenant_id == tenant.id, BloggerProfile.platform == platform)
-            .order_by(BloggerSkill.created_at.desc())
-        )
+    stmt = (
+        select(BloggerSkill)
+        .join(BloggerProfile, BloggerProfile.id == BloggerSkill.blogger_id)
+        .where(BloggerSkill.tenant_id == tenant.id, BloggerProfile.platform == platform)
+        .order_by(BloggerSkill.created_at.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.get("/xhs/publish-packages", response_model=list[XhsPublishPackageRead])
 def list_xhs_publish_packages_endpoint(
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[XhsPublishPackage]:
-    return list(
-        db.scalars(
-            select(XhsPublishPackage)
-            .where(XhsPublishPackage.tenant_id == tenant.id)
-            .order_by(XhsPublishPackage.created_at.desc(), XhsPublishPackage.id.desc())
-        )
+    stmt = (
+        select(XhsPublishPackage)
+        .where(XhsPublishPackage.tenant_id == tenant.id)
+        .order_by(XhsPublishPackage.created_at.desc(), XhsPublishPackage.id.desc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.post("/xhs/publish-packages", response_model=XhsPublishPackageRead)
@@ -804,19 +829,20 @@ def cancel_task_endpoint(task_id: str, tenant: Tenant = Depends(current_tenant),
 @app.get("/tasks/{task_id}/events", response_model=list[OperationTaskEventRead])
 def list_task_events_endpoint(
     task_id: str,
+    limit: int | None = LimitQuery,
+    offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> list[OperationTaskEvent]:
     task = db.get(OperationTask, task_id)
     if not task or task.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    return list(
-        db.scalars(
-            select(OperationTaskEvent)
-            .where(OperationTaskEvent.task_id == task_id, OperationTaskEvent.tenant_id == tenant.id)
-            .order_by(OperationTaskEvent.created_at.asc(), OperationTaskEvent.id.asc())
-        )
+    stmt = (
+        select(OperationTaskEvent)
+        .where(OperationTaskEvent.task_id == task_id, OperationTaskEvent.tenant_id == tenant.id)
+        .order_by(OperationTaskEvent.created_at.asc(), OperationTaskEvent.id.asc())
     )
+    return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
 @app.get("/articles/latest", response_model=ArticleRead | None)
