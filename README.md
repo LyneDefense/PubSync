@@ -57,6 +57,18 @@ Then visit:
 - `docker-compose.yml`: local PostgreSQL.
 - `pubsync-deployment/`: standalone production deployment scripts.
 
+### Background tasks
+
+Long-running work (news fetch, article generation, blogger collection/distillation)
+runs as background tasks. There are two modes, controlled by `USE_TASK_QUEUE`:
+
+- `false` (default): tasks run in-process via FastAPI `BackgroundTasks`. No extra
+  services needed — good for local development.
+- `true`: tasks are enqueued to Redis (RQ) and executed by a dedicated worker
+  process (`python -m app.worker`), so they survive API restarts and run isolated
+  from web requests. The deployment compose ships `redis` and `worker` services for
+  this; set `USE_TASK_QUEUE=true` and `REDIS_URL` in `.env`.
+
 ## Production Deploy
 
 PubSync is designed to run as an independent deployment:

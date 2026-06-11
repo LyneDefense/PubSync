@@ -17,6 +17,7 @@ from app.blogger_distillation.service import (
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
 from app.harness import PubSyncHarness
+from app.queue import enqueue
 from app.models import AppSetting, OperationTask, PublishingSettings, TaskStatus, Tenant, TenantStatus
 from app.services.ai_service import AIServiceError
 from app.services.tenant_service import (
@@ -270,8 +271,12 @@ def scheduled_workspace_publish() -> None:
             task_ids.append(task.id)
     finally:
         db.close()
+    use_queue = get_settings().use_task_queue
     for task_id in task_ids:
-        run_daily_publish_task(task_id)
+        if use_queue:
+            enqueue(run_daily_publish_task, task_id)
+        else:
+            run_daily_publish_task(task_id)
 
 
 def should_run_schedule(publishing: PublishingSettings, now: datetime) -> bool:

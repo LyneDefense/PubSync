@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     admin_password: str = "change_me"
     auth_secret: str = ""
     session_hours: int = 24
+    use_task_queue: bool = False
+    redis_url: str = "redis://localhost:6379/0"
+    task_queue_name: str = "pubsync"
+    task_job_timeout_seconds: int = 3600
     llm_provider: str = "openai"
     image_provider: str = "openai"
     openai_base_url: str = "https://api.openai.com/v1"

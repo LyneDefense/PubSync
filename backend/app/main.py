@@ -68,6 +68,7 @@ from app.schemas import (
     XhsTopicIdeaRequest,
     XhsTopicIdeaResponse,
 )
+from app.queue import submit_background
 from app.services.article_service import update_article
 from app.services.ai_service import AIServiceError
 from app.services.auth_service import (
@@ -423,7 +424,7 @@ def fetch_news_endpoint(
     db: Session = Depends(get_db),
 ) -> OperationTask:
     task = create_operation_task(db, "news_fetch", tenant_id=tenant.id)
-    background_tasks.add_task(run_news_fetch_task, task.id)
+    submit_background(background_tasks, run_news_fetch_task, task.id)
     return task
 
 
@@ -461,7 +462,7 @@ def generate_article_endpoint(
     db: Session = Depends(get_db),
 ) -> OperationTask:
     task = create_operation_task(db, "article_generation", tenant_id=tenant.id)
-    background_tasks.add_task(run_article_generation_task, task.id)
+    submit_background(background_tasks, run_article_generation_task, task.id)
     return task
 
 
@@ -590,7 +591,8 @@ def collect_blogger_endpoint(
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
     task = create_operation_task(db, "blogger_collection", tenant_id=tenant.id)
-    background_tasks.add_task(
+    submit_background(
+        background_tasks,
         run_blogger_collection_task,
         task.id,
         blogger.id,
@@ -662,7 +664,8 @@ def distill_blogger_endpoint(
     if collection_run.status != "succeeded":
         raise HTTPException(status_code=400, detail="只能基于已完成的采集批次进行蒸馏")
     task = create_operation_task(db, "blogger_distillation", tenant_id=tenant.id)
-    background_tasks.add_task(
+    submit_background(
+        background_tasks,
         run_blogger_distillation_task,
         task.id,
         blogger.id,
@@ -788,7 +791,7 @@ def generate_xhs_publish_package_draft_task_endpoint(
     db: Session = Depends(get_db),
 ) -> OperationTask:
     task = create_operation_task(db, "xhs_package_draft", tenant_id=tenant.id)
-    background_tasks.add_task(run_xhs_package_draft_task, task.id, payload.model_dump())
+    submit_background(background_tasks, run_xhs_package_draft_task, task.id, payload.model_dump())
     return task
 
 

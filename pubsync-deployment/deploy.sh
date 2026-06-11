@@ -106,7 +106,7 @@ update_backend() {
     check_env
     check_docker_compose
     cd "$DEPLOY_DIR"
-    docker compose up -d --build backend
+    docker compose up -d --build backend worker
 }
 
 update_frontend() {
@@ -197,11 +197,11 @@ case "$1" in
         echo ""
         echo "首次部署:"
         echo "  init             创建 .env 和 backups 目录"
-        echo "  update           构建前端和后端，启动 postgres/backend/frontend"
+        echo "  update           构建前端和后端，启动 postgres/redis/backend/worker/frontend"
         echo ""
         echo "日常更新:"
         echo "  update           更新全部"
-        echo "  update-backend   只更新后端"
+        echo "  update-backend   只更新后端和 worker"
         echo "  update-frontend  只更新前端容器"
         echo ""
         echo "服务管理:"

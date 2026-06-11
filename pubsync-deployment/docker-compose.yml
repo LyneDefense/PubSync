@@ -1,3 +1,68 @@
+x-backend-environment: &backend-environment
+  DATABASE_URL: postgresql+psycopg://${DB_USER:-pubsync}:${DB_PASSWORD:-change_me}@postgres:5432/${DB_NAME:-pubsync}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+  PUBLISH_TIME_HOUR: ${PUBLISH_TIME_HOUR:-8}
+  PUBLISH_TIME_MINUTE: ${PUBLISH_TIME_MINUTE:-0}
+  AUTO_SEND_WECHAT_DRAFT: ${AUTO_SEND_WECHAT_DRAFT:-false}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_me}
+  AUTH_SECRET: ${AUTH_SECRET:-}
+  SESSION_HOURS: ${SESSION_HOURS:-24}
+  USE_TASK_QUEUE: ${USE_TASK_QUEUE:-false}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+  WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+  IMAGE_PROVIDER: ${IMAGE_PROVIDER:-openai}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4.1}
+  OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1}
+  MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.io/v1}
+  MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+  MINIMAX_TEXT_MODEL: ${MINIMAX_TEXT_MODEL:-MiniMax-M2.7}
+  MINIMAX_IMAGE_MODEL: ${MINIMAX_IMAGE_MODEL:-image-01}
+  TIKHUB_BASE_URL: ${TIKHUB_BASE_URL:-https://api.tikhub.io}
+  TIKHUB_API_KEY: ${TIKHUB_API_KEY:-}
+  TIKHUB_REQUEST_PRICE_USD: ${TIKHUB_REQUEST_PRICE_USD:-0.001}
+  TIKHUB_MIN_REQUEST_PRICE_USD: ${TIKHUB_MIN_REQUEST_PRICE_USD:-0.001}
+  TIKHUB_MAX_REQUEST_PRICE_USD: ${TIKHUB_MAX_REQUEST_PRICE_USD:-0.01}
+  ASR_ENABLED: ${ASR_ENABLED:-false}
+  ASR_PROVIDER: ${ASR_PROVIDER:-tencent_rec_task}
+  ASR_MAX_DURATION_SECONDS: ${ASR_MAX_DURATION_SECONDS:-1800}
+  ASR_POLL_INTERVAL_SECONDS: ${ASR_POLL_INTERVAL_SECONDS:-10}
+  ASR_TIMEOUT_SECONDS: ${ASR_TIMEOUT_SECONDS:-1800}
+  TENCENT_ASR_SECRET_ID: ${TENCENT_ASR_SECRET_ID:-}
+  TENCENT_ASR_SECRET_KEY: ${TENCENT_ASR_SECRET_KEY:-}
+  TENCENT_ASR_REGION: ${TENCENT_ASR_REGION:-ap-shanghai}
+  TENCENT_ASR_ENGINE_MODEL_TYPE: ${TENCENT_ASR_ENGINE_MODEL_TYPE:-16k_zh}
+  TENCENT_ASR_RES_TEXT_FORMAT: ${TENCENT_ASR_RES_TEXT_FORMAT:-0}
+  TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
+  TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
+  TENCENT_COS_REGION: ${TENCENT_COS_REGION:-ap-guangzhou}
+  TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
+  TENCENT_COS_PREFIX: ${TENCENT_COS_PREFIX:-pubsync/asr}
+  GENERATE_ARTICLE_IMAGES: ${GENERATE_ARTICLE_IMAGES:-true}
+  MAX_ARTICLE_IMAGES: ${MAX_ARTICLE_IMAGES:-3}
+  MIN_ARTICLE_IMAGES: ${MIN_ARTICLE_IMAGES:-1}
+  NEWS_SOURCE_URLS: ${NEWS_SOURCE_URLS:-}
+  INTERNATIONAL_NEWS_SOURCE_URLS: ${INTERNATIONAL_NEWS_SOURCE_URLS:-}
+  DOMESTIC_NEWS_SOURCE_URLS: ${DOMESTIC_NEWS_SOURCE_URLS:-}
+  NEWS_PER_SOURCE_LIMIT: ${NEWS_PER_SOURCE_LIMIT:-8}
+  INTERNATIONAL_NEWS_CANDIDATES: ${INTERNATIONAL_NEWS_CANDIDATES:-40}
+  DOMESTIC_NEWS_CANDIDATES: ${DOMESTIC_NEWS_CANDIDATES:-40}
+  NEWS_LOOKBACK_HOURS: ${NEWS_LOOKBACK_HOURS:-72}
+  MAX_NEWS_CANDIDATES: ${MAX_NEWS_CANDIDATES:-80}
+  PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+  STATIC_DIR: /app/static
+
+x-backend-build: &backend-build
+  context: ../backend
+  dockerfile: Dockerfile
+  args:
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}
+    PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.cloud.tencent.com}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,73 +82,31 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: pubsync-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - pubsync_redis_data:/data
+    networks:
+      - pubsync-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-      args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}
-        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.cloud.tencent.com}
+    build: *backend-build
     container_name: pubsync-backend
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg://${DB_USER:-pubsync}:${DB_PASSWORD:-change_me}@postgres:5432/${DB_NAME:-pubsync}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
-      PUBLISH_TIME_HOUR: ${PUBLISH_TIME_HOUR:-8}
-      PUBLISH_TIME_MINUTE: ${PUBLISH_TIME_MINUTE:-0}
-      AUTO_SEND_WECHAT_DRAFT: ${AUTO_SEND_WECHAT_DRAFT:-false}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_me}
-      AUTH_SECRET: ${AUTH_SECRET:-}
-      SESSION_HOURS: ${SESSION_HOURS:-24}
-      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
-      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-openai}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4.1}
-      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1}
-      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.io/v1}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      MINIMAX_TEXT_MODEL: ${MINIMAX_TEXT_MODEL:-MiniMax-M2.7}
-      MINIMAX_IMAGE_MODEL: ${MINIMAX_IMAGE_MODEL:-image-01}
-      TIKHUB_BASE_URL: ${TIKHUB_BASE_URL:-https://api.tikhub.io}
-      TIKHUB_API_KEY: ${TIKHUB_API_KEY:-}
-      TIKHUB_REQUEST_PRICE_USD: ${TIKHUB_REQUEST_PRICE_USD:-0.001}
-      TIKHUB_MIN_REQUEST_PRICE_USD: ${TIKHUB_MIN_REQUEST_PRICE_USD:-0.001}
-      TIKHUB_MAX_REQUEST_PRICE_USD: ${TIKHUB_MAX_REQUEST_PRICE_USD:-0.01}
-      ASR_ENABLED: ${ASR_ENABLED:-false}
-      ASR_PROVIDER: ${ASR_PROVIDER:-tencent_rec_task}
-      ASR_MAX_DURATION_SECONDS: ${ASR_MAX_DURATION_SECONDS:-1800}
-      ASR_POLL_INTERVAL_SECONDS: ${ASR_POLL_INTERVAL_SECONDS:-10}
-      ASR_TIMEOUT_SECONDS: ${ASR_TIMEOUT_SECONDS:-1800}
-      TENCENT_ASR_SECRET_ID: ${TENCENT_ASR_SECRET_ID:-}
-      TENCENT_ASR_SECRET_KEY: ${TENCENT_ASR_SECRET_KEY:-}
-      TENCENT_ASR_REGION: ${TENCENT_ASR_REGION:-ap-shanghai}
-      TENCENT_ASR_ENGINE_MODEL_TYPE: ${TENCENT_ASR_ENGINE_MODEL_TYPE:-16k_zh}
-      TENCENT_ASR_RES_TEXT_FORMAT: ${TENCENT_ASR_RES_TEXT_FORMAT:-0}
-      TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
-      TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
-      TENCENT_COS_REGION: ${TENCENT_COS_REGION:-ap-guangzhou}
-      TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
-      TENCENT_COS_PREFIX: ${TENCENT_COS_PREFIX:-pubsync/asr}
-      GENERATE_ARTICLE_IMAGES: ${GENERATE_ARTICLE_IMAGES:-true}
-      MAX_ARTICLE_IMAGES: ${MAX_ARTICLE_IMAGES:-3}
-      MIN_ARTICLE_IMAGES: ${MIN_ARTICLE_IMAGES:-1}
-      NEWS_SOURCE_URLS: ${NEWS_SOURCE_URLS:-}
-      INTERNATIONAL_NEWS_SOURCE_URLS: ${INTERNATIONAL_NEWS_SOURCE_URLS:-}
-      DOMESTIC_NEWS_SOURCE_URLS: ${DOMESTIC_NEWS_SOURCE_URLS:-}
-      NEWS_PER_SOURCE_LIMIT: ${NEWS_PER_SOURCE_LIMIT:-8}
-      INTERNATIONAL_NEWS_CANDIDATES: ${INTERNATIONAL_NEWS_CANDIDATES:-40}
-      DOMESTIC_NEWS_CANDIDATES: ${DOMESTIC_NEWS_CANDIDATES:-40}
-      NEWS_LOOKBACK_HOURS: ${NEWS_LOOKBACK_HOURS:-72}
-      MAX_NEWS_CANDIDATES: ${MAX_NEWS_CANDIDATES:-80}
-      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
-      STATIC_DIR: /app/static
+      redis:
+        condition: service_healthy
+    environment: *backend-environment
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-18000}:8000"
     volumes:
@@ -96,6 +119,22 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
+
+  worker:
+    build: *backend-build
+    container_name: pubsync-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment: *backend-environment
+    volumes:
+      - pubsync_generated_media:/app/static
+    networks:
+      - pubsync-network
 
   frontend:
     build:
@@ -123,3 +162,4 @@ networks:
 volumes:
   pubsync_postgres_data:
   pubsync_generated_media:
+  pubsync_redis_data:
