@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import ImagePreviewModal from './components/ImagePreviewModal.vue'
+import LoginView from './components/LoginView.vue'
 import { sanitizeHtml } from './utils/sanitize'
 import {
   bloggerCommentLabel,
@@ -168,11 +170,6 @@ const taskProgress = reactive<Record<TaskActionName, number>>({
   'xhs-package': 0
 })
 const progressTimers: Partial<Record<TaskActionName, number>> = {}
-
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
 
 const adminUserForm = reactive<AdminUserCreate>({
   username: '',
@@ -789,11 +786,11 @@ async function loadTenantOptions() {
   }
 }
 
-async function handleLogin() {
+async function handleLogin(credentials: { username: string; password: string }) {
   isLoggingIn.value = true
   loginMessage.value = ''
   try {
-    await login(loginForm.username, loginForm.password)
+    await login(credentials.username, credentials.password)
     isAuthenticated.value = true
     await loadTenantOptions()
     await loadAll()
@@ -1610,26 +1607,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main v-if="!isAuthenticated" class="login-shell">
-    <form class="login-panel" @submit.prevent="handleLogin">
-      <div>
-        <p class="brand-context">PubSync</p>
-        <h1>登录工作台</h1>
-      </div>
-      <label>
-        用户名
-        <input v-model="loginForm.username" type="text" autocomplete="username" required />
-      </label>
-      <label>
-        密码
-        <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
-      </label>
-      <button type="submit" class="primary" :disabled="isLoggingIn">
-        {{ isLoggingIn ? '登录中' : '登录' }}
-      </button>
-      <p v-if="loginMessage" class="message error" role="alert">{{ loginMessage }}</p>
-    </form>
-  </main>
+  <LoginView v-if="!isAuthenticated" :loading="isLoggingIn" :message="loginMessage" @submit="handleLogin" />
 
   <div v-else class="app-shell">
     <header class="topbar">
@@ -3215,13 +3193,7 @@ onUnmounted(() => {
         </form>
       </div>
 
-      <div v-if="previewImage" class="image-preview-backdrop" role="presentation" @click.self="closeImagePreview">
-        <figure class="image-preview-panel" role="dialog" aria-modal="true" aria-label="配图预览">
-          <button type="button" class="ghost image-preview-close" @click="closeImagePreview">关闭</button>
-          <img :src="previewImage.url" alt="小红书发布包配图大图预览" />
-          <figcaption>{{ previewImage.caption }}</figcaption>
-        </figure>
-      </div>
+      <ImagePreviewModal :image="previewImage" @close="closeImagePreview" />
     </main>
   </div>
 </template>
