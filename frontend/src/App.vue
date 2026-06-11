@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
+import { useToast } from './composables/useToast'
 import { sanitizeHtml } from './utils/sanitize'
 import {
   bloggerCommentLabel,
@@ -133,8 +134,7 @@ const tenants = ref<Tenant[]>([])
 const profile = ref<ContentProfile | null>(null)
 const contentGroups = ref<ContentGroup[]>([])
 const selectedTenantId = ref(getTenantId())
-const message = ref('')
-const isError = ref(false)
+const { message, isError, showMessage } = useToast()
 const pendingAction = ref<string | null>(null)
 const runningTaskId = ref<string | null>(null)
 const taskEvents = ref<OperationTaskEvent[]>([])
@@ -515,11 +515,6 @@ const layoutPreviewImageStyle = computed(() => ({
 const layoutPreviewSectionStyle = computed(() => ({
   marginBottom: `${layoutForm.section_spacing}px`
 }))
-
-function showMessage(text: string, error = false) {
-  message.value = text
-  isError.value = error
-}
 
 async function copyText(text: string, label: string) {
   try {
