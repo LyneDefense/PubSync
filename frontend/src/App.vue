@@ -3,6 +3,20 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import { sanitizeHtml } from './utils/sanitize'
 import {
+  bloggerCommentLabel,
+  collectionCostLabel,
+  distillationStatusLabel,
+  findXhsDraftFromEvents,
+  parseEventPayload,
+  parseJsonArray,
+  parseJsonObject,
+  runCostLabel,
+  sampledCommentCount,
+  wait,
+  xhsContentTypeLabel,
+  xhsPackageCopyText
+} from './utils/format'
+import {
   abandonBloggerRun,
   cancelTask,
   clearAuthToken,
@@ -436,44 +450,8 @@ const canGoNextXhsCreationStep = computed(() => {
   }
   return false
 })
-function runCostLabel(run: BloggerDistillationRun) {
-  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
-}
-function collectionCostLabel(run: BloggerCollectionRun) {
-  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
-}
 function collectionDistillationCount(collectionRunId: number) {
   return bloggerRuns.value.filter((run) => run.collection_run_id === collectionRunId).length
-}
-function distillationStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    running: '进行中',
-    succeeded: '已完成',
-    pending_confirmation: '待确认',
-    abandoned: '已放弃',
-    failed: '失败',
-    cancelled: '已停止',
-    cancel_requested: '停止中'
-  }
-  return labels[status] || status
-}
-function bloggerCommentLabel(post: BloggerPost) {
-  if (post.comment_count > 0) {
-    return `评论 ${post.comment_count}`
-  }
-  const sampledCount = sampledCommentCount(post)
-  return sampledCount > 0 ? `评论未知 / 采样 ${sampledCount}` : '评论未知'
-}
-function sampledCommentCount(post: BloggerPost) {
-  if (typeof post.sampled_comment_count === 'number') {
-    return post.sampled_comment_count
-  }
-  try {
-    const comments = JSON.parse(post.comments_json || '[]')
-    return Array.isArray(comments) ? comments.length : 0
-  } catch {
-    return 0
-  }
 }
 const visibleTaskEvents = computed(() => {
   if (!taskEventsAction.value) {
@@ -546,47 +524,6 @@ function showMessage(text: string, error = false) {
   isError.value = error
 }
 
-function parseJsonArray(raw?: string | null) {
-  if (!raw) {
-    return []
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function parseJsonObject(raw?: string | null) {
-  if (!raw) {
-    return {} as Record<string, unknown>
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
-}
-
-function xhsContentTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    text_note: '图文笔记',
-    image_note: '图文配图',
-    spoken_script: '口播脚本',
-    video_script: '视频脚本'
-  }
-  return labels[type] || type
-}
-
-function xhsPackageCopyText(pack: Pick<XhsPublishPackage, 'title' | 'body_text' | 'hashtags_json'> | XhsPublishPackageDraft) {
-  const tags = parseJsonArray(pack.hashtags_json)
-    .map((tag) => `#${String(tag).replace(/^#/, '')}`)
-    .join(' ')
-  return [pack.title, pack.body_text, tags].filter(Boolean).join('\n\n')
-}
-
 async function copyText(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -636,28 +573,6 @@ function latestCollectionProgressText() {
     }
   }
   return ''
-}
-
-function parseEventPayload(event: OperationTaskEvent) {
-  if (!event.payload_json) {
-    return null
-  }
-  try {
-    return JSON.parse(event.payload_json) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
-function findXhsDraftFromEvents(events: OperationTaskEvent[]) {
-  for (const event of [...events].reverse()) {
-    const payload = parseEventPayload(event)
-    const draft = payload?.draft
-    if (draft && typeof draft === 'object') {
-      return draft as XhsPublishPackageDraft
-    }
-  }
-  return null
 }
 
 async function runAction(name: string, label: string, action: () => Promise<void>) {
@@ -796,10 +711,6 @@ function setArticle(nextArticle: Article | null) {
   form.intro = nextArticle?.intro || ''
   form.cover_image_url = nextArticle?.cover_image_url || ''
   form.content_html = nextArticle?.content_html || ''
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 async function loadAll() {
