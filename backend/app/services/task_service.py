@@ -1,5 +1,6 @@
 import logging
 from calendar import monthrange
+from collections.abc import Callable
 from datetime import datetime
 from uuid import uuid4
 
@@ -58,52 +59,74 @@ def create_operation_task(db: Session, task_type: str, tenant_id: int, message: 
     return task
 
 
-def run_news_fetch_task(task_id: str) -> None:
+def execute_task(
+    task_id: str,
+    *,
+    label: str,
+    fail_message: str,
+    work: Callable[[Session, OperationTask], None],
+    expected: tuple[type[BaseException], ...] = (),
+    cancellable: bool = False,
+    on_unexpected: Callable[[Session, str, Exception], None] | None = None,
+) -> None:
+    """Shared lifecycle for background tasks.
+
+    Handles the boilerplate every ``run_*_task`` previously duplicated: opening a
+    session, looking up the task, an optional cancel check, and uniform
+    success/expected-failure/unexpected-exception bookkeeping plus session cleanup.
+    ``work`` performs the task-specific steps; ``expected`` exceptions are recorded
+    as a normal failure, while anything else is logged at exception level and
+    re-raised after being marked failed.
+    """
     db = SessionLocal()
     try:
-        logger.info("任务开始：任务ID=%s，类型=新闻抓取", task_id)
+        logger.info("任务开始：任务ID=%s，类型=%s", task_id, label)
         task = get_task(db, task_id)
         if not task:
             return
+        if cancellable and task.status == TaskStatus.cancel_requested:
+            mark_task_cancelled(db, task, f"{label}已停止")
+            return
+        work(db, task)
+    except DistillationCancelled as exc:
+        logger.info("任务停止：任务ID=%s，类型=%s，原因=%s", task_id, label, exc)
+        mark_task_cancelled_by_id(db, task_id, f"{label}已停止", str(exc))
+    except expected as exc:
+        logger.warning("任务失败：任务ID=%s，类型=%s，错误=%s", task_id, label, exc)
+        mark_task_failed_by_id(db, task_id, fail_message, str(exc))
+    except Exception as exc:
+        logger.exception("任务异常：任务ID=%s，类型=%s", task_id, label)
+        if on_unexpected is not None:
+            try:
+                on_unexpected(db, task_id, exc)
+            except Exception:
+                logger.exception("记录任务失败事件失败：任务ID=%s", task_id)
+        mark_task_failed_by_id(db, task_id, fail_message, f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        db.close()
 
+
+def run_news_fetch_task(task_id: str) -> None:
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在抓取新闻并进行大模型筛选")
         tenant = get_tenant(db, task.tenant_id)
         created_items = build_harness(db, task_id, "news_fetch", tenant.id).run_news_fetch()
         mark_task_succeeded(db, task, f"新闻抓取完成，新增 {len(created_items)} 条")
         logger.info("任务成功：任务ID=%s，类型=新闻抓取，新增=%s", task_id, len(created_items))
-    except AIServiceError as exc:
-        logger.warning("任务失败：任务ID=%s，类型=新闻抓取，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "新闻抓取失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=新闻抓取", task_id)
-        mark_task_failed_by_id(db, task_id, "新闻抓取失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    execute_task(task_id, label="新闻抓取", fail_message="新闻抓取失败", work=work, expected=(AIServiceError,))
 
 
 def run_article_generation_task(task_id: str) -> None:
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=文章生成", task_id)
-        task = get_task(db, task_id)
-        if not task:
-            return
-
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在生成文章，可能需要数分钟")
         tenant = get_tenant(db, task.tenant_id)
         article = build_harness(db, task_id, "article_generation", tenant.id).run_article_generation()
         mark_task_succeeded(db, task, "文章生成完成", article_id=article.id)
         logger.info("任务成功：任务ID=%s，类型=文章生成，文章ID=%s", task_id, article.id)
-    except (ValueError, AIServiceError) as exc:
-        logger.warning("任务失败：任务ID=%s，类型=文章生成，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "文章生成失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=文章生成", task_id)
-        mark_task_failed_by_id(db, task_id, "文章生成失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    execute_task(task_id, label="文章生成", fail_message="文章生成失败", work=work, expected=(ValueError, AIServiceError))
 
 
 def run_blogger_collection_task(
@@ -113,16 +136,7 @@ def run_blogger_collection_task(
     comments_per_post: int = 20,
     asr_enabled: bool = False,
 ) -> None:
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=博主样本采集，博主ID=%s", task_id, blogger_id)
-        task = get_task(db, task_id)
-        if not task:
-            return
-
-        if task.status == TaskStatus.cancel_requested:
-            mark_task_cancelled(db, task, "博主样本采集已停止")
-            return
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在采集小红书样本")
         result = run_blogger_collection(
             db=db,
@@ -136,18 +150,15 @@ def run_blogger_collection_task(
         )
         mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
         logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)
-    except DistillationCancelled as exc:
-        logger.info("任务停止：任务ID=%s，类型=博主样本采集，原因=%s", task_id, exc)
-        mark_task_cancelled_by_id(db, task_id, "博主样本采集已停止", str(exc))
-    except (ValueError, TikHubError) as exc:
-        logger.warning("任务失败：任务ID=%s，类型=博主样本采集，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "博主样本采集失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=博主样本采集", task_id)
-        mark_task_failed_by_id(db, task_id, "博主样本采集失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    execute_task(
+        task_id,
+        label="博主样本采集",
+        fail_message="博主样本采集失败",
+        work=work,
+        expected=(ValueError, TikHubError),
+        cancellable=True,
+    )
 
 
 def run_blogger_distillation_task(
@@ -155,16 +166,7 @@ def run_blogger_distillation_task(
     blogger_id: int,
     collection_run_id: int,
 ) -> None:
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=博主蒸馏，博主ID=%s", task_id, blogger_id)
-        task = get_task(db, task_id)
-        if not task:
-            return
-
-        if task.status == TaskStatus.cancel_requested:
-            mark_task_cancelled(db, task, "博主蒸馏已停止")
-            return
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在基于已采集样本蒸馏 Skill")
         result = run_blogger_distillation(
             db=db,
@@ -176,34 +178,25 @@ def run_blogger_distillation_task(
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，等待确认：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)
-    except DistillationCancelled as exc:
-        logger.info("任务停止：任务ID=%s，类型=博主蒸馏，原因=%s", task_id, exc)
-        mark_task_cancelled_by_id(db, task_id, "博主蒸馏已停止", str(exc))
-    except (ValueError, AIServiceError, TikHubError) as exc:
-        logger.warning("任务失败：任务ID=%s，类型=博主蒸馏，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "博主蒸馏失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=博主蒸馏", task_id)
-        try:
-            task = get_task(db, task_id)
-            if task:
-                record_task_event(db, task.tenant_id, task_id, "博主蒸馏", "failed", f"博主蒸馏失败：{type(exc).__name__}: {exc}")
-        except Exception:
-            logger.exception("记录博主蒸馏失败事件失败：任务ID=%s", task_id)
-        mark_task_failed_by_id(db, task_id, "博主蒸馏失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    def record_failure(db: Session, task_id: str, exc: Exception) -> None:
+        task = get_task(db, task_id)
+        if task:
+            record_task_event(db, task.tenant_id, task_id, "博主蒸馏", "failed", f"博主蒸馏失败：{type(exc).__name__}: {exc}")
+
+    execute_task(
+        task_id,
+        label="博主蒸馏",
+        fail_message="博主蒸馏失败",
+        work=work,
+        expected=(ValueError, AIServiceError, TikHubError),
+        cancellable=True,
+        on_unexpected=record_failure,
+    )
 
 
 def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=小红书发布包草稿生成", task_id)
-        task = get_task(db, task_id)
-        if not task:
-            return
-
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在生成小红书正文/脚本和素材")
         record_task_event(db, task.tenant_id, task_id, "发布包生成", "running", "开始生成正文/脚本")
         draft_payload = XhsPublishPackageCreate.model_validate(payload)
@@ -219,25 +212,18 @@ def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
         )
         mark_task_succeeded(db, task, "小红书发布包草稿生成完成")
         logger.info("任务成功：任务ID=%s，类型=小红书发布包草稿生成", task_id)
-    except (ValueError, AIServiceError) as exc:
-        logger.warning("任务失败：任务ID=%s，类型=小红书发布包草稿生成，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "小红书发布包草稿生成失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=小红书发布包草稿生成", task_id)
-        mark_task_failed_by_id(db, task_id, "小红书发布包草稿生成失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    execute_task(
+        task_id,
+        label="小红书发布包草稿生成",
+        fail_message="小红书发布包草稿生成失败",
+        work=work,
+        expected=(ValueError, AIServiceError),
+    )
 
 
 def run_daily_publish_task(task_id: str) -> None:
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=每日发布", task_id)
-        task = get_task(db, task_id)
-        if not task:
-            return
-
+    def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在执行定时抓取、生成和发布流程")
         tenant = get_tenant(db, task.tenant_id)
         publishing = get_publishing_settings(db, tenant)
@@ -250,15 +236,14 @@ def run_daily_publish_task(task_id: str) -> None:
         else:
             mark_task_succeeded(db, task, "定时任务完成，文章已生成", article_id=article.id)
             logger.info("任务成功：任务ID=%s，类型=每日发布，文章ID=%s，已发送公众号草稿=否", task_id, article.id)
-    except (ValueError, AIServiceError, WeChatAPIError) as exc:
-        logger.warning("任务失败：任务ID=%s，类型=每日发布，错误=%s", task_id, exc)
-        mark_task_failed_by_id(db, task_id, "定时任务失败", str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=每日发布", task_id)
-        mark_task_failed_by_id(db, task_id, "定时任务失败", f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
+
+    execute_task(
+        task_id,
+        label="每日发布",
+        fail_message="定时任务失败",
+        work=work,
+        expected=(ValueError, AIServiceError, WeChatAPIError),
+    )
 
 
 def scheduled_workspace_publish() -> None:
