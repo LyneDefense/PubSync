@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import HashtagCloud from './components/HashtagCloud.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
@@ -2456,11 +2457,7 @@ onUnmounted(() => {
                   <strong>{{ xhsDraftImageUrls.length || xhsDraftImagePlan.length }} 张</strong>
                 </article>
               </div>
-              <section v-if="xhsDraftHashtags.length" class="tag-cloud">
-                <button v-for="tag in xhsDraftHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
-                  #{{ String(tag).replace(/^#/, '') }}
-                </button>
-              </section>
+              <HashtagCloud :tags="xhsDraftHashtags" @copy="copyText($event, '标签')" />
               <ImageOutputGrid
                 v-if="xhsDraftImageUrls.length"
                 :urls="xhsDraftImageUrls"
@@ -2514,11 +2511,7 @@ onUnmounted(() => {
                     <strong>{{ xhsDraftHashtags.length }} 个</strong>
                   </article>
                 </div>
-                <section v-if="xhsDraftHashtags.length" class="tag-cloud">
-                  <button v-for="tag in xhsDraftHashtags" :key="String(tag)" type="button" @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')">
-                    #{{ String(tag).replace(/^#/, '') }}
-                  </button>
-                </section>
+                <HashtagCloud :tags="xhsDraftHashtags" @copy="copyText($event, '标签')" />
                 <section class="package-copy-block">
                   <div class="inline-card-header">
                     <h3>正文预览</h3>
@@ -2615,16 +2608,7 @@ onUnmounted(() => {
               </div>
               <pre>{{ selectedXhsPackage.body_text }}</pre>
             </section>
-            <section v-if="xhsPackageHashtags.length" class="tag-cloud">
-              <button
-                v-for="tag in xhsPackageHashtags"
-                :key="String(tag)"
-                type="button"
-                @click="copyText(`#${String(tag).replace(/^#/, '')}`, '标签')"
-              >
-                #{{ String(tag).replace(/^#/, '') }}
-              </button>
-            </section>
+            <HashtagCloud :tags="xhsPackageHashtags" @copy="copyText($event, '标签')" />
             <section v-if="xhsPackageImageUrls.length || xhsPackageImagePlan.length" class="package-images">
               <div class="inline-card-header">
                 <h3>配图</h3>
