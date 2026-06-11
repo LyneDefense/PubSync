@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
 import { useToast } from './composables/useToast'
@@ -2460,18 +2461,13 @@ onUnmounted(() => {
                   #{{ String(tag).replace(/^#/, '') }}
                 </button>
               </section>
-              <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
-                <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
-                  <button
-                    type="button"
-                    class="image-preview-trigger"
-                    @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
-                  >
-                    <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
-                  </button>
-                  <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
-                </figure>
-              </div>
+              <ImageOutputGrid
+                v-if="xhsDraftImageUrls.length"
+                :urls="xhsDraftImageUrls"
+                :plan="xhsDraftImagePlan"
+                :alt-text="`${currentSocialPlatformName}发布包配图`"
+                @preview="openImagePreview($event.url, $event.caption)"
+              />
               <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会展示封面、标签和配图输出。</p>
             </section>
 
@@ -2530,18 +2526,13 @@ onUnmounted(() => {
                   </div>
                   <pre>{{ currentXhsDraft.body_text }}</pre>
                 </section>
-                <div v-if="xhsDraftImageUrls.length" class="image-output-grid">
-                  <figure v-for="(url, index) in xhsDraftImageUrls" :key="url">
-                    <button
-                      type="button"
-                      class="image-preview-trigger"
-                      @click="openImagePreview(url, xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}`)"
-                    >
-                      <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
-                    </button>
-                    <figcaption>{{ xhsDraftImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
-                  </figure>
-                </div>
+                <ImageOutputGrid
+                  v-if="xhsDraftImageUrls.length"
+                  :urls="xhsDraftImageUrls"
+                  :plan="xhsDraftImagePlan"
+                  :alt-text="`${currentSocialPlatformName}发布包配图`"
+                  @preview="openImagePreview($event.url, $event.caption)"
+                />
                 <section v-if="xhsDraftScriptSegments.length" class="script-segments">
                   <div class="inline-card-header">
                     <h3>脚本预览</h3>
@@ -2638,18 +2629,12 @@ onUnmounted(() => {
               <div class="inline-card-header">
                 <h3>配图</h3>
               </div>
-              <div class="image-output-grid">
-                <figure v-for="(url, index) in xhsPackageImageUrls" :key="url">
-                  <button
-                    type="button"
-                    class="image-preview-trigger"
-                    @click="openImagePreview(url, xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}`)"
-                  >
-                    <img :src="String(url)" :alt="`${currentSocialPlatformName}发布包配图`" />
-                  </button>
-                  <figcaption>{{ xhsPackageImagePlan[index]?.caption || `配图 ${index + 1}` }}</figcaption>
-                </figure>
-              </div>
+              <ImageOutputGrid
+                :urls="xhsPackageImageUrls"
+                :plan="xhsPackageImagePlan"
+                :alt-text="`${currentSocialPlatformName}发布包配图`"
+                @preview="openImagePreview($event.url, $event.caption)"
+              />
               <div v-if="!xhsPackageImageUrls.length" class="sample-list">
                 <div v-for="item in xhsPackageImagePlan" :key="String(item.slot)">
                   <strong>{{ item.caption || `配图 ${item.slot}` }}</strong>
