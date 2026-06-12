@@ -184,7 +184,7 @@ button.task-button.running span {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-md);
   border-bottom: var(--rule-hair);
@@ -195,17 +195,17 @@ button.task-button.running span {
 }
 
 .topbar-title {
-  grid-column: 2;
+  grid-column: 1;
   margin: 0;
   overflow-wrap: anywhere;
   font-family: var(--font-display);
   font-size: var(--text-xl);
   line-height: 1.15;
-  text-align: center;
+  text-align: left;
 }
 
 .topbar-controls {
-  grid-column: 3;
+  grid-column: 2;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
@@ -1579,7 +1579,7 @@ p {
 }
 
 .creation-step-strip span,
-.creation-stage-card .inline-card-header span,
+.creation-stage-card .inline-card-header > div span,
 .selected-idea-card span,
 .asset-output-grid span {
   color: var(--color-accent);
@@ -2377,6 +2377,22 @@ select {
   background: var(--color-paper);
   padding: 12px;
   resize: vertical;
+}
+
+/* 颜色选择器：让原生色块占满，显示成可见的色板而不是一条细线。 */
+input[type="color"] {
+  height: 44px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
 }
 
 input:read-only,
