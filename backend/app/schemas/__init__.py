@@ -1,0 +1,93 @@
+"""Pydantic request/response schemas, split by domain.
+
+Re-exported here so existing ``from app.schemas import X`` imports keep working.
+"""
+
+from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
+from app.schemas.blogger import (
+    BloggerCollectRequest,
+    BloggerCollectionRunRead,
+    BloggerDistillationRunRead,
+    BloggerDistillRequest,
+    BloggerFavoriteUpdate,
+    BloggerPostRead,
+    BloggerProfileCreate,
+    BloggerProfileRead,
+    BloggerProfileUpdate,
+    BloggerSearchResultRead,
+    BloggerSkillRead,
+)
+from app.schemas.news import NewsItemRead, NewsItemUpdate, NewsSourceRead
+from app.schemas.settings import SettingRead, SettingUpdate
+from app.schemas.task import OperationTaskEventRead, OperationTaskRead
+from app.schemas.tenant import AdminUserCreate, AdminUserRead, CurrentUserRead, TenantRead
+from app.schemas.workspace import (
+    ContentGroupRead,
+    ContentGroupUpdate,
+    ContentProfileRead,
+    ContentProfileUpdate,
+    LayoutSettingsRead,
+    LayoutSettingsUpdate,
+    PublishingSettingsRead,
+    PublishingSettingsUpdate,
+    WeChatAccountRead,
+    WeChatAccountUpdate,
+    WorkspaceConfigRead,
+    WorkspaceConfigUpdate,
+)
+from app.schemas.xhs import (
+    XhsPublishPackageCreate,
+    XhsPublishPackageDraftRead,
+    XhsPublishPackageRead,
+    XhsPublishPackageSave,
+    XhsTopicIdeaRead,
+    XhsTopicIdeaRequest,
+    XhsTopicIdeaResponse,
+)
+
+__all__ = [
+    "TenantRead",
+    "CurrentUserRead",
+    "AdminUserRead",
+    "AdminUserCreate",
+    "ContentProfileRead",
+    "ContentProfileUpdate",
+    "ContentGroupRead",
+    "ContentGroupUpdate",
+    "WeChatAccountRead",
+    "WeChatAccountUpdate",
+    "LayoutSettingsRead",
+    "LayoutSettingsUpdate",
+    "PublishingSettingsRead",
+    "PublishingSettingsUpdate",
+    "WorkspaceConfigRead",
+    "WorkspaceConfigUpdate",
+    "NewsItemRead",
+    "NewsItemUpdate",
+    "NewsSourceRead",
+    "ArticleRead",
+    "ArticleUpdate",
+    "DashboardRead",
+    "OperationTaskRead",
+    "OperationTaskEventRead",
+    "SettingRead",
+    "SettingUpdate",
+    "BloggerProfileCreate",
+    "BloggerProfileUpdate",
+    "BloggerFavoriteUpdate",
+    "BloggerProfileRead",
+    "BloggerSearchResultRead",
+    "BloggerDistillRequest",
+    "BloggerCollectRequest",
+    "BloggerPostRead",
+    "BloggerCollectionRunRead",
+    "BloggerDistillationRunRead",
+    "BloggerSkillRead",
+    "XhsPublishPackageCreate",
+    "XhsPublishPackageDraftRead",
+    "XhsPublishPackageSave",
+    "XhsTopicIdeaRequest",
+    "XhsTopicIdeaRead",
+    "XhsTopicIdeaResponse",
+    "XhsPublishPackageRead",
+]
