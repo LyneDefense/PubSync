@@ -1,28 +1,33 @@
 /* Hallmark · genre: editorial workbench · macrostructure: command workspace · anchor hue: teal */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --font-display: "Avenir Next", "Trebuchet MS", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-body: Inter, "Fira Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Code", "Fira Code", monospace;
 
-  --color-paper: oklch(15% 0.035 248);
-  --color-paper-2: oklch(18% 0.04 245);
-  --color-paper-3: oklch(22% 0.045 242);
-  --color-surface: oklch(20% 0.035 244 / 0.82);
-  --color-surface-solid: oklch(19% 0.035 244);
-  --color-surface-raised: oklch(24% 0.045 242 / 0.74);
-  --color-ink: oklch(94% 0.018 244);
-  --color-ink-2: oklch(73% 0.045 240);
-  --color-ink-3: oklch(61% 0.045 238);
-  --color-rule: oklch(48% 0.08 232 / 0.28);
-  --color-rule-strong: oklch(70% 0.12 188 / 0.42);
-  --color-accent: oklch(78% 0.14 184);
-  --color-accent-soft: oklch(78% 0.14 184 / 0.14);
-  --color-accent-ink: oklch(98% 0.02 180);
-  --color-blue: oklch(74% 0.13 245);
-  --color-danger: oklch(72% 0.17 15);
-  --color-focus: oklch(86% 0.16 85);
-  --color-shadow: oklch(8% 0.03 250 / 0.36);
+  /* 底色 / 表面：深 → 浅 */
+  --color-paper: #f4f5f6;
+  --color-paper-2: #ffffff;
+  --color-paper-3: #eef0f2;
+  --color-surface: #ffffff;
+  --color-surface-solid: #ffffff;
+  --color-surface-raised: #ffffff;
+  /* 文字：浅 → 深 */
+  --color-ink: #1c2024;
+  --color-ink-2: #565d66;
+  --color-ink-3: #878f99;
+  /* 描边：去青光，改中性细线 */
+  --color-rule: #e8eaed;
+  --color-rule-strong: #cfd4d9;
+  /* 强调色：霓虹青绿 → 沉稳墨绿 */
+  --color-accent: #0d7361;
+  --color-accent-soft: #eaf3ee;
+  --color-accent-ink: #0d5a4a;
+  /* 语义色（浅色可读微调） */
+  --color-blue: #3a6ad6;
+  --color-danger: #b4453a;
+  --color-focus: #c08a1e;
+  --color-shadow: rgba(20, 30, 40, 0.08);
 
   --space-2xs: 0.5rem;
   --space-xs: 0.75rem;
@@ -66,11 +71,7 @@ body {
 body {
   min-width: 320px;
   margin: 0;
-  background:
-    linear-gradient(var(--color-rule) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-rule) 1px, transparent 1px),
-    linear-gradient(135deg, var(--color-paper) 0%, var(--color-paper-2) 58%, var(--color-paper) 100%);
-  background-size: 44px 44px, 44px 44px, auto;
+  background: var(--color-paper);
   color: var(--color-ink);
 }
 
