@@ -14,7 +14,6 @@ import { useToast } from './useToast'
 import {
   bloggerCommentLabel,
   collectionCostLabel,
-  distillationStatusLabel,
   findXhsDraftFromEvents,
   parseEventPayload,
   parseJsonArray,

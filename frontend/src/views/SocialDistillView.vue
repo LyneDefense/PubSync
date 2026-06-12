@@ -2,6 +2,7 @@
 // 社媒·博主蒸馏：基于采集批次提炼创作方法论 Skill。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { sanitizeHtml } from '../utils/sanitize'
+import StatusChip from '../components/StatusChip.vue'
 import {
   article,
   bloggerCollectionRuns,
@@ -68,7 +69,7 @@ import {
                 <div class="run-list-header"><strong>可蒸馏批次</strong><span>{{ bloggerCollectionRuns.length }} 次</span></div>
                 <button v-for="run in bloggerCollectionRuns" :key="run.id" type="button" :disabled="run.status !== 'succeeded'" :class="{ active: selectedCollectionRunId === run.id }" @click="selectCollectionRun(run.id)">
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 已蒸馏 {{ collectionDistillationCount(run.id) }} 次</span>
+                  <span><StatusChip :status="run.status" /> 样本 {{ run.post_count }} · 已蒸馏 {{ collectionDistillationCount(run.id) }} 次</span>
                 </button>
               </div>
               <p v-else class="empty-region">请先选择博主。</p>

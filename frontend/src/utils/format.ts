@@ -49,17 +49,67 @@ export function collectionCostLabel(run: BloggerCollectionRun): string {
   return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
 }
 
-export function distillationStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    running: '进行中',
-    succeeded: '已完成',
-    pending_confirmation: '待确认',
-    abandoned: '已放弃',
-    failed: '失败',
-    cancelled: '已停止',
-    cancel_requested: '停止中'
-  }
-  return labels[status] || status
+// 全站统一的状态语义。色调：success=墨绿 / danger=砖红 / info=蓝(进行中) /
+// warn=琥珀(待确认) / neutral=中性灰。覆盖任务、采集、蒸馏、文章、账号、ASR 等所有状态值。
+export type StatusTone = 'success' | 'danger' | 'info' | 'warn' | 'neutral'
+
+const STATUS_LABELS: Record<string, string> = {
+  // 任务 / 采集 / 蒸馏通用
+  queued: '排队中',
+  running: '进行中',
+  processing: '处理中',
+  cancel_requested: '停止中',
+  cancelled: '已停止',
+  succeeded: '已完成',
+  failed: '失败',
+  pending_confirmation: '待确认',
+  abandoned: '已放弃',
+  // 文章
+  draft: '草稿',
+  generated: '已生成',
+  sent_to_wechat: '已入草稿箱',
+  // 账号 / Skill / 租户
+  active: '启用',
+  disabled: '已停用',
+  // 视频字幕 / ASR
+  not_required: '无需转写',
+  pending: '待处理',
+  skipped: '已跳过',
+  done: '已完成',
+  error: '失败'
+}
+
+const STATUS_TONES: Record<string, StatusTone> = {
+  succeeded: 'success',
+  generated: 'success',
+  sent_to_wechat: 'success',
+  active: 'success',
+  done: 'success',
+  failed: 'danger',
+  abandoned: 'danger',
+  error: 'danger',
+  running: 'info',
+  queued: 'info',
+  processing: 'info',
+  cancel_requested: 'info',
+  pending: 'info',
+  pending_confirmation: 'warn',
+  cancelled: 'neutral',
+  cancel_request: 'neutral',
+  disabled: 'neutral',
+  not_required: 'neutral',
+  skipped: 'neutral',
+  draft: 'neutral'
+}
+
+export function statusLabel(status: string | null | undefined): string {
+  if (!status) return '—'
+  return STATUS_LABELS[status] || status
+}
+
+export function statusTone(status: string | null | undefined): StatusTone {
+  if (!status) return 'neutral'
+  return STATUS_TONES[status] || 'neutral'
 }
 
 export function sampledCommentCount(post: BloggerPost): number {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 后台·用户与工作空间管理（仅管理员可见）。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
+import StatusChip from '../components/StatusChip.vue'
 import {
   activeMainTab,
   adminUserForm,
@@ -56,7 +57,7 @@ import {
             <div v-if="adminUsers.length" class="admin-user-list">
               <div v-for="user in adminUsers" :key="user.id">
                 <strong>{{ user.username }}</strong>
-                <span>{{ user.is_admin ? '管理员' : '普通用户' }} · 工作空间 ID {{ user.tenant_id || '未绑定' }} · {{ user.status }}</span>
+                <span>{{ user.is_admin ? '管理员' : '普通用户' }} · 工作空间 ID {{ user.tenant_id || '未绑定' }} · <StatusChip :status="user.status" /></span>
               </div>
             </div>
             <p v-else class="empty-region">暂无账号。</p>

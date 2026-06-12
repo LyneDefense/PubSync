@@ -2,9 +2,9 @@
 // 社媒·博主资产：博主、采集批次、蒸馏结果与样本展示。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { sanitizeHtml } from '../utils/sanitize'
+import StatusChip from '../components/StatusChip.vue'
 import {
   bloggerCommentLabel,
-  distillationStatusLabel,
   runCostLabel
 } from '../utils/format'
 import {
@@ -117,7 +117,7 @@ import {
                     @click="selectCollectionRun(run.id)"
                   >
                     <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                    <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开' : '关' }} · 蒸馏 {{ collectionDistillationCount(run.id) }}</span>
+                    <span><StatusChip :status="run.status" /> 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开' : '关' }} · 蒸馏 {{ collectionDistillationCount(run.id) }}</span>
                   </button>
                   <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
                 </div>
@@ -141,7 +141,7 @@ import {
                     @click="selectBloggerRun(run.id)"
                   >
                     <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · {{ distillationStatusLabel(run.status) }} · 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
+                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · <StatusChip :status="run.status" /> 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
                     <em v-if="run.status === 'failed'" class="run-error">失败原因：{{ run.error_message || '未记录失败原因' }}</em>
                   </button>
                   <p v-if="!visibleBloggerRuns.length && resultCollectionFilter" class="empty-region">这个采集批次还没有蒸馏结果。</p>
@@ -163,7 +163,7 @@ import {
                   <strong>{{ post.title }}</strong>
                   <span>
                     {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
-                    <template v-if="post.content_type === 'video'"> / ASR {{ post.asr_status }}</template>
+                    <template v-if="post.content_type === 'video'"> / ASR <StatusChip :status="post.asr_status" /></template>
                   </span>
                 </div>
               </div>
@@ -173,7 +173,7 @@ import {
             <section v-if="selectedBloggerRun" class="asset-panel">
               <div class="stage-header">
                 <div>
-                  <span>{{ distillationStatusLabel(selectedBloggerRun.status) }}</span>
+                  <span><StatusChip :status="selectedBloggerRun.status" /></span>
                   <h3>蒸馏结果 #{{ selectedBloggerRun.id }}</h3>
                 </div>
                 <div v-if="selectedBloggerRun.status === 'pending_confirmation'" class="actions">

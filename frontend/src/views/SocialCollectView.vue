@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 社媒·数据采集：选择博主、配置并执行小红书/抖音样本采集。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
+import StatusChip from '../components/StatusChip.vue'
 import {
   article,
   bloggerCollectionRuns,
@@ -104,7 +105,7 @@ import {
                 <div class="run-list-header"><strong>采集历史</strong><span>{{ bloggerCollectionRuns.length }} 次</span></div>
                 <button v-for="run in bloggerCollectionRuns" :key="run.id" type="button" :class="{ active: selectedCollectionRunId === run.id }" @click="selectCollectionRun(run.id)">
                   <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                  <span>{{ run.status }} · 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }}</span>
+                  <span><StatusChip :status="run.status" /> 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开启' : '关闭' }}</span>
                 </button>
               </div>
               <p v-if="!selectedBlogger" class="empty-region">请先选择博主。</p>
