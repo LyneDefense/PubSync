@@ -25,6 +25,11 @@ from app.blogger_distillation.service.distillation import (
     distill_with_llm,
     run_blogger_distillation,
 )
+from app.blogger_distillation.service.extract import (
+    collect_video_url_candidates,
+    extract_video_url,
+    is_likely_video_url,
+)
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
     ensure_distillation_not_cancelled,
@@ -54,4 +59,7 @@ __all__ = [
     "confirm_blogger_distillation",
     "abandon_blogger_distillation",
     "distill_with_llm",
+    "extract_video_url",
+    "is_likely_video_url",
+    "collect_video_url_candidates",
 ]
