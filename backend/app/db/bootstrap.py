@@ -62,7 +62,14 @@ def sql_literal(value: str) -> str:
 
 def seed_statements() -> list[str]:
     """返回灌入默认数据的 SQL 列表（全部 ON CONFLICT DO NOTHING，可重复执行）。"""
+    # 在函数内导入，避免模块级循环依赖（auth_service 依赖 models/config）。
+    from app.services.auth_service import hash_password
+
     settings = get_settings()
+    # 两个初始账号都以 PBKDF2 哈希写入，绝不落明文；示例账号 eyangpet 的初始密码
+    # 与管理员相同（而非历史上的硬编码弱口令），请登录后到「设置」里改掉。
+    admin_password_hash = sql_literal(hash_password(settings.admin_password, settings))
+    eyangpet_password_hash = sql_literal(hash_password(settings.admin_password, settings))
     return [
         # —— 两个默认工作空间（租户）——
         """
@@ -75,15 +82,15 @@ def seed_statements() -> list[str]:
         VALUES (2, 'EyangPet 宠物内容', 'eyangpet', 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         """,
-        # —— 初始用户（管理员来自配置；eyangpet 为示例账号）——
+        # —— 初始用户（密码均为 PBKDF2 哈希；管理员用户名/密码来自配置）——
         f"""
         INSERT INTO users (username, password_hash, is_admin, tenant_id, status, created_at, updated_at)
-        VALUES ({sql_literal(settings.admin_username)}, {sql_literal(settings.admin_password)}, true, 1, 'active', NOW(), NOW())
+        VALUES ({sql_literal(settings.admin_username)}, {admin_password_hash}, true, 1, 'active', NOW(), NOW())
         ON CONFLICT (username) DO NOTHING
         """,
-        """
+        f"""
         INSERT INTO users (username, password_hash, is_admin, tenant_id, status, created_at, updated_at)
-        VALUES ('eyangpet', '123456', false, 2, 'active', NOW(), NOW())
+        VALUES ('eyangpet', {eyangpet_password_hash}, false, 2, 'active', NOW(), NOW())
         ON CONFLICT (username) DO NOTHING
         """,
         # —— 内容定位 ——

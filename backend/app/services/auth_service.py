@@ -11,15 +11,6 @@ from app.config import Settings
 from app.models import User
 
 
-EXTRA_USERS = {
-    "eyangpet": "123456",
-}
-
-USER_TENANT_IDS = {
-    "eyangpet": [2],
-}
-
-
 def create_token(settings: Settings, username: str | None = None) -> str:
     payload = {
         "sub": username or settings.admin_username,
@@ -60,17 +51,17 @@ def verify_credentials(username: str, password: str, settings: Settings, db: Ses
     if db is not None:
         user = get_user_by_username(db, username)
         return bool(user and user.status == "active" and verify_password(password, user.password_hash, settings))
-    if hmac.compare_digest(username, settings.admin_username) and hmac.compare_digest(password, settings.admin_password):
-        return True
-    expected_password = EXTRA_USERS.get(username)
-    return expected_password is not None and hmac.compare_digest(password, expected_password)
+    # 无数据库时（极少见）只认配置里的管理员账号，不再有任何硬编码账号。
+    return hmac.compare_digest(username, settings.admin_username) and hmac.compare_digest(
+        password, settings.admin_password
+    )
 
 
 def is_known_user(username: str, settings: Settings, db: Session | None = None) -> bool:
     if db is not None:
         user = get_user_by_username(db, username)
         return bool(user and user.status == "active")
-    return hmac.compare_digest(username, settings.admin_username) or username in EXTRA_USERS
+    return hmac.compare_digest(username, settings.admin_username)
 
 
 def tenant_ids_for_user(username: str, settings: Settings, db: Session | None = None) -> list[int]:
@@ -83,7 +74,7 @@ def tenant_ids_for_user(username: str, settings: Settings, db: Session | None = 
         return []
     if is_admin_user(username, settings, db):
         return [1]
-    return USER_TENANT_IDS.get(username, [])
+    return []
 
 
 def is_admin_user(username: str, settings: Settings, db: Session | None = None) -> bool:
@@ -104,9 +95,10 @@ def hash_password(password: str, settings: Settings) -> str:
 
 
 def verify_password(password: str, password_hash: str, settings: Settings) -> bool:
-    if password_hash.startswith("pbkdf2_sha256$"):
-        return hmac.compare_digest(password_hash, hash_password(password, settings))
-    return hmac.compare_digest(password, password_hash)
+    # 只接受 PBKDF2 哈希；历史明文或未知格式一律视为无效（不再做明文兜底）。
+    if not password_hash.startswith("pbkdf2_sha256$"):
+        return False
+    return hmac.compare_digest(password_hash, hash_password(password, settings))
 
 
 def sign(encoded_payload: str, settings: Settings) -> str:
