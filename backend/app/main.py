@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-import logging
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_db
+from app.logging_config import configure_logging
 from app.models import (
     AppSetting,
     Article,
@@ -127,23 +127,7 @@ from app.xhs_creation.service import (
 
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
-logging.addLevelName(logging.DEBUG, "调试")
-logging.addLevelName(logging.INFO, "信息")
-logging.addLevelName(logging.WARNING, "警告")
-logging.addLevelName(logging.ERROR, "错误")
-logging.addLevelName(logging.CRITICAL, "严重")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
-
-
-class HealthAccessLogFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        args = record.args
-        if isinstance(args, tuple) and len(args) >= 3:
-            return str(args[2]).split("?", 1)[0] != "/health"
-        return "/health" not in record.getMessage()
-
-
-logging.getLogger("uvicorn.access").addFilter(HealthAccessLogFilter())
+configure_logging()
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 

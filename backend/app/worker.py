@@ -15,13 +15,14 @@ from rq import Queue, Worker
 
 from app.config import get_settings
 from app.database import create_db_and_tables
+from app.logging_config import configure_logging
 
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    configure_logging()
     settings = get_settings()
     create_db_and_tables()
     connection = Redis.from_url(settings.redis_url)

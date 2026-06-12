@@ -196,7 +196,7 @@ class TikHubXhsClient(TikHubBaseClient):
                     break
                 raise
             notes = page_data["notes"]
-            logger.info(
+            logger.debug(
                 "小红书主页笔记分页：page=%s，cursor=%s，解析=%s，has_more=%s，next_cursor=%s",
                 page + 1,
                 cursor or "<empty>",
@@ -256,7 +256,7 @@ class TikHubXhsClient(TikHubBaseClient):
             if page_data["notes"]:
                 payload["_endpoint_used"] = f"{endpoint.group}:{endpoint.path}"
                 score = score_note_page(page_data, num)
-                logger.info(
+                logger.debug(
                     "TikHub 用户笔记端点候选：端点=%s，解析=%s，has_more=%s，next_cursor=%s，评分=%s",
                     payload["_endpoint_used"],
                     len(page_data["notes"]),
@@ -271,7 +271,7 @@ class TikHubXhsClient(TikHubBaseClient):
                 continue
             logger.warning("TikHub 用户笔记端点返回空：端点=%s:%s", endpoint.group, endpoint.path)
         if best_page is not None:
-            logger.info(
+            logger.debug(
                 "TikHub 用户笔记端点选用：端点=%s，解析=%s，has_more=%s，next_cursor=%s",
                 best_endpoint,
                 len(best_page["notes"]),
@@ -289,7 +289,7 @@ class TikHubXhsClient(TikHubBaseClient):
         variants: list[dict[str, Any]] = []
         for endpoint in self.router.pools.get("video_detail", []):
             if endpoint.group == "web_v3" and not candidate.xsec_token:
-                logger.info(
+                logger.debug(
                     "跳过需要 xsec_token 的视频详情端点：端点=%s:%s，note_id=%s",
                     endpoint.group,
                     endpoint.path,
@@ -364,7 +364,7 @@ class TikHubDouyinClient(TikHubBaseClient):
         for page in range(10):
             payload = self.router.call("user_videos", {"user_id": self.user_id, "cursor": cursor, "count": min(20, max(limit, 1))})
             page_data = extract_douyin_video_page(payload)
-            logger.info(
+            logger.debug(
                 "抖音主页作品分页：page=%s，cursor=%s，解析=%s，has_more=%s，next_cursor=%s",
                 page + 1,
                 cursor,
