@@ -383,35 +383,10 @@ export const selectedXhsPackageBloggerName = computed(() => {
 export const selectedXhsTopicIdea = computed(() =>
   selectedXhsTopicIndex.value === null ? null : xhsTopicIdeas.value[selectedXhsTopicIndex.value] || null
 )
-export const xhsCreationStepTitle = computed(() => {
-  const titles: Record<number, string> = {
-    1: '选择博主',
-    2: '选择 Skill',
-    3: '生成/选择选题',
-    4: '生成正文/脚本',
-    5: '封面、配图、标签',
-    6: '确认发布包'
-  }
-  return titles[xhsCreationStep.value] || 'AI 创作'
-})
-export const xhsCollectStepTitle = computed(() => {
-  const titles: Record<number, string> = {
-    1: '选择博主',
-    2: '配置采集',
-    3: '执行采集',
-    4: '查看结果'
-  }
-  return titles[xhsCollectStep.value] || '数据采集'
-})
-export const xhsDistillStepTitle = computed(() => {
-  const titles: Record<number, string> = {
-    1: '选择博主',
-    2: '选择批次',
-    3: '执行蒸馏',
-    4: '确认结果'
-  }
-  return titles[xhsDistillStep.value] || '博主蒸馏'
-})
+// 顶部紧凑步骤条用的简短标签，按步骤顺序排列（取代原先居中的大标题）。
+export const xhsCreationStepLabels = ['选择博主', '选择 Skill', '生成选题', '生成正文', '封面配图', '确认发布']
+export const xhsCollectStepLabels = ['选择博主', '配置采集', '执行采集', '查看结果']
+export const xhsDistillStepLabels = ['选择博主', '选择批次', '执行蒸馏', '确认结果']
 export const canGoNextXhsCollectStep = computed(() => {
   if (xhsCollectStep.value === 1) {
     return Boolean(selectedBlogger.value)

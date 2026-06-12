@@ -25,7 +25,7 @@ import {
   taskButtonStyle,
   taskProgress,
   xhsCollectStep,
-  xhsCollectStepTitle
+  xhsCollectStepLabels
 } from '../composables/useWorkspaceStore'
 </script>
 
@@ -38,13 +38,18 @@ import {
           </div>
         </div>
         <div class="creator-shell">
-          <button v-if="xhsCollectStep > 1" type="button" class="creator-arrow previous" aria-label="上一步" @click="goPreviousXhsCollectStep">←</button>
           <div class="creator-main">
-            <div class="creator-step-header">
-              <h3>{{ xhsCollectStepTitle }}</h3>
-              <span>步骤 {{ xhsCollectStep }} / 4</span>
-              <div class="creator-progress" aria-hidden="true"><i :style="{ width: `${(xhsCollectStep / 4) * 100}%` }"></i></div>
-            </div>
+            <ol class="creator-steps" aria-label="步骤进度">
+              <li
+                v-for="(label, index) in xhsCollectStepLabels"
+                :key="label"
+                class="creator-steps__item"
+                :class="{ current: xhsCollectStep === index + 1, done: xhsCollectStep > index + 1 }"
+              >
+                <span class="creator-steps__dot">{{ index + 1 }}</span>
+                <span class="creator-steps__label">{{ label }}</span>
+              </li>
+            </ol>
 
             <section v-if="xhsCollectStep === 1" class="creation-stage-card active">
               <div class="inline-card-header">
@@ -104,8 +109,11 @@ import {
               </div>
               <p v-if="!selectedBlogger" class="empty-region">请先选择博主。</p>
             </section>
+            <div class="creator-nav">
+              <button v-if="xhsCollectStep > 1" type="button" @click="goPreviousXhsCollectStep">← 上一步</button>
+              <button v-if="xhsCollectStep < 4" type="button" class="creator-nav__next primary" @click="goNextXhsCollectStep">下一步 →</button>
+            </div>
           </div>
-          <button v-if="xhsCollectStep < 4" type="button" class="creator-arrow next" aria-label="下一步" @click="goNextXhsCollectStep">→</button>
         </div>
       </section>
 </template>

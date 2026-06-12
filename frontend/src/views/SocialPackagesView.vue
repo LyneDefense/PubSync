@@ -32,7 +32,7 @@ import {
   selectedXhsTopicIdea,
   selectedXhsTopicIndex,
   xhsCreationStep,
-  xhsCreationStepTitle,
+  xhsCreationStepLabels,
   xhsCreatorBloggerId,
   xhsCreatorSkillOptions,
   xhsDraftHashtags,
@@ -53,23 +53,18 @@ import {
           </div>
         </div>
         <div class="creator-shell">
-          <button
-            v-if="xhsCreationStep > 1"
-            type="button"
-            class="creator-arrow previous"
-            aria-label="上一步"
-            @click="goPreviousXhsCreationStep"
-          >
-            ←
-          </button>
           <div class="creator-main">
-            <div class="creator-step-header">
-              <h3>{{ xhsCreationStepTitle }}</h3>
-              <span>步骤 {{ xhsCreationStep }} / 6</span>
-              <div class="creator-progress" aria-hidden="true">
-                <i :style="{ width: `${(xhsCreationStep / 6) * 100}%` }"></i>
-              </div>
-            </div>
+            <ol class="creator-steps" aria-label="步骤进度">
+              <li
+                v-for="(label, index) in xhsCreationStepLabels"
+                :key="label"
+                class="creator-steps__item"
+                :class="{ current: xhsCreationStep === index + 1, done: xhsCreationStep > index + 1 }"
+              >
+                <span class="creator-steps__dot">{{ index + 1 }}</span>
+                <span class="creator-steps__label">{{ label }}</span>
+              </li>
+            </ol>
 
             <section v-if="xhsCreationStep === 1" class="creation-stage-card active">
               <div class="inline-card-header">
@@ -334,16 +329,11 @@ import {
                 <p v-if="currentXhsDraft.error_message" class="run-error">{{ currentXhsDraft.error_message }}</p>
               </div>
             </section>
+            <div class="creator-nav">
+              <button v-if="xhsCreationStep > 1" type="button" @click="goPreviousXhsCreationStep">← 上一步</button>
+              <button v-if="xhsCreationStep < 6" type="button" class="creator-nav__next primary" @click="goNextXhsCreationStep">下一步 →</button>
+            </div>
           </div>
-          <button
-            v-if="xhsCreationStep < 6"
-            type="button"
-            class="creator-arrow next"
-            aria-label="下一步"
-            @click="goNextXhsCreationStep"
-          >
-            →
-          </button>
         </div>
       </section>
 </template>
