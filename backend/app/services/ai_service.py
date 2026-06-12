@@ -90,12 +90,12 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
     return public_path
 
 
-def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
+def create_json_response(settings: Settings, prompt: str, model: str | None = None) -> dict[str, Any]:
     provider = settings.llm_provider.lower()
     if provider == "minimax":
-        text = minimax_text(settings, prompt)
+        text = minimax_text(settings, prompt, model=model)
     elif provider == "openai":
-        text = openai_text(settings, prompt)
+        text = openai_text(settings, prompt, model=model)
     else:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
@@ -125,9 +125,9 @@ def create_json_response(settings: Settings, prompt: str) -> dict[str, Any]:
     return parsed
 
 
-def openai_text(settings: Settings, prompt: str) -> str:
+def openai_text(settings: Settings, prompt: str, model: str | None = None) -> str:
     payload: dict[str, Any] = {
-        "model": settings.openai_text_model,
+        "model": model or settings.openai_text_model,
         "input": prompt,
         "text": {"format": {"type": "json_object"}},
     }
@@ -135,12 +135,13 @@ def openai_text(settings: Settings, prompt: str) -> str:
     return extract_openai_response_text(data)
 
 
-def minimax_text(settings: Settings, prompt: str) -> str:
+def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> str:
     if not settings.minimax_api_key:
         raise AIServiceError("未配置 MINIMAX_API_KEY")
 
+    model = model or settings.minimax_text_model
     payload = {
-        "model": settings.minimax_text_model,
+        "model": model,
         "messages": [
             {
                 "role": "system",
@@ -155,7 +156,7 @@ def minimax_text(settings: Settings, prompt: str) -> str:
         "temperature": 0.2,
         "reasoning_split": True,
     }
-    if supports_minimax_response_format(settings.minimax_text_model):
+    if supports_minimax_response_format(model):
         payload["response_format"] = {"type": "json_object"}
     data = minimax_post(settings, "/chat/completions", payload, timeout=180)
     choices = data.get("choices")

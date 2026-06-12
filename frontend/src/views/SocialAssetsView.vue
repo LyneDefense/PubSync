@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 社媒·博主资产：博主、采集批次、蒸馏结果与样本展示。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
+import { computed } from 'vue'
 import { sanitizeHtml } from '../utils/sanitize'
 import StatusChip from '../components/StatusChip.vue'
 import {
@@ -15,6 +16,7 @@ import {
   collectionDistillationCount,
   currentSocialPlatformName,
   currentSocialTab,
+  distillRunMeta,
   formatDate,
   handleAbandonBloggerRun,
   handleConfirmBloggerRun,
@@ -23,6 +25,7 @@ import {
   isSocialPlatform,
   openEditBloggerModal,
   pendingAction,
+  qualityTone,
   resultCollectionFilter,
   selectBlogger,
   selectBloggerRun,
@@ -41,6 +44,9 @@ import {
   visibleBloggerRunCount,
   visibleBloggerRuns
 } from '../composables/useWorkspaceStore'
+
+// 当前蒸馏结果的模式与质量分（解析自 report_json）。
+const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
 </script>
 
 <template>
@@ -175,6 +181,10 @@ import {
                 <div>
                   <span><StatusChip :status="selectedBloggerRun.status" /></span>
                   <h3>蒸馏结果 #{{ selectedBloggerRun.id }}</h3>
+                  <p class="distill-result-meta">
+                    <span class="status-chip status-chip--neutral">{{ selectedRunMeta.mode === 'B' ? '诊断我的账号' : '拆解对标博主' }}</span>
+                    <span v-if="selectedRunMeta.qualityScore !== null" class="status-chip" :class="`status-chip--${qualityTone(selectedRunMeta.qualityGrade)}`">质量自检 {{ selectedRunMeta.qualityScore }} 分 · {{ selectedRunMeta.qualityGrade }}</span>
+                  </p>
                 </div>
                 <div v-if="selectedBloggerRun.status === 'pending_confirmation'" class="actions">
                   <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleConfirmBloggerRun">

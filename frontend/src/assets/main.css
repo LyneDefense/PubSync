@@ -2180,6 +2180,99 @@ p {
   margin-bottom: var(--space-2xs);
 }
 
+/* 蒸馏报告内的三层小标题与逐条爆款拆解卡片（由后端渲染的 HTML 注入）。 */
+.distill-report h3 {
+  margin: var(--space-sm) 0 var(--space-2xs);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  color: var(--color-accent-ink);
+}
+
+.distill-report h4 {
+  margin: 0 0 var(--space-2xs);
+  font-size: var(--text-sm);
+}
+
+.distill-quality {
+  border: var(--rule-hair);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  padding: var(--space-xs) var(--space-sm);
+  margin: var(--space-xs) 0;
+}
+
+.distill-quality h2 {
+  margin-top: 0;
+  font-size: var(--text-md);
+}
+
+.distill-breakdown {
+  border: var(--rule-hair);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-2);
+  padding: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-2xs);
+}
+
+.distill-breakdown p {
+  margin: 2px 0;
+}
+
+.distill-breakdown-source {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+/* 蒸馏模式分段选择（拆解对标 / 诊断我的账号）。 */
+.distill-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.distill-mode button {
+  display: grid;
+  flex: 1 1 200px;
+  gap: 2px;
+  justify-items: start;
+  text-align: left;
+  padding: var(--space-2xs) var(--space-xs);
+}
+
+.distill-mode button small {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+}
+
+.distill-mode button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+.distill-mode button.active small {
+  color: var(--color-accent-ink);
+}
+
+.distill-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin: var(--space-2xs) 0 0;
+}
+
+.collect-estimate {
+  margin: 0 0 var(--space-xs);
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}
+
+.collect-estimate strong {
+  color: var(--color-ink);
+}
+
 .meta {
   color: var(--color-ink-3);
   font-size: var(--text-sm);

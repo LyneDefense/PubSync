@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 社媒·博主蒸馏：基于采集批次提炼创作方法论 Skill。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
+import { computed } from 'vue'
 import { sanitizeHtml } from '../utils/sanitize'
 import StatusChip from '../components/StatusChip.vue'
 import {
@@ -10,6 +11,7 @@ import {
   collectionDistillationCount,
   currentSocialPlatformName,
   currentSocialTab,
+  distillRunMeta,
   form,
   formatDate,
   goNextXhsDistillStep,
@@ -19,6 +21,7 @@ import {
   handleDistillBlogger,
   isSocialPlatform,
   pendingAction,
+  qualityTone,
   selectBlogger,
   selectCollectionRun,
   selectedBlogger,
@@ -28,9 +31,13 @@ import {
   selectedCollectionRunId,
   taskButtonStyle,
   taskProgress,
+  xhsDistillMode,
   xhsDistillStep,
   xhsDistillStepLabels
 } from '../composables/useWorkspaceStore'
+
+// 当前待确认/已选蒸馏结果的模式与质量分（解析自 report_json）。
+const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
 </script>
 
 <template>
@@ -81,14 +88,28 @@ import {
                   <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
                 </button>
               </div>
-              <div v-if="pendingAction === 'distill'" class="inline-progress-card" aria-live="polite">
-                <div><strong>正在蒸馏风格</strong><span>大模型正在提炼选题、结构、标题、表达和禁区。</span></div><i aria-hidden="true"></i>
+              <div class="distill-mode" role="group" aria-label="蒸馏模式">
+                <button type="button" :class="{ active: xhsDistillMode === 'A' }" :disabled="Boolean(pendingAction)" @click="xhsDistillMode = 'A'">
+                  <strong>拆解对标博主</strong><small>把对标博主的方法论迁移到你的账号</small>
+                </button>
+                <button type="button" :class="{ active: xhsDistillMode === 'B' }" :disabled="Boolean(pendingAction)" @click="xhsDistillMode = 'B'">
+                  <strong>诊断我的账号</strong><small>这个账号就是我，给出优势/短板/增长动作</small>
+                </button>
               </div>
-              <p class="form-hint">蒸馏完成后会进入结果确认页，保存后 Skill 才会生效。</p>
+              <div v-if="pendingAction === 'distill'" class="inline-progress-card" aria-live="polite">
+                <div><strong>正在蒸馏风格</strong><span>大模型正在按「认知层 / 策略层 / 内容层」提炼方法论并逐条拆解爆款。</span></div><i aria-hidden="true"></i>
+              </div>
+              <p class="form-hint">蒸馏完成后会进入结果确认页，并给出质量自检评分；保存后 Skill 才会生效。</p>
             </section>
             <section v-if="xhsDistillStep === 4" class="creation-stage-card active">
               <div class="inline-card-header">
-                <div><span>04 确认结果</span><h3>预览报告和 Skill</h3></div>
+                <div>
+                  <span>04 确认结果</span><h3>预览报告和 Skill</h3>
+                  <p v-if="selectedBloggerRun" class="distill-result-meta">
+                    <span class="status-chip status-chip--neutral">{{ runMeta.mode === 'B' ? '诊断我的账号' : '拆解对标博主' }}</span>
+                    <span v-if="runMeta.qualityScore !== null" class="status-chip" :class="`status-chip--${qualityTone(runMeta.qualityGrade)}`">质量自检 {{ runMeta.qualityScore }} 分 · {{ runMeta.qualityGrade }}</span>
+                  </p>
+                </div>
                 <div class="actions">
                   <button type="button" class="primary" :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'" @click="handleConfirmBloggerRun">{{ pendingAction === 'distill-confirm' ? '保存中' : '保存结果' }}</button>
                   <button type="button" :disabled="Boolean(pendingAction) || selectedBloggerRun?.status !== 'pending_confirmation'" @click="handleAbandonBloggerRun">{{ pendingAction === 'distill-abandon' ? '放弃中' : '放弃本次蒸馏' }}</button>

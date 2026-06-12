@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     minimax_api_key: str = ""
     minimax_text_model: str = "MiniMax-M2.7"
     minimax_image_model: str = "image-01"
+    # 博主蒸馏单独的文本模型（留空=用上面的 *_text_model）。蒸馏对推理要求更高，
+    # 可在此指向更强的模型（如更高档的 OpenAI/MiniMax 模型）以提升蒸馏质量。
+    distill_text_model: str = ""
     tikhub_base_url: str = "https://api.tikhub.io"
     tikhub_api_key: str = ""
     tikhub_request_price_usd: float = 0.001

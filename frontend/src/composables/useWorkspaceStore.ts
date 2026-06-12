@@ -39,6 +39,7 @@ import {
   generateArticle,
   generateXhsTopicIdeas,
   getAuthToken,
+  getCollectEstimate,
   getCurrentUser,
   getLatestArticle,
   getTenantId,
@@ -77,6 +78,7 @@ import type {
   BloggerProfile,
   BloggerSearchResult,
   BloggerSkill,
+  CollectEstimate,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -207,6 +209,12 @@ export const bloggerDistillForm = reactive({
   comments_per_post: 20,
   asr_enabled: false
 })
+
+// 蒸馏模式：A=拆解对标博主（默认），B=诊断我的账号。
+export const xhsDistillMode = ref<'A' | 'B'>('A')
+
+// 采集成本预估（P5）：在配置采集步骤按样本数实时展示预计请求数与费用区间。
+export const bloggerCollectEstimate = ref<CollectEstimate | null>(null)
 
 export const xhsPackageForm = reactive({
   skill_id: 0,
@@ -1145,7 +1153,8 @@ export async function handleDistillBlogger() {
     '已提交博主蒸馏任务',
     () =>
       distillBlogger(selectedBloggerId.value!, {
-        collection_run_id: selectedCollectionRunId.value!
+        collection_run_id: selectedCollectionRunId.value!,
+        mode: xhsDistillMode.value
       }),
     async () => {
       await refreshSelectedBlogger()
@@ -1154,6 +1163,54 @@ export async function handleDistillBlogger() {
     },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
   )
+}
+
+// 从蒸馏 run 的 report_json 里解析模式与质量分，供前端清晰展示（不改后端 schema）。
+export interface DistillRunMeta {
+  mode: 'A' | 'B'
+  qualityScore: number | null
+  qualityGrade: string
+  qualityIssues: string[]
+}
+
+export function distillRunMeta(run: BloggerDistillationRun | null | undefined): DistillRunMeta {
+  const empty: DistillRunMeta = { mode: 'A', qualityScore: null, qualityGrade: '', qualityIssues: [] }
+  if (!run?.report_json) return empty
+  try {
+    const parsed = JSON.parse(run.report_json) as {
+      mode?: string
+      quality?: { score?: number; grade?: string; issues?: string[] }
+    }
+    const quality = parsed.quality || {}
+    return {
+      mode: parsed.mode === 'B' ? 'B' : 'A',
+      qualityScore: typeof quality.score === 'number' ? quality.score : null,
+      qualityGrade: typeof quality.grade === 'string' ? quality.grade : '',
+      qualityIssues: Array.isArray(quality.issues) ? quality.issues : []
+    }
+  } catch {
+    return empty
+  }
+}
+
+// 质量评分对应的语义色调（复用 StatusChip 的色片样式）。
+export function qualityTone(grade: string): string {
+  if (grade === '优') return 'success'
+  if (grade === '良') return 'info'
+  if (grade === '待改进') return 'warn'
+  return 'neutral'
+}
+
+// 拉取采集成本预估；样本/评论数变化或进入配置步骤时调用。
+export async function refreshCollectEstimate() {
+  try {
+    bloggerCollectEstimate.value = await getCollectEstimate(
+      bloggerDistillForm.sample_limit,
+      bloggerDistillForm.comments_per_post
+    )
+  } catch {
+    bloggerCollectEstimate.value = null
+  }
 }
 
 export async function handleCreateXhsPackage() {

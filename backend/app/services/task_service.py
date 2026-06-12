@@ -166,6 +166,7 @@ def run_blogger_distillation_task(
     task_id: str,
     blogger_id: int,
     collection_run_id: int,
+    mode: str = "A",
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在基于已采集样本蒸馏 Skill")
@@ -176,6 +177,7 @@ def run_blogger_distillation_task(
             tenant_id=task.tenant_id,
             blogger_id=blogger_id,
             collection_run_id=collection_run_id,
+            mode=mode,
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，等待确认：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)

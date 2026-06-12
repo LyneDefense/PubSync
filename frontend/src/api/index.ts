@@ -12,6 +12,7 @@ import type {
   BloggerProfileCreate,
   BloggerProfileUpdate,
   BloggerSearchResult,
+  CollectEstimate,
   BloggerSkill,
   ContentProfile,
   CurrentUser,
@@ -236,6 +237,11 @@ export function collectBlogger(id: number, payload: BloggerCollectRequest) {
 
 export function listBloggerCollectionRuns(id: number) {
   return request<BloggerCollectionRun[]>(`/bloggers/${id}/collection-runs`)
+}
+
+export function getCollectEstimate(sampleLimit: number, commentsPerPost: number) {
+  const query = `sample_limit=${sampleLimit}&comments_per_post=${commentsPerPost}`
+  return request<CollectEstimate>(`/bloggers/collect-estimate?${query}`)
 }
 
 export function listBloggerCollectionPosts(id: number, collectionRunId: number) {

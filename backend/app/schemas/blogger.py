@@ -61,6 +61,17 @@ class BloggerSearchResultRead(BaseModel):
 
 class BloggerDistillRequest(BaseModel):
     collection_run_id: int
+    # A=拆解对标博主（默认）；B=诊断我的账号。
+    mode: str = Field(default="A")
+
+
+class CollectEstimate(BaseModel):
+    sample_limit: int
+    comments_per_post: int
+    request_estimate: int
+    cost_usd: float
+    cost_usd_min: float
+    cost_usd_max: float
 
 
 class BloggerCollectRequest(BaseModel):

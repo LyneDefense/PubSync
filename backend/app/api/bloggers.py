@@ -37,6 +37,7 @@ from app.schemas import (
     BloggerProfileUpdate,
     BloggerSearchResultRead,
     BloggerSkillRead,
+    CollectEstimate,
     OperationTaskRead,
 )
 from app.services.task_service import (
@@ -229,6 +230,25 @@ def list_blogger_collection_posts_endpoint(
     return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
+@router.get("/bloggers/collect-estimate", response_model=CollectEstimate)
+def collect_estimate_endpoint(
+    sample_limit: int = Query(default=50, ge=5, le=200),
+    comments_per_post: int = Query(default=20, ge=0, le=100),
+    _: Tenant = Depends(current_tenant),
+) -> CollectEstimate:
+    # 每条样本约：1 次详情请求 +（评论开启时）1 次评论请求；再加搜索/资料/列表分页约 4 次固定开销。
+    per_post = 1 + (1 if comments_per_post > 0 else 0)
+    request_estimate = sample_limit * per_post + 4
+    return CollectEstimate(
+        sample_limit=sample_limit,
+        comments_per_post=comments_per_post,
+        request_estimate=request_estimate,
+        cost_usd=round(request_estimate * settings.tikhub_request_price_usd, 4),
+        cost_usd_min=round(request_estimate * settings.tikhub_min_request_price_usd, 4),
+        cost_usd_max=round(request_estimate * settings.tikhub_max_request_price_usd, 4),
+    )
+
+
 @router.post("/bloggers/{blogger_id}/distill", response_model=OperationTaskRead)
 def distill_blogger_endpoint(
     blogger_id: int,
@@ -252,6 +272,7 @@ def distill_blogger_endpoint(
         task.id,
         blogger.id,
         payload.collection_run_id,
+        payload.mode,
     )
     return task
 

@@ -281,12 +281,22 @@ export interface BloggerSearchResult {
 
 export interface BloggerDistillRequest {
   collection_run_id: number
+  mode?: string
 }
 
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
   asr_enabled: boolean
+}
+
+export interface CollectEstimate {
+  sample_limit: number
+  comments_per_post: number
+  request_estimate: number
+  cost_usd: number
+  cost_usd_min: number
+  cost_usd_max: number
 }
 
 export interface BloggerPost {
