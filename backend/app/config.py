@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     tikhub_request_price_usd: float = 0.001
     tikhub_min_request_price_usd: float = 0.001
     tikhub_max_request_price_usd: float = 0.01
+    # Minimum seconds between TikHub requests to proactively avoid 429s.
+    # 0 disables throttling (default); ~0.15 paces to roughly the base 10 RPS plan.
+    tikhub_min_request_interval_seconds: float = 0.0
     asr_enabled: bool = False
     asr_provider: str = "tencent_rec_task"
     asr_max_duration_seconds: int = 1800

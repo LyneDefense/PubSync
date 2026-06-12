@@ -19,6 +19,23 @@ logger = logging.getLogger(__name__)
 
 
 _http_client: httpx.Client | None = None
+_last_request_at: float = 0.0
+
+
+def _throttle(min_interval: float) -> None:
+    """Pace outgoing TikHub requests to at most one per ``min_interval`` seconds.
+
+    Proactively avoids 429s instead of only backing off after hitting one. State is
+    a process-wide timestamp; under the worker threadpool it is approximate (a small
+    race may let two requests through close together), which is fine for pacing.
+    """
+    global _last_request_at
+    if min_interval <= 0:
+        return
+    wait = _last_request_at + min_interval - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
+    _last_request_at = time.monotonic()
 
 
 def shared_http_client() -> httpx.Client:
@@ -102,6 +119,7 @@ class TikHubBaseClient:
         for attempt in range(3):
             if attempt:
                 time.sleep(1.5 * attempt)
+            _throttle(self.settings.tikhub_min_request_interval_seconds)
             if method == "POST":
                 response = client.post(url, headers=headers, json=clean_params, timeout=timeout)
             else:
