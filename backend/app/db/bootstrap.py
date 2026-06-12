@@ -1,15 +1,18 @@
-"""Database bootstrap: table creation, runtime migrations and seed data.
+"""默认种子数据。
 
-Historically this lived in ``app.database``. It is split out so ``app.database``
-stays a small engine/session module. ``ensure_runtime_schema`` remains the
-runtime fallback that idempotently brings an existing database up to date (the
-Alembic baseline in ``alembic/`` delegates to ``create_db_and_tables``).
+表结构由 Alembic（``alembic/versions/0001_baseline_schema.py``）基于 ORM 模型
+``Base.metadata.create_all`` 创建；本模块只负责灌入两个默认工作空间所需的初始数据
+（租户、用户、内容定位、公众号占位、排版、发布设置、内容分组）。
+
+历史上这里曾混杂大量临时的 ``ALTER ... IF NOT EXISTS`` / ``UPDATE`` 补丁
+（旧的 ``ensure_runtime_schema``），现已移除——schema 演进统一走 Alembic 迁移。
+所有 INSERT 都带 ``ON CONFLICT DO NOTHING``，因此可重复执行、不会覆盖已有数据。
 """
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from app.config import get_settings
-from app.database import Base, engine
 
 
 AI_GLOBAL_SOURCE_URLS = ",".join(
@@ -57,41 +60,11 @@ def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def create_db_and_tables() -> None:
-    Base.metadata.create_all(bind=engine)
-    ensure_runtime_schema()
-
-
-def ensure_runtime_schema() -> None:
-    enum_statements = [
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_enum
-                WHERE enumlabel = 'cancel_requested'
-                  AND enumtypid = 'task_status'::regtype
-            ) THEN
-                ALTER TYPE task_status ADD VALUE 'cancel_requested';
-            END IF;
-        END $$;
-        """,
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_enum
-                WHERE enumlabel = 'cancelled'
-                  AND enumtypid = 'task_status'::regtype
-            ) THEN
-                ALTER TYPE task_status ADD VALUE 'cancelled';
-            END IF;
-        END $$;
-        """,
-    ]
-    statements = [
+def seed_statements() -> list[str]:
+    """返回灌入默认数据的 SQL 列表（全部 ON CONFLICT DO NOTHING，可重复执行）。"""
+    settings = get_settings()
+    return [
+        # —— 两个默认工作空间（租户）——
         """
         INSERT INTO tenants (id, name, slug, status, created_at)
         VALUES (1, 'AI 科技早报', 'ai-tech', 'active', NOW())
@@ -102,27 +75,10 @@ def ensure_runtime_schema() -> None:
         VALUES (2, 'EyangPet 宠物内容', 'eyangpet', 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         """,
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(80) UNIQUE NOT NULL,
-            password_hash VARCHAR(200) NOT NULL,
-            is_admin BOOLEAN NOT NULL DEFAULT false,
-            tenant_id INTEGER REFERENCES tenants(id),
-            status VARCHAR(30) NOT NULL DEFAULT 'active',
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        """,
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'active'",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-        "CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)",
-        "CREATE INDEX IF NOT EXISTS ix_users_tenant_id ON users(tenant_id)",
+        # —— 初始用户（管理员来自配置；eyangpet 为示例账号）——
         f"""
         INSERT INTO users (username, password_hash, is_admin, tenant_id, status, created_at, updated_at)
-        VALUES ({sql_literal(get_settings().admin_username)}, {sql_literal(get_settings().admin_password)}, true, 1, 'active', NOW(), NOW())
+        VALUES ({sql_literal(settings.admin_username)}, {sql_literal(settings.admin_password)}, true, 1, 'active', NOW(), NOW())
         ON CONFLICT (username) DO NOTHING
         """,
         """
@@ -130,76 +86,7 @@ def ensure_runtime_schema() -> None:
         VALUES ('eyangpet', '123456', false, 2, 'active', NOW(), NOW())
         ON CONFLICT (username) DO NOTHING
         """,
-        "ALTER TABLE content_profiles ADD COLUMN IF NOT EXISTS grouping_mode VARCHAR(30) NOT NULL DEFAULT 'regional'",
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'content_profiles' AND column_name = 'international_label'
-            ) THEN
-                ALTER TABLE content_profiles ALTER COLUMN international_label SET DEFAULT '';
-                ALTER TABLE content_profiles ALTER COLUMN international_label DROP NOT NULL;
-            END IF;
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'content_profiles' AND column_name = 'domestic_label'
-            ) THEN
-                ALTER TABLE content_profiles ALTER COLUMN domestic_label SET DEFAULT '';
-                ALTER TABLE content_profiles ALTER COLUMN domestic_label DROP NOT NULL;
-            END IF;
-        END $$;
-        """,
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'publishing_settings' AND column_name = 'international_news_source_urls'
-            ) THEN
-                ALTER TABLE publishing_settings ALTER COLUMN international_news_source_urls SET DEFAULT '';
-                ALTER TABLE publishing_settings ALTER COLUMN international_news_source_urls DROP NOT NULL;
-            END IF;
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'publishing_settings' AND column_name = 'domestic_news_source_urls'
-            ) THEN
-                ALTER TABLE publishing_settings ALTER COLUMN domestic_news_source_urls SET DEFAULT '';
-                ALTER TABLE publishing_settings ALTER COLUMN domestic_news_source_urls DROP NOT NULL;
-            END IF;
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'publishing_settings' AND column_name = 'international_news_candidates'
-            ) THEN
-                ALTER TABLE publishing_settings ALTER COLUMN international_news_candidates SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN international_news_candidates DROP NOT NULL;
-            END IF;
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'publishing_settings' AND column_name = 'domestic_news_candidates'
-            ) THEN
-                ALTER TABLE publishing_settings ALTER COLUMN domestic_news_candidates SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN domestic_news_candidates DROP NOT NULL;
-            END IF;
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'publishing_settings' AND column_name = 'article_domestic_min'
-            ) THEN
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_min SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_min DROP NOT NULL;
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_target SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_target DROP NOT NULL;
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_max SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_domestic_max DROP NOT NULL;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_min SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_min DROP NOT NULL;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_target SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_target DROP NOT NULL;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_max SET DEFAULT 0;
-                ALTER TABLE publishing_settings ALTER COLUMN article_international_max DROP NOT NULL;
-            END IF;
-        END $$;
-        """,
+        # —— 内容定位 ——
         """
         INSERT INTO content_profiles (
             tenant_id, publication_name, workspace_title, title_prefix, content_domain,
@@ -228,6 +115,7 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        # —— 公众号占位（待用户填 AppID/Secret）——
         """
         INSERT INTO wechat_accounts (tenant_id, app_id, app_secret, auto_send_draft, updated_at)
         VALUES (1, '', '', false, NOW())
@@ -238,6 +126,7 @@ def ensure_runtime_schema() -> None:
         VALUES (2, '', '', false, NOW())
         ON CONFLICT (tenant_id) DO NOTHING
         """,
+        # —— 排版设置 ——
         """
         INSERT INTO layout_settings (
             tenant_id, template_name, primary_color, accent_color, text_color, heading_color,
@@ -262,9 +151,7 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_frequency VARCHAR(20) NOT NULL DEFAULT 'daily'",
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_weekday INTEGER NOT NULL DEFAULT 1",
-        "ALTER TABLE publishing_settings ADD COLUMN IF NOT EXISTS publish_month_day INTEGER NOT NULL DEFAULT 1",
+        # —— 发布设置 ——
         """
         INSERT INTO publishing_settings (
             tenant_id, daily_publish_enabled, publish_frequency, publish_weekday, publish_month_day,
@@ -309,26 +196,7 @@ def ensure_runtime_schema() -> None:
         )
         ON CONFLICT (tenant_id) DO NOTHING
         """,
-        """
-        CREATE TABLE IF NOT EXISTS content_groups (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-            group_key VARCHAR(80) NOT NULL,
-            name VARCHAR(120) NOT NULL,
-            content_mode VARCHAR(30) NOT NULL DEFAULT 'news',
-            source_urls TEXT NOT NULL DEFAULT '',
-            candidate_limit INTEGER NOT NULL DEFAULT 40,
-            article_min INTEGER NOT NULL DEFAULT 0,
-            article_target INTEGER NOT NULL DEFAULT 5,
-            article_max INTEGER NOT NULL DEFAULT 8,
-            position INTEGER NOT NULL DEFAULT 0,
-            enabled BOOLEAN NOT NULL DEFAULT true,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW(),
-            CONSTRAINT uq_content_groups_tenant_key UNIQUE (tenant_id, group_key)
-        )
-        """,
-        "ALTER TABLE content_groups ADD COLUMN IF NOT EXISTS content_mode VARCHAR(30) NOT NULL DEFAULT 'news'",
+        # —— 内容分组（AI 工作空间：国际 / 国内）——
         f"""
         INSERT INTO content_groups (
             tenant_id, group_key, name, content_mode, source_urls, candidate_limit,
@@ -339,17 +207,7 @@ def ensure_runtime_schema() -> None:
             (1, 'china', '国内动态', 'news', '{AI_CHINA_SOURCE_URLS}', 40, 1, 3, 4, 1, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
         """,
-        f"""
-        UPDATE content_groups
-        SET source_urls = CASE group_key
-            WHEN 'global' THEN '{AI_GLOBAL_SOURCE_URLS}'
-            WHEN 'china' THEN '{AI_CHINA_SOURCE_URLS}'
-            ELSE source_urls
-        END
-        WHERE tenant_id = 1
-          AND group_key IN ('global', 'china')
-          AND source_urls = ''
-        """,
+        # —— 内容分组（宠物工作空间：健康 / 知识 / 行业）——
         f"""
         INSERT INTO content_groups (
             tenant_id, group_key, name, content_mode, source_urls, candidate_limit,
@@ -361,163 +219,10 @@ def ensure_runtime_schema() -> None:
             (2, 'pet-industry', '行业资讯', 'analysis', '{PET_INDUSTRY_SOURCE_URLS}', 20, 0, 2, 3, 2, true, NOW(), NOW())
         ON CONFLICT (tenant_id, group_key) DO NOTHING
         """,
-        """
-        UPDATE content_groups
-        SET content_mode = CASE group_key
-            WHEN 'pet-health' THEN 'knowledge'
-            WHEN 'pet-knowledge' THEN 'knowledge'
-            WHEN 'pet-industry' THEN 'analysis'
-            ELSE content_mode
-        END
-        WHERE tenant_id = 2
-          AND group_key IN ('pet-health', 'pet-knowledge', 'pet-industry')
-          AND content_mode = 'news'
-        """,
-        f"""
-        UPDATE content_groups
-        SET source_urls = CASE group_key
-            WHEN 'pet-health' THEN '{PET_HEALTH_SOURCE_URLS}'
-            WHEN 'pet-knowledge' THEN '{PET_KNOWLEDGE_SOURCE_URLS}'
-            WHEN 'pet-industry' THEN '{PET_INDUSTRY_SOURCE_URLS}'
-            ELSE source_urls
-        END
-        WHERE tenant_id = 2
-          AND group_key IN ('pet-health', 'pet-knowledge', 'pet-industry')
-          AND source_urls = ''
-        """,
-        f"""
-        UPDATE content_groups
-        SET source_urls = '{PET_HEALTH_SOURCE_URLS}'
-        WHERE tenant_id = 2
-          AND group_key = 'pet-health'
-          AND source_urls NOT LIKE '%Vet Help Direct|https://vethelpdirect.com/vetblog/feed/%'
-        """,
-        f"""
-        UPDATE content_groups
-        SET source_urls = '{PET_KNOWLEDGE_SOURCE_URLS}'
-        WHERE tenant_id = 2
-          AND group_key = 'pet-knowledge'
-          AND source_urls NOT LIKE '%Animal Wellness Magazine|https://animalwellnessmagazine.com/feed/%'
-        """,
-        """
-        UPDATE content_groups
-        SET enabled = false
-        WHERE tenant_id = 2 AND group_key = 'main' AND source_urls = ''
-        """,
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS group_key VARCHAR(80) NOT NULL DEFAULT 'global'",
-        "UPDATE news_items SET group_key = CASE WHEN region = 'domestic' THEN 'china' ELSE 'global' END WHERE group_key = 'global' AND region IN ('domestic', 'international')",
-        "UPDATE news_items SET group_key = 'main' WHERE tenant_id <> 1 AND group_key = 'global'",
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(200)",
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_status VARCHAR(30) NOT NULL DEFAULT 'unique'",
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS duplicate_of_id INTEGER REFERENCES news_items(id)",
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS dedup_reason TEXT",
-        "ALTER TABLE articles ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE article_news_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE news_sources ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE operation_tasks ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE operation_task_events ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id)",
-        "ALTER TABLE news_items DROP CONSTRAINT IF EXISTS news_items_url_key",
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_news_items_tenant_url ON news_items(tenant_id, url)",
-        "CREATE INDEX IF NOT EXISTS ix_news_items_tenant_id ON news_items(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_news_items_group_key ON news_items(group_key)",
-        "CREATE INDEX IF NOT EXISTS ix_content_groups_tenant_id ON content_groups(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_news_items_dedup_status ON news_items(dedup_status)",
-        "CREATE INDEX IF NOT EXISTS ix_news_items_duplicate_of_id ON news_items(duplicate_of_id)",
-        "CREATE INDEX IF NOT EXISTS ix_articles_tenant_id ON articles(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_operation_tasks_tenant_id ON operation_tasks(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_operation_task_events_tenant_id ON operation_task_events(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_tenant_id ON blogger_profiles(tenant_id)",
-        "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS external_id VARCHAR(200)",
-        "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(1000) NOT NULL DEFAULT ''",
-        "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS follower_count INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE blogger_profiles ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_external_id ON blogger_profiles(external_id)",
-        "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS content_type VARCHAR(30) NOT NULL DEFAULT 'image'",
-        "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS transcript_text TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS asr_status VARCHAR(30) NOT NULL DEFAULT 'not_required'",
-        "ALTER TABLE blogger_posts ADD COLUMN IF NOT EXISTS asr_error TEXT NOT NULL DEFAULT ''",
-        """
-        CREATE TABLE IF NOT EXISTS blogger_collection_runs (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
-            task_id VARCHAR REFERENCES operation_tasks(id),
-            status VARCHAR(30) NOT NULL DEFAULT 'running',
-            sample_limit INTEGER NOT NULL DEFAULT 50,
-            comments_per_post INTEGER NOT NULL DEFAULT 20,
-            asr_enabled BOOLEAN NOT NULL DEFAULT false,
-            post_count INTEGER NOT NULL DEFAULT 0,
-            hot_post_count INTEGER NOT NULL DEFAULT 0,
-            comment_count INTEGER NOT NULL DEFAULT 0,
-            tikhub_request_count INTEGER NOT NULL DEFAULT 0,
-            tikhub_estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
-            tikhub_cost_min_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
-            tikhub_cost_max_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
-            summary_json TEXT NOT NULL DEFAULT '{}',
-            error_message TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        """,
-        "ALTER TABLE blogger_collection_runs ADD COLUMN IF NOT EXISTS asr_enabled BOOLEAN NOT NULL DEFAULT false",
-        """
-        CREATE TABLE IF NOT EXISTS blogger_collection_posts (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
-            collection_run_id INTEGER NOT NULL REFERENCES blogger_collection_runs(id),
-            post_id INTEGER NOT NULL REFERENCES blogger_posts(id),
-            position INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            CONSTRAINT uq_blogger_collection_posts UNIQUE (collection_run_id, post_id)
-        )
-        """,
-        "ALTER TABLE blogger_distillation_runs ADD COLUMN IF NOT EXISTS collection_run_id INTEGER REFERENCES blogger_collection_runs(id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_posts_tenant_id ON blogger_posts(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_posts_blogger_id ON blogger_posts(blogger_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_runs_tenant_id ON blogger_collection_runs(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_runs_blogger_id ON blogger_collection_runs(blogger_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_posts_collection_run_id ON blogger_collection_posts(collection_run_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_collection_posts_post_id ON blogger_collection_posts(post_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_tenant_id ON blogger_distillation_runs(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_distillation_runs_blogger_id ON blogger_distillation_runs(blogger_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_skills_tenant_id ON blogger_skills(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_blogger_skills_blogger_id ON blogger_skills(blogger_id)",
-        """
-        CREATE TABLE IF NOT EXISTS xhs_publish_packages (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-            blogger_id INTEGER NOT NULL REFERENCES blogger_profiles(id),
-            skill_id INTEGER NOT NULL REFERENCES blogger_skills(id),
-            content_type VARCHAR(40) NOT NULL,
-            topic VARCHAR(300) NOT NULL,
-            target_audience VARCHAR(300) NOT NULL DEFAULT '',
-            content_goal VARCHAR(120) NOT NULL DEFAULT '',
-            keywords VARCHAR(500) NOT NULL DEFAULT '',
-            image_count_mode VARCHAR(30) NOT NULL DEFAULT 'auto',
-            requested_image_count INTEGER,
-            title VARCHAR(300) NOT NULL DEFAULT '',
-            body_text TEXT NOT NULL DEFAULT '',
-            hashtags_json TEXT NOT NULL DEFAULT '[]',
-            cover_text VARCHAR(300) NOT NULL DEFAULT '',
-            image_plan_json TEXT NOT NULL DEFAULT '[]',
-            image_urls_json TEXT NOT NULL DEFAULT '[]',
-            script_json TEXT NOT NULL DEFAULT '{}',
-            status VARCHAR(30) NOT NULL DEFAULT 'generated',
-            error_message TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_tenant_id ON xhs_publish_packages(tenant_id)",
-        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_blogger_id ON xhs_publish_packages(blogger_id)",
-        "CREATE INDEX IF NOT EXISTS ix_xhs_publish_packages_skill_id ON xhs_publish_packages(skill_id)",
     ]
-    with engine.begin() as connection:
-        for statement in enum_statements:
-            connection.execute(text(statement))
-    with engine.begin() as connection:
-        for statement in statements:
-            connection.execute(text(statement))
+
+
+def seed_default_data(connection: Connection) -> None:
+    """在给定连接上灌入默认数据（由 Alembic baseline 迁移调用）。"""
+    for statement in seed_statements():
+        connection.execute(text(statement))

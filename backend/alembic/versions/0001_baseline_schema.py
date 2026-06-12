@@ -1,28 +1,22 @@
-"""baseline schema — collapse the hand-rolled bootstrap into one revision
+"""baseline schema — 基于 ORM 模型建表并灌入默认数据
 
 Revision ID: 0001_baseline
 Revises:
-Create Date: 2026-06-11
+Create Date: 2026-06-12
 
-This baseline establishes PubSync's full current schema in a single revision by
-delegating to the application's own bootstrap: ``Base.metadata.create_all`` over
-the 21 ORM models plus ``ensure_runtime_schema`` (enum values, column default /
-nullability adjustments, and seed rows for the default tenants/profiles/settings).
+这是数据库的初始迁移，也是 schema 的唯一权威来源：
 
-Because every table is defined as a SQLAlchemy model, future schema changes can be
-generated normally with ``alembic revision --autogenerate -m "..."`` diffing against
-``Base.metadata``.
+* upgrade：用 ``Base.metadata.create_all`` 基于 21 个 ORM 模型创建全部表、索引、
+  枚举类型，再调用 ``seed_default_data`` 灌入两个默认工作空间的种子数据。
+* downgrade：``Base.metadata.drop_all`` 删除全部表。
 
-For an existing database that already matches this schema, stamp it instead of
-re-running:  ``alembic stamp 0001_baseline``.
-
-Note: ``ensure_runtime_schema`` is intentionally still invoked on app startup as a
-parallel fallback, so adopting Alembic is additive and does not break the existing
-bootstrap. This baseline must be run in online mode (it opens a real connection);
-``--sql`` offline generation is not supported for it.
+后续 schema 变更请改 ``app/models`` 后用
+``alembic revision --autogenerate -m "..."`` 生成新的迁移。
 """
 
 from __future__ import annotations
+
+from alembic import op
 
 revision = "0001_baseline"
 down_revision = None
@@ -31,14 +25,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Reuse the proven application bootstrap so the Alembic-managed schema is
-    # guaranteed identical to what the running app expects today.
-    from app.database import create_db_and_tables
+    import app.models  # noqa: F401 —— 导入以把所有表注册到 Base.metadata
+    from app.database import Base
+    from app.db.bootstrap import seed_default_data
 
-    create_db_and_tables()
+    bind = op.get_bind()
+    Base.metadata.create_all(bind=bind)
+    seed_default_data(bind)
 
 
 def downgrade() -> None:
-    from app.database import Base, engine
+    import app.models  # noqa: F401
+    from app.database import Base
 
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=op.get_bind())

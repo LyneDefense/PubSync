@@ -20,8 +20,10 @@ from app.database import Base
 
 
 config = context.config
+# disable_existing_loggers=False：以编程方式从应用内运行迁移时（run_migrations），
+# 不要清掉应用已配置好的日志器（configure_logging）。
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata

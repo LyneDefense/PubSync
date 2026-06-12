@@ -22,7 +22,7 @@ from app.api import (
 )
 from app.api import settings as settings_routes
 from app.config import get_settings
-from app.database import create_db_and_tables
+from app.db.migrate import run_migrations
 from app.logging_config import configure_logging
 from app.services.auth_service import verify_token
 from app.services.task_service import scheduled_workspace_publish
@@ -35,7 +35,8 @@ scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
+    # 启动时把数据库迁移到最新版本（Alembic 是 schema 的唯一来源）。
+    run_migrations()
     scheduler.add_job(
         scheduled_workspace_publish,
         "interval",
