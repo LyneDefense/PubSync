@@ -481,12 +481,12 @@ export const articleStateLabel = computed(() => {
   return status ? statusText[status] || status : '未生成'
 })
 export const layoutPreviewStyle = computed(() => ({
-  color: layoutForm.text_color === 'inherit' ? '#e7eefc' : layoutForm.text_color,
+  color: layoutForm.text_color === 'inherit' ? 'var(--color-ink)' : layoutForm.text_color,
   fontSize: `${layoutForm.body_font_size}px`,
   lineHeight: layoutForm.line_height
 }))
 export const layoutPreviewHeadingStyle = computed(() => ({
-  color: layoutForm.heading_color === 'inherit' ? '#e7eefc' : layoutForm.heading_color,
+  color: layoutForm.heading_color === 'inherit' ? 'var(--color-ink)' : layoutForm.heading_color,
   fontSize: `${layoutForm.heading_font_size}px`,
   borderBottomColor: layoutForm.accent_color
 }))
