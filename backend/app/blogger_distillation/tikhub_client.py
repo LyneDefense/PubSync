@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -64,12 +65,83 @@ class XhsPostCandidate:
     raw: dict[str, Any]
 
 
-class TikHubXhsClient:
-    def __init__(self, settings: Settings) -> None:
+def summarize_payload(data: Any, limit: int = 300) -> str:
+    """Render a TikHub response for an error message, truncated to avoid dumping
+    huge (and potentially sensitive) payloads into logs and task events."""
+    text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False, default=str)
+    return text if len(text) <= limit else f"{text[:limit]}…(已截断)"
+
+
+class TikHubBaseClient:
+    """Shared HTTP layer for the TikHub clients.
+
+    Owns the Bearer-authenticated request loop — retries, rate-limit (429)
+    handling, JSON/business-error checks and usage accounting — so the XHS,
+    Douyin and user-search clients differ only in their endpoint pools and
+    response parsing, not in transport. A single pooled httpx client is reused
+    across all requests (see ``shared_http_client``).
+    """
+
+    def __init__(self, settings: Settings, *, missing_key_message: str) -> None:
         if not settings.tikhub_api_key:
-            raise TikHubError("未配置 TIKHUB_API_KEY，无法采集小红书博主内容")
+            raise TikHubError(missing_key_message)
         self.settings = settings
         self.usage = TikHubUsage()
+
+    def _get(self, path: str, params: dict[str, Any], *, timeout: float = 60) -> dict[str, Any]:
+        url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
+        method = str(params.pop("_method", "GET")).upper()
+        headers = {
+            "Authorization": f"Bearer {self.settings.tikhub_api_key}",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 PubSync/1.0",
+        }
+        clean_params = {key: value for key, value in params.items() if value not in (None, "")}
+        client = shared_http_client()
+        last_error: TikHubError | None = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.5 * attempt)
+            if method == "POST":
+                response = client.post(url, headers=headers, json=clean_params, timeout=timeout)
+            else:
+                response = client.get(url, headers=headers, params=clean_params, timeout=timeout)
+            self.record_request(response)
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
+            if response.status_code == 429:
+                last_error = TikHubError("TikHub 触发限速，HTTP 429", 429)
+                continue
+            if response.status_code >= 400:
+                raise TikHubError(
+                    f"TikHub 请求失败，HTTP {response.status_code}：{summarize_payload(data)}", response.status_code
+                )
+            if not isinstance(data, dict):
+                raise TikHubError("TikHub 返回格式不正确")
+            status_code = data.get("code")
+            if status_code not in (None, 0, 200):
+                raise TikHubError(f"TikHub 业务错误：{summarize_payload(data)}")
+            return data
+        raise last_error or TikHubError("TikHub 请求失败")
+
+    def record_request(self, response: httpx.Response) -> None:
+        self.usage.request_count += 1
+        self.usage.estimated_cost_usd += self.settings.tikhub_request_price_usd
+        self.usage.cost_min_usd += self.settings.tikhub_min_request_price_usd
+        self.usage.cost_max_usd += self.settings.tikhub_max_request_price_usd
+        cost_header = response.headers.get("x-tikhub-cost-usd") or response.headers.get("x-cost-usd")
+        if cost_header:
+            try:
+                self.usage.estimated_cost_usd = float(cost_header)
+            except ValueError:
+                logger.debug("TikHub 费用响应头无法解析：%s", cost_header)
+
+
+class TikHubXhsClient(TikHubBaseClient):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法采集小红书博主内容")
         self.router = EndpointRouter(self._get)
         self.user_id = ""
         self.profile_xsec_token = ""
@@ -251,56 +323,10 @@ class TikHubXhsClient:
             cursor = next_cursor
         return comments[:limit]
 
-    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
-        headers = {
-            "Authorization": f"Bearer {self.settings.tikhub_api_key}",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 PubSync/1.0",
-        }
-        last_error: TikHubError | None = None
-        client = shared_http_client()
-        for attempt in range(3):
-            if attempt:
-                time.sleep(1.5 * attempt)
-            response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
-            self.record_request(response)
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
-            if response.status_code == 429:
-                last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
-                continue
-            if response.status_code >= 400:
-                raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
-            if not isinstance(data, dict):
-                raise TikHubError("TikHub 返回格式不正确")
-            status_code = data.get("code")
-            if status_code not in (None, 0, 200):
-                raise TikHubError(f"TikHub 业务错误：{data}")
-            return data
-        raise last_error or TikHubError("TikHub 请求失败")
 
-    def record_request(self, response: httpx.Response) -> None:
-        self.usage.request_count += 1
-        self.usage.estimated_cost_usd += self.settings.tikhub_request_price_usd
-        self.usage.cost_min_usd += self.settings.tikhub_min_request_price_usd
-        self.usage.cost_max_usd += self.settings.tikhub_max_request_price_usd
-        cost_header = response.headers.get("x-tikhub-cost-usd") or response.headers.get("x-cost-usd")
-        if cost_header:
-            try:
-                self.usage.estimated_cost_usd = float(cost_header)
-            except ValueError:
-                logger.debug("TikHub 费用响应头无法解析：%s", cost_header)
-
-
-class TikHubDouyinClient:
+class TikHubDouyinClient(TikHubBaseClient):
     def __init__(self, settings: Settings) -> None:
-        if not settings.tikhub_api_key:
-            raise TikHubError("未配置 TIKHUB_API_KEY，无法采集抖音博主内容")
-        self.settings = settings
-        self.usage = TikHubUsage()
+        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法采集抖音博主内容")
         self.router = EndpointRouter(self._get, DOUYIN_ENDPOINT_POOLS)
         self.user_id = ""
 
@@ -400,49 +426,6 @@ class TikHubDouyinClient:
             info = normalize_douyin_user_info(payload)
             user_id = info.get("id") or user_id
         return user_id
-
-    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
-        headers = {
-            "Authorization": f"Bearer {self.settings.tikhub_api_key}",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 PubSync/1.0",
-        }
-        last_error: TikHubError | None = None
-        client = shared_http_client()
-        for attempt in range(3):
-            if attempt:
-                time.sleep(1.5 * attempt)
-            response = client.get(url, headers=headers, params={key: value for key, value in params.items() if value != ""})
-            self.record_request(response)
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
-            if response.status_code == 429:
-                last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
-                continue
-            if response.status_code >= 400:
-                raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
-            if not isinstance(data, dict):
-                raise TikHubError("TikHub 返回格式不正确")
-            status_code = data.get("code")
-            if status_code not in (None, 0, 200):
-                raise TikHubError(f"TikHub 业务错误：{data}")
-            return data
-        raise last_error or TikHubError("TikHub 请求失败")
-
-    def record_request(self, response: httpx.Response) -> None:
-        self.usage.request_count += 1
-        self.usage.estimated_cost_usd += self.settings.tikhub_request_price_usd
-        self.usage.cost_min_usd += self.settings.tikhub_min_request_price_usd
-        self.usage.cost_max_usd += self.settings.tikhub_max_request_price_usd
-        cost_header = response.headers.get("x-tikhub-cost-usd") or response.headers.get("x-cost-usd")
-        if cost_header:
-            try:
-                self.usage.estimated_cost_usd = float(cost_header)
-            except ValueError:
-                logger.debug("TikHub 费用响应头无法解析：%s", cost_header)
 
 
 def unwrap_payload(data: Any) -> Any:

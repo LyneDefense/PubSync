@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 import json
-import time
 from dataclasses import dataclass
 from typing import Any
 
 from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, EndpointRouter, XHS_ENDPOINT_POOLS
 from app.blogger_distillation.providers import validate_platform
-from app.blogger_distillation.tikhub_client import TikHubError, first_int, first_str, shared_http_client
+from app.blogger_distillation.tikhub_client import TikHubBaseClient, first_int, first_str
 from app.config import Settings
 
 
@@ -27,11 +26,9 @@ class BloggerSearchResult:
     raw: dict[str, Any]
 
 
-class TikHubUserSearchClient:
+class TikHubUserSearchClient(TikHubBaseClient):
     def __init__(self, settings: Settings, platform: str) -> None:
-        if not settings.tikhub_api_key:
-            raise TikHubError("未配置 TIKHUB_API_KEY，无法搜索博主")
-        self.settings = settings
+        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法搜索博主")
         self.platform = validate_platform(platform)
         pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
         self.router = EndpointRouter(self._get, pools)
@@ -65,41 +62,6 @@ class TikHubUserSearchClient:
                 ",".join(payload.keys()),
             )
         return results
-
-    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.settings.tikhub_base_url.rstrip('/')}{path}"
-        method = str(params.pop("_method", "GET")).upper()
-        headers = {
-            "Authorization": f"Bearer {self.settings.tikhub_api_key}",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 PubSync/1.0",
-        }
-        last_error: TikHubError | None = None
-        client = shared_http_client()
-        for attempt in range(3):
-            if attempt:
-                time.sleep(1.2 * attempt)
-            clean_params = {key: value for key, value in params.items() if value is not None}
-            if method == "POST":
-                response = client.post(url, headers=headers, json=clean_params, timeout=45)
-            else:
-                response = client.get(url, headers=headers, params=clean_params, timeout=45)
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise TikHubError(f"TikHub 返回非 JSON 响应，HTTP {response.status_code}", response.status_code) from exc
-            if response.status_code == 429:
-                last_error = TikHubError(f"TikHub 触发限速，HTTP 429: {data}", 429)
-                continue
-            if response.status_code >= 400:
-                raise TikHubError(f"TikHub 请求失败，HTTP {response.status_code}: {data}", response.status_code)
-            if not isinstance(data, dict):
-                raise TikHubError("TikHub 返回格式不正确")
-            status_code = data.get("code")
-            if status_code not in (None, 0, 200):
-                raise TikHubError(f"TikHub 业务错误：{data}")
-            return data
-        raise last_error or TikHubError("TikHub 请求失败")
 
 
 def search_bloggers(settings: Settings, platform: str, keyword: str, page: int = 1) -> list[BloggerSearchResult]:
