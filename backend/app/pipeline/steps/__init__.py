@@ -1,4 +1,4 @@
-from app.harness.steps.article_steps import (
+from app.pipeline.steps.article_steps import (
     ComposeArticleStep,
     GenerateCoverStep,
     GenerateImagesStep,
@@ -7,8 +7,8 @@ from app.harness.steps.article_steps import (
     PrepareArticlePayloadStep,
     SelectArticleNewsStep,
 )
-from app.harness.steps.news_steps import DeduplicateNewsStep, FetchNewsStep, PersistNewsStep, ProcessNewsStep
-from app.harness.steps.publish_steps import PublishWechatDraftStep
+from app.pipeline.steps.news_steps import DeduplicateNewsStep, FetchNewsStep, PersistNewsStep, ProcessNewsStep
+from app.pipeline.steps.publish_steps import PublishWechatDraftStep
 
 __all__ = [
     "ComposeArticleStep",

@@ -16,7 +16,7 @@ from app.blogger_distillation.service import (
 )
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
-from app.harness import PubSyncHarness
+from app.pipeline import PubSyncPipeline
 from app.queue import enqueue
 from app.models import AppSetting, OperationTask, PublishingSettings, TaskStatus, Tenant, TenantStatus
 from app.services.ai_service import AIServiceError
@@ -112,7 +112,7 @@ def run_news_fetch_task(task_id: str) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在抓取新闻并进行大模型筛选")
         tenant = get_tenant(db, task.tenant_id)
-        created_items = build_harness(db, task_id, "news_fetch", tenant.id).run_news_fetch()
+        created_items = build_pipeline(db, task_id, "news_fetch", tenant.id).run_news_fetch()
         mark_task_succeeded(db, task, f"新闻抓取完成，新增 {len(created_items)} 条")
         logger.info("任务成功：任务ID=%s，类型=新闻抓取，新增=%s", task_id, len(created_items))
 
@@ -123,7 +123,7 @@ def run_article_generation_task(task_id: str) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在生成文章，可能需要数分钟")
         tenant = get_tenant(db, task.tenant_id)
-        article = build_harness(db, task_id, "article_generation", tenant.id).run_article_generation()
+        article = build_pipeline(db, task_id, "article_generation", tenant.id).run_article_generation()
         mark_task_succeeded(db, task, "文章生成完成", article_id=article.id)
         logger.info("任务成功：任务ID=%s，类型=文章生成，文章ID=%s", task_id, article.id)
 
@@ -230,7 +230,7 @@ def run_daily_publish_task(task_id: str) -> None:
         mark_task_running(db, task, "正在执行定时抓取、生成和发布流程")
         tenant = get_tenant(db, task.tenant_id)
         publishing = get_publishing_settings(db, tenant)
-        article = build_harness(db, task_id, "daily_publish", tenant.id).run_daily_publish(
+        article = build_pipeline(db, task_id, "daily_publish", tenant.id).run_daily_publish(
             should_publish=publishing.auto_send_wechat_draft
         )
         if publishing.auto_send_wechat_draft:
@@ -303,11 +303,11 @@ def schedule_marker_value(publishing: PublishingSettings, now: datetime) -> str:
     return f"daily:{now.strftime('%Y-%m-%d')}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
 
 
-def build_harness(db: Session, task_id: str, task_type: str, tenant_id: int) -> PubSyncHarness:
+def build_pipeline(db: Session, task_id: str, task_type: str, tenant_id: int) -> PubSyncPipeline:
     tenant = get_tenant(db, tenant_id)
     settings = get_settings()
     publishing = get_publishing_settings(db, tenant)
-    return PubSyncHarness(
+    return PubSyncPipeline(
         db=db,
         settings=build_effective_settings(settings, publishing),
         task_id=task_id,

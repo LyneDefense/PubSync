@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass
 class AttemptRecord:
-    """单次模型尝试的可观测记录（harness engineering 的 observability）。"""
+    """单次模型尝试的可观测记录（可观测性 observability）。"""
 
     attempt: int
     model: str | None
@@ -19,7 +19,7 @@ class AttemptRecord:
 
 
 @dataclass
-class HarnessTrace:
+class SynthesisTrace:
     """一次合成（生成→校验→修订）的完整轨迹。"""
 
     task: str

@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Any
 
-from app.harness.context import HarnessContext
+from app.pipeline.context import PipelineContext
 from app.models import OperationTaskEvent
 
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def record_event(
-    context: HarnessContext,
+    context: PipelineContext,
     step_name: str,
     status: str,
     message: str,

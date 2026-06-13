@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 
 @dataclass
-class HarnessBudget:
-    """合成循环的停止条件（harness engineering 的 stop conditions）。
+class SynthesisBudget:
+    """合成循环的停止条件（停止条件 stop conditions）。
 
     max_attempts：模型调用总次数上限（首次生成算第 1 次，之后每次修订 +1）。
     min_score：质量分达到该阈值即视为通过，可提前停止。

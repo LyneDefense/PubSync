@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.harness.context import HarnessContext
-from app.harness.events import record_event
-from app.harness.steps import (
+from app.pipeline.context import PipelineContext
+from app.pipeline.events import record_event
+from app.pipeline.steps import (
     ComposeArticleStep,
     DeduplicateNewsStep,
     FetchNewsStep,
@@ -20,7 +20,7 @@ from app.harness.steps import (
 from app.models import Article, ContentGroup, ContentProfile, LayoutSettings, NewsItem, PublishingSettings, Tenant, WeChatAccount
 from app.services.ai_service import AIServiceError, is_ai_enabled
 
-class PubSyncHarness:
+class PubSyncPipeline:
     def __init__(
         self,
         db: Session,
@@ -34,7 +34,7 @@ class PubSyncHarness:
         publishing_settings: PublishingSettings,
         content_groups: list[ContentGroup],
     ) -> None:
-        self.context = HarnessContext(
+        self.context = PipelineContext(
             task_id=task_id,
             task_type=task_type,
             db=db,

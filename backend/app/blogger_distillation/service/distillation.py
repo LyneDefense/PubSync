@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agent_harness import Critic, HarnessBudget, HarnessTrace, SensorResult, TaskGuide, run_synthesis
+from app.synthesis import Critic, SynthesisBudget, SynthesisTrace, SensorResult, TaskGuide, run_synthesis
 from app.blogger_distillation import analysis, artifacts
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.events import (
@@ -133,10 +133,10 @@ def run_blogger_distillation(
         )
         llm_started_at = time.perf_counter()
         logger.info("认知蒸馏请求已发送：任务ID=%s，平台=%s，模型=%s", task_id, blogger.platform, settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model)
-        distillation, harness_trace = distill_with_llm(settings, blogger, user_info, stats, mode)
+        distillation, synthesis_trace = distill_with_llm(settings, blogger, user_info, stats, mode)
         quality = evaluate_distillation_quality(distillation, stats, mode)
-        quality["revisions"] = harness_trace.revisions
-        quality["final_passed"] = harness_trace.final_passed
+        quality["revisions"] = synthesis_trace.revisions
+        quality["final_passed"] = synthesis_trace.final_passed
         llm_elapsed = time.perf_counter() - llm_started_at
         logger.info(
             "认知蒸馏返回：任务ID=%s，平台=%s，耗时=%.2fs，输出字段=%s，输出字符=%s",
@@ -175,7 +175,7 @@ def run_blogger_distillation(
         run.tikhub_cost_min_usd = collection_run.tikhub_cost_min_usd
         run.tikhub_cost_max_usd = collection_run.tikhub_cost_max_usd
         run.report_json = json.dumps(
-            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "harness": harness_trace.to_dict()},
+            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "synthesis": synthesis_trace.to_dict()},
             ensure_ascii=False,
             default=str,
         )
@@ -189,7 +189,7 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成，等待确认：批次 #{collection_run.id}，质量评分 {quality['score']}（{quality['grade']}），自我修订 {harness_trace.revisions} 次",
+            f"蒸馏完成，等待确认：批次 #{collection_run.id}，质量评分 {quality['score']}（{quality['grade']}），自我修订 {synthesis_trace.revisions} 次",
             {
                 "collection_run_id": collection_run.id,
                 "run_id": run.id,
@@ -197,7 +197,7 @@ def run_blogger_distillation(
                 "mode": mode,
                 "quality_score": quality["score"],
                 "quality_grade": quality["grade"],
-                "revisions": harness_trace.revisions,
+                "revisions": synthesis_trace.revisions,
             },
         )
         return DistillationResult(run=run, skill=skill)
@@ -416,8 +416,8 @@ def distill_with_llm(
     user_info: dict[str, Any],
     stats: dict[str, Any],
     mode: str = "A",
-) -> tuple[dict[str, Any], HarnessTrace]:
-    """复刻 blogger-distiller 的「三层蒸馏」，并用 agent harness 包裹：
+) -> tuple[dict[str, Any], SynthesisTrace]:
+    """复刻 blogger-distiller 的「三层蒸馏」，并用合成循环（生成→校验→修订）包裹：
     生成 → 计算型传感器校验（结构+质量分）→ 不达标则叠加推理型评审反馈修订，直到达标或用尽预算。
     返回（蒸馏结果, 合成轨迹）。"""
     mode = normalize_mode(mode)
@@ -429,10 +429,10 @@ def distill_with_llm(
         normalize=lambda data, c: normalize_distillation(data, c.mode),
     )
     sensors = [DistillSchemaSensor(), DistillQualitySensor()]
-    critic = make_distill_critic(settings, model) if settings.harness_llm_critic_enabled else None
-    budget = HarnessBudget(
-        max_attempts=1 + max(0, settings.harness_max_revise_iterations),
-        min_score=settings.harness_min_quality_score,
+    critic = make_distill_critic(settings, model) if settings.synthesis_llm_critic_enabled else None
+    budget = SynthesisBudget(
+        max_attempts=1 + max(0, settings.synthesis_max_revise_iterations),
+        min_score=settings.synthesis_min_quality_score,
     )
     result, trace = run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic)
     if is_distillation_empty(result):
@@ -491,7 +491,7 @@ def normalize_distillation(data: dict[str, Any], mode: str) -> dict[str, Any]:
         diagnosis[key] = value if isinstance(value, list) else ([] if value in (None, "") else [value])
     data["self_diagnosis"] = diagnosis
     # 注意：这里不再因「三层为空」抛错——空/坏结构由 DistillSchemaSensor 判定为不通过，
-    # 交给 harness 修订循环重试；多轮后仍为空才在 distill_with_llm 末尾硬失败。
+    # 交给合成修订循环重试；多轮后仍为空才在 distill_with_llm 末尾硬失败。
     return data
 
 

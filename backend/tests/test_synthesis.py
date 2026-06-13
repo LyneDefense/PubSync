@@ -1,5 +1,5 @@
-from app.agent_harness import HarnessBudget, SensorResult, TaskGuide, run_synthesis
-from app.agent_harness import loop as harness_loop
+from app.synthesis import SynthesisBudget, SensorResult, TaskGuide, run_synthesis
+from app.synthesis import loop as synthesis_loop
 from app.config import Settings
 
 
@@ -59,13 +59,13 @@ def _guide() -> TaskGuide:
     return TaskGuide(name="t", build_prompt=lambda ctx: "base-prompt")
 
 
-def _budget(max_attempts=2, min_score=80) -> HarnessBudget:
-    return HarnessBudget(max_attempts=max_attempts, min_score=min_score)
+def _budget(max_attempts=2, min_score=80) -> SynthesisBudget:
+    return SynthesisBudget(max_attempts=max_attempts, min_score=min_score)
 
 
 def test_passes_first_try_no_extra_calls(monkeypatch):
     model = _ScriptedModel([{"v": 1}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
     result, trace = run_synthesis(_settings(), _guide(), None, [_ScoreSensor([95])], _budget())
     assert model.calls == 1
     assert trace.revisions == 0
@@ -75,7 +75,7 @@ def test_passes_first_try_no_extra_calls(monkeypatch):
 
 def test_fails_once_then_revises_to_pass(monkeypatch):
     model = _ScriptedModel([{"v": 1}, {"v": 2}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
     result, trace = run_synthesis(_settings(), _guide(), None, [_ScoreSensor([50, 90])], _budget(max_attempts=2))
     assert model.calls == 2
     assert trace.revisions == 1
@@ -88,7 +88,7 @@ def test_fails_once_then_revises_to_pass(monkeypatch):
 
 def test_budget_exhausted_returns_best_so_far(monkeypatch):
     model = _ScriptedModel([{"v": 1}, {"v": 2}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
     result, trace = run_synthesis(_settings(), _guide(), None, [_ScoreSensor([40, 60])], _budget(max_attempts=2))
     assert model.calls == 2
     assert trace.final_passed is False
@@ -98,7 +98,7 @@ def test_budget_exhausted_returns_best_so_far(monkeypatch):
 
 def test_blocking_sensor_forces_revision(monkeypatch):
     model = _ScriptedModel([{"v": 1}, {"v": 2}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
     # 分数一直 100，但首轮结构阻断 → 仍需修订一次
     result, trace = run_synthesis(
         _settings(), _guide(), None, [_BlockingOnceSensor(), _ScoreSensor([100, 100])], _budget(max_attempts=3)
@@ -110,7 +110,7 @@ def test_blocking_sensor_forces_revision(monkeypatch):
 
 def test_critic_runs_only_before_revision(monkeypatch):
     model = _ScriptedModel([{"v": 1}, {"v": 2}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
     critic_calls = {"n": 0}
 
     def critic(result, ctx):
@@ -123,7 +123,7 @@ def test_critic_runs_only_before_revision(monkeypatch):
 
     # 第一轮不达标 → critic 调用一次后修订达标
     model2 = _ScriptedModel([{"v": 1}, {"v": 2}])
-    monkeypatch.setattr(harness_loop, "create_json_response", model2)
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model2)
     critic_calls["n"] = 0
     run_synthesis(_settings(), _guide(), None, [_ScoreSensor([50, 90])], _budget(max_attempts=2), critic=critic)
     assert critic_calls["n"] == 1

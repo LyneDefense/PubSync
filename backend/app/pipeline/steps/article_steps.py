@@ -1,19 +1,19 @@
-from app.harness.context import HarnessContext
-from app.harness.steps.base import HarnessStep
+from app.pipeline.context import PipelineContext
+from app.pipeline.steps.base import PipelineStep
 from app.tools.article_tool import ArticleTool, normalize_article_title
 from app.tools.image_tool import ImageTool
 from app.tools.llm_tool import LLMTool
 from app.tools.storage_tool import persist_article
 
 
-class SelectArticleNewsStep(HarnessStep):
+class SelectArticleNewsStep(PipelineStep):
     name = "文章选题"
     start_message = "开始按工作空间分组规则选择文章新闻"
 
     def __init__(self, article_tool: ArticleTool | None = None) -> None:
         self.article_tool = article_tool or ArticleTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         selection = self.article_tool.select_news(
             context.db,
             context.settings,
@@ -35,26 +35,26 @@ class SelectArticleNewsStep(HarnessStep):
         )
 
 
-class PrepareArticlePayloadStep(HarnessStep):
+class PrepareArticlePayloadStep(PipelineStep):
     name = "文章素材准备"
     start_message = "开始整理文章生成素材"
 
     def __init__(self, article_tool: ArticleTool | None = None) -> None:
         self.article_tool = article_tool or ArticleTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         context.news_payload = self.article_tool.build_news_payload(context.selected_news, context.content_groups)
         return "文章素材准备完成", {"素材数": len(context.news_payload)}
 
 
-class GenerateImagesStep(HarnessStep):
+class GenerateImagesStep(PipelineStep):
     name = "正文配图"
     start_message = "开始规划并生成正文配图"
 
     def __init__(self, image_tool: ImageTool | None = None) -> None:
         self.image_tool = image_tool or ImageTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         if not context.settings.generate_article_images:
             return "配置已关闭正文配图生成", {"已生成": 0}
         generated_count = self.image_tool.apply_article_images(
@@ -66,7 +66,7 @@ class GenerateImagesStep(HarnessStep):
         return "正文配图完成", {"已生成": generated_count}
 
 
-class ComposeArticleStep(HarnessStep):
+class ComposeArticleStep(PipelineStep):
     name = "正文生成"
     start_message = "开始生成公众号正文结构"
 
@@ -74,7 +74,7 @@ class ComposeArticleStep(HarnessStep):
         self.article_tool = article_tool or ArticleTool()
         self.llm_tool = llm_tool or LLMTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         if self.article_tool.ai_enabled(context.settings):
             context.composed_article = self.llm_tool.compose_article(
                 context.settings,
@@ -93,14 +93,14 @@ class ComposeArticleStep(HarnessStep):
         return "未启用大模型，已使用基础正文", {"标题": context.title}
 
 
-class LayoutArticleStep(HarnessStep):
+class LayoutArticleStep(PipelineStep):
     name = "公众号排版"
     start_message = "开始生成公众号 HTML 排版"
 
     def __init__(self, article_tool: ArticleTool | None = None) -> None:
         self.article_tool = article_tool or ArticleTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         if context.content_html:
             return "公众号排版已由基础模板完成", {"页面字符数": len(context.content_html)}
         if context.composed_article is None:
@@ -113,14 +113,14 @@ class LayoutArticleStep(HarnessStep):
         return "公众号排版完成", {"页面字符数": len(context.content_html)}
 
 
-class GenerateCoverStep(HarnessStep):
+class GenerateCoverStep(PipelineStep):
     name = "封面生成"
     start_message = "开始生成文章封面"
 
     def __init__(self, image_tool: ImageTool | None = None) -> None:
         self.image_tool = image_tool or ImageTool()
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         if context.cover_image_url:
             return "已使用基础封面", {"封面": context.cover_image_url}
         cover_prompt = context.composed_article.cover_prompt if context.composed_article else ""
@@ -133,11 +133,11 @@ class GenerateCoverStep(HarnessStep):
         return "封面生成完成", {"封面": context.cover_image_url}
 
 
-class PersistArticleStep(HarnessStep):
+class PersistArticleStep(PipelineStep):
     name = "文章入库"
     start_message = "开始保存生成后的文章"
 
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         context.article = persist_article(
             context.db,
             context.tenant.id,

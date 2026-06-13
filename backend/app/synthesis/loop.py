@@ -4,10 +4,10 @@ import logging
 import time
 from typing import Any, Callable
 
-from app.agent_harness.budget import HarnessBudget
-from app.agent_harness.guide import TaskGuide, with_feedback
-from app.agent_harness.sensors import Sensor, evaluate_sensors
-from app.agent_harness.trace import AttemptRecord, HarnessTrace
+from app.synthesis.budget import SynthesisBudget
+from app.synthesis.guide import TaskGuide, with_feedback
+from app.synthesis.sensors import Sensor, evaluate_sensors
+from app.synthesis.trace import AttemptRecord, SynthesisTrace
 from app.config import Settings
 from app.services.ai_service import create_json_response
 
@@ -22,17 +22,17 @@ def run_synthesis(
     guide: TaskGuide,
     context: Any,
     sensors: list[Sensor],
-    budget: HarnessBudget,
+    budget: SynthesisBudget,
     model: str | None = None,
     critic: Critic | None = None,
-) -> tuple[dict[str, Any], HarnessTrace]:
-    """生成 → 校验 → 修订 的有界循环（harness engineering 核心）。
+) -> tuple[dict[str, Any], SynthesisTrace]:
+    """生成 → 校验 → 修订 的有界循环（生成-校验-修订核心）。
 
     每轮：用 guide 构造提示词 → 调模型 → normalize → 跑计算型 sensors。
     达标（全部通过且分数≥min_score）即停；否则用 sensors（必要时叠加 critic）的纠错反馈
     重新提示，直到达标或用尽 budget.max_attempts。用尽则返回分数最高的那一版。
     """
-    trace = HarnessTrace(task=guide.name)
+    trace = SynthesisTrace(task=guide.name)
     feedback = ""
     best_score: int | None = None
     best_result: dict[str, Any] | None = None
@@ -73,17 +73,17 @@ def run_synthesis(
             try:
                 critic_feedback = critic(data, context)
             except Exception as exc:  # critic 失败不应中断主流程
-                logger.warning("harness critic 失败：task=%s attempt=%s err=%s", guide.name, attempt, exc)
+                logger.warning("合成评审失败：task=%s attempt=%s err=%s", guide.name, attempt, exc)
                 critic_feedback = ""
             if critic_feedback.strip():
                 feedback = f"{feedback}\n【深度评审】{critic_feedback.strip()}" if feedback else critic_feedback.strip()
-        logger.info("harness 修订：task=%s attempt=%s score=%s issues=%s", guide.name, attempt, verdict.score, len(verdict.issues))
+        logger.info("合成修订：task=%s attempt=%s score=%s issues=%s", guide.name, attempt, verdict.score, len(verdict.issues))
 
     chosen = best_result if best_result is not None else data
     return _finish(trace, len(trace.attempts), best_score, False, chosen)
 
 
-def _finish(trace: HarnessTrace, final_attempt: int, score: int | None, passed: bool, data: dict[str, Any]) -> tuple[dict[str, Any], HarnessTrace]:
+def _finish(trace: SynthesisTrace, final_attempt: int, score: int | None, passed: bool, data: dict[str, Any]) -> tuple[dict[str, Any], SynthesisTrace]:
     trace.final_attempt = final_attempt
     trace.final_score = score
     trace.final_passed = passed

@@ -12,7 +12,7 @@ from app.news_fetching.models import NewsFetchResult, RawNewsCandidate
 
 
 @dataclass
-class HarnessContext:
+class PipelineContext:
     task_id: str
     task_type: str
     db: Session

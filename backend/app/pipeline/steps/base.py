@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
 
-from app.harness.context import HarnessContext
-from app.harness.events import record_event
+from app.pipeline.context import PipelineContext
+from app.pipeline.events import record_event
 
 
-class HarnessStep(ABC):
+class PipelineStep(ABC):
     name: str
     start_message: str
 
-    def execute(self, context: HarnessContext) -> None:
+    def execute(self, context: PipelineContext) -> None:
         record_event(context, self.name, "running", self.start_message)
         try:
             message, payload = self.run(context)
@@ -19,5 +19,5 @@ class HarnessStep(ABC):
         record_event(context, self.name, "succeeded", message, payload)
 
     @abstractmethod
-    def run(self, context: HarnessContext) -> tuple[str, dict | None]:
+    def run(self, context: PipelineContext) -> tuple[str, dict | None]:
         raise NotImplementedError
