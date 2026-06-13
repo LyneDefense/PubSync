@@ -1,20 +1,13 @@
 <script setup lang="ts">
-// 公众号·发布记录。
-// 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
-import {
-  activeMainTab,
-  activeWechatTab
-} from '../composables/useWorkspaceStore'
+// 公众号·发布记录（占位）。未来汇总每日早报与 AI 创作文章的草稿箱推送记录。
+import ComingSoonPanel from '../components/ComingSoonPanel.vue'
+import { activeMainTab, activeWechatTab } from '../composables/useWorkspaceStore'
 </script>
 
 <template>
-      <section v-if="activeMainTab === 'wechat' && activeWechatTab === 'records'" class="panel">
-        <div class="section-header">
-          <div>
-            <h2>公众号发布记录</h2>
-            <p class="toolbar-subtitle">这里会汇总每日早报和 AI 创作文章的草稿箱推送记录。</p>
-          </div>
-        </div>
-        <p class="empty-region">发布记录模块暂未开放。</p>
-      </section>
+  <ComingSoonPanel
+    v-if="activeMainTab === 'wechat' && activeWechatTab === 'records'"
+    title="公众号发布记录"
+    description="这里会汇总每日早报和 AI 创作文章的草稿箱推送记录。"
+  />
 </template>

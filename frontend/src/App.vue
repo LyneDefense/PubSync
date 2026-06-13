@@ -3,6 +3,7 @@
 // 所有业务状态与方法集中在 composables/useWorkspaceStore.ts（单例），模板里直接使用。
 import { onMounted, onUnmounted } from 'vue'
 
+import ComingSoonPanel from './components/ComingSoonPanel.vue'
 import HashtagCloud from './components/HashtagCloud.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
@@ -154,6 +155,7 @@ onUnmounted(() => {
       <div v-if="activeMainTab === 'wechat'" class="module-subnav platform-subnav">
         <div class="tabs" role="tablist" aria-label="公众号模块">
           <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>
+          <button type="button" :class="{ active: activeWechatTab === 'distill' }" @click="activeWechatTab = 'distill'">博主蒸馏</button>
           <button type="button" :class="{ active: activeWechatTab === 'ai' }" @click="activeWechatTab = 'ai'">AI 创作</button>
           <button type="button" :class="{ active: activeWechatTab === 'drafts' }" @click="activeWechatTab = 'drafts'">文章草稿</button>
           <button type="button" :class="{ active: activeWechatTab === 'records' }" @click="activeWechatTab = 'records'">发布记录</button>
@@ -172,7 +174,7 @@ onUnmounted(() => {
           </button>
           <button
             type="button"
-            :class="{ active: ['packages', 'history'].includes(currentSocialTab) }"
+            :class="{ active: ['packages', 'history', 'freecreate'].includes(currentSocialTab) }"
             @click="setCurrentSocialTab('packages')"
           >
             AI 创作
@@ -185,15 +187,22 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')">蒸馏</button>
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')">博主资产</button>
         </div>
-        <div v-if="['packages', 'history'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName} AI 创作子模块`">
-          <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">创作流程</button>
+        <div v-if="['packages', 'history', 'freecreate'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName} AI 创作子模块`">
+          <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">对标博主创作</button>
           <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="setCurrentSocialTab('history')">发布包历史</button>
+          <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')">自由创作</button>
         </div>
       </div>
 
       <TaskEventsBanner />
 
       <WechatBriefView />
+
+      <ComingSoonPanel
+        v-if="activeMainTab === 'wechat' && activeWechatTab === 'distill'"
+        title="公众号博主蒸馏"
+        description="未来支持采集公众号文章样本、蒸馏风格资产，再应用风格生成公众号文章。"
+      />
 
       <WechatAiView />
 
@@ -210,6 +219,12 @@ onUnmounted(() => {
       <SocialPackagesView />
 
       <SocialHistoryView />
+
+      <ComingSoonPanel
+        v-if="isSocialPlatform && currentSocialTab === 'freecreate'"
+        :title="`${currentSocialPlatformName}自由创作`"
+        description="未来支持不依赖对标博主、直接输入主题由 AI 自主创作内容。"
+      />
 
       <XhsRecordsView />
 

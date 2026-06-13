@@ -99,9 +99,13 @@ export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
-export type WeChatTab = 'brief' | 'ai' | 'drafts' | 'records' | 'settings'
-export type XhsTab = 'collect' | 'distill' | 'assets' | 'packages' | 'history' | 'records' | 'settings'
-export type DouyinTab = XhsTab
+// 每个平台内部用同一套「功能阶段」二级菜单，措辞统一、用户学一次三平台通用。
+// 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
+export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
+// 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
+export type SocialTab = 'collect' | 'distill' | 'assets' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
+export type XhsTab = SocialTab
+export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
 export type XhsScriptSegment = {
   start?: string
@@ -307,7 +311,7 @@ export const activePlatformLabel = computed(() => {
 export const isSocialPlatform = computed(() => activeMainTab.value === 'xhs' || activeMainTab.value === 'douyin')
 export const currentSocialPlatform = computed<SocialPlatform>(() => (activeMainTab.value === 'douyin' ? 'douyin' : 'xhs'))
 export const currentSocialPlatformName = computed(() => (currentSocialPlatform.value === 'douyin' ? '抖音' : '小红书'))
-export const currentSocialTab = computed<XhsTab>(() => (activeMainTab.value === 'douyin' ? activeDouyinTab.value : activeXhsTab.value))
+export const currentSocialTab = computed<SocialTab>(() => (activeMainTab.value === 'douyin' ? activeDouyinTab.value : activeXhsTab.value))
 export const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 export const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 export const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -1577,7 +1581,7 @@ export function groupLabel(groupKey: string) {
   return contentGroups.value.find((group) => group.group_key === groupKey)?.name || groupKey || '未分组'
 }
 
-export function setCurrentSocialTab(tab: XhsTab) {
+export function setCurrentSocialTab(tab: SocialTab) {
   if (activeMainTab.value === 'douyin') {
     activeDouyinTab.value = tab
     return
