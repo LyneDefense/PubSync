@@ -434,7 +434,10 @@ def distill_with_llm(
         max_attempts=1 + max(0, settings.harness_max_revise_iterations),
         min_score=settings.harness_min_quality_score,
     )
-    return run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic)
+    result, trace = run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic)
+    if is_distillation_empty(result):
+        raise AIServiceError("博主蒸馏经多轮修订后认知层与内容层仍为空，判定为无效输出")
+    return result, trace
 
 
 # 蒸馏输出的三层结构骨架，缺字段时用它补齐，保证下游渲染与质量评估稳定。
@@ -487,12 +490,18 @@ def normalize_distillation(data: dict[str, Any], mode: str) -> dict[str, Any]:
         value = diagnosis.get(key)
         diagnosis[key] = value if isinstance(value, list) else ([] if value in (None, "") else [value])
     data["self_diagnosis"] = diagnosis
-    # 最少可用性校验：三层不能整体为空。
-    cognitive_empty = not any(data["cognitive_layer"][k] for k in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models"))
-    content_empty = not any(data["content_layer"][k] for k in ("title_formulas", "opening_templates", "body_structures", "video_script_structures"))
-    if cognitive_empty and content_empty:
-        raise AIServiceError("博主蒸馏结果认知层与内容层均为空，判定为无效输出")
+    # 注意：这里不再因「三层为空」抛错——空/坏结构由 DistillSchemaSensor 判定为不通过，
+    # 交给 harness 修订循环重试；多轮后仍为空才在 distill_with_llm 末尾硬失败。
     return data
+
+
+def is_distillation_empty(data: dict[str, Any]) -> bool:
+    """三层核心是否整体为空（结构性无效）。"""
+    cognitive = data.get("cognitive_layer", {}) or {}
+    content = data.get("content_layer", {}) or {}
+    cognitive_empty = not any(cognitive.get(k) for k in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models"))
+    content_empty = not any(content.get(k) for k in ("title_formulas", "opening_templates", "body_structures", "video_script_structures"))
+    return cognitive_empty and content_empty
 
 
 def evaluate_distillation_quality(distillation: dict[str, Any], stats: dict[str, Any], mode: str) -> dict[str, Any]:
