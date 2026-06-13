@@ -27,10 +27,18 @@ class Settings(BaseSettings):
     # 博主蒸馏单独的文本模型（留空=用上面的 *_text_model）。蒸馏对推理要求更高，
     # 可在此指向更强的模型（如更高档的 OpenAI/MiniMax 模型）以提升蒸馏质量。
     distill_text_model: str = ""
-    # 合成循环：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
+    # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80
     synthesis_llm_critic_enabled: bool = True
+    # AI 创作的合成循环参数（与蒸馏独立调参）。
+    creation_max_revise_iterations: int = 1
+    creation_min_quality_score: int = 80
+    creation_llm_critic_enabled: bool = True
+    # 账号体检/对标的合成循环参数（偏诊断，阈值略低）。
+    audit_max_revise_iterations: int = 1
+    audit_min_quality_score: int = 75
+    audit_llm_critic_enabled: bool = True
     tikhub_base_url: str = "https://api.tikhub.io"
     tikhub_api_key: str = ""
     tikhub_request_price_usd: float = 0.001

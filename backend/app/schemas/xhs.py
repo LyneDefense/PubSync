@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,6 +35,10 @@ class XhsPublishPackageDraftRead(BaseModel):
     script_json: str
     status: str
     error_message: str | None
+    # 过程与评判(随草稿透传,不入库):合成轨迹 / 对标对比 / 质量评分。
+    synthesis: dict[str, Any] = Field(default_factory=dict)
+    benchmark: dict[str, Any] = Field(default_factory=dict)
+    quality: dict[str, Any] = Field(default_factory=dict)
 
 
 class XhsPublishPackageSave(BaseModel):

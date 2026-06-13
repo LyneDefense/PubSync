@@ -4,20 +4,31 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.blogger_distillation.service.events import record_task_event
 from app.config import Settings
-from app.models import BloggerProfile, BloggerSkill, XhsPublishPackage
+from app.models import BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
 from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
 from app.services.ai_service import AIServiceError, create_json_response, generate_image, is_ai_enabled
-
+from app.synthesis import humanize_event, run_agent
+from app.xhs_creation.agent import (
+    CreationContext,
+    build_benchmark_comparison,
+    build_creation_agent,
+    evaluate_creation_quality,
+)
+from app.xhs_creation.normalize import (
+    build_fallback_image_plan,
+    normalize_image_plan,
+    normalize_script,
+    normalize_string_list,
+    resolve_image_count,
+    social_platform_name,
+)
 
 logger = logging.getLogger(__name__)
 
-CONTENT_TYPE_LABELS = {
-    "text_note": "图文笔记",
-    "image_note": "图文笔记加配图",
-    "spoken_script": "口播脚本",
-    "video_script": "视频脚本",
-}
+# 本轮 AI 创作只支持小红书/抖音;公众号留架构槽,暂不放行。
+SUPPORTED_CREATION_PLATFORMS = {"xhs", "douyin"}
 
 
 def generate_xhs_publish_package_draft(
@@ -25,6 +36,7 @@ def generate_xhs_publish_package_draft(
     settings: Settings,
     tenant_id: int,
     payload: XhsPublishPackageCreate,
+    task_id: str | None = None,
 ) -> dict[str, Any]:
     skill, blogger = validate_xhs_package_request(db, settings, tenant_id, payload)
     platform_name = social_platform_name(blogger.platform)
@@ -38,16 +50,20 @@ def generate_xhs_publish_package_draft(
         payload.content_type,
         payload.topic,
     )
-    generated = generate_package_content(settings, blogger, skill, payload)
+    generated, trace, benchmark, quality = generate_package_content(
+        db, settings, tenant_id, blogger, skill, payload, task_id=task_id
+    )
     image_plan = normalize_image_plan(generated.get("image_plan"))
     image_urls: list[str] = []
     error_message: str | None = None
 
     if payload.content_type == "image_note":
-        target_count = resolve_image_count(payload, generated, image_plan)
+        target_count = resolve_image_count(payload.image_count_mode, payload.requested_image_count, generated, image_plan)
         image_plan = image_plan[:target_count]
         if target_count and not image_plan:
             image_plan = build_fallback_image_plan(generated, target_count)
+        if task_id and image_plan:
+            record_task_event(db, tenant_id, task_id, "配图", "running", f"正在生成 {len(image_plan)} 张配图…")
         for index, item in enumerate(image_plan, start=1):
             prompt = str(item.get("prompt") or "").strip()
             if not prompt:
@@ -80,8 +96,19 @@ def generate_xhs_publish_package_draft(
         "script_json": json.dumps(normalize_script(generated.get("script"), payload.content_type), ensure_ascii=False),
         "status": "draft",
         "error_message": error_message,
+        # 过程与评判(随草稿透传,不入库):合成轨迹、对标对比、质量评分。
+        "synthesis": trace.to_dict(),
+        "benchmark": benchmark,
+        "quality": quality,
     }
-    logger.info("%s发布包草稿生成完成：skill_id=%s，图片=%s", platform_name, skill.id, len(image_urls))
+    logger.info(
+        "%s发布包草稿生成完成：skill_id=%s，图片=%s，自我修订=%s，质量=%s",
+        platform_name,
+        skill.id,
+        len(image_urls),
+        trace.revisions,
+        quality.get("score"),
+    )
     return draft
 
 
@@ -137,6 +164,8 @@ def validate_xhs_package_request(
     blogger = db.get(BloggerProfile, skill.blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("Skill 对应的博主不存在")
+    if blogger.platform not in SUPPORTED_CREATION_PLATFORMS:
+        raise ValueError("当前平台暂不支持 AI 创作")
     if payload.content_type == "image_note" and payload.image_count_mode == "manual" and not payload.requested_image_count:
         raise ValueError("手动配图数量至少为 1")
     if not is_ai_enabled(settings):
@@ -221,80 +250,58 @@ def generate_xhs_topic_ideas(
 
 
 def generate_package_content(
+    db: Session,
     settings: Settings,
+    tenant_id: int,
     blogger: BloggerProfile,
     skill: BloggerSkill,
     payload: XhsPublishPackageCreate,
-) -> dict[str, Any]:
-    platform_name = social_platform_name(blogger.platform)
-    content_type_label = CONTENT_TYPE_LABELS.get(payload.content_type, payload.content_type)
-    image_instruction = (
-        "如果内容类型是图文笔记加配图，请决定 suitable_image_count，范围 1-9。"
-        if payload.image_count_mode == "auto"
-        else f"如果内容类型是图文笔记加配图，必须规划 {payload.requested_image_count or 1} 张配图。"
+    task_id: str | None = None,
+) -> tuple[dict[str, Any], Any, dict[str, Any], dict[str, Any]]:
+    """用创作 agent 跑「生成→自检→修订」循环,收敛后做一次对标对比。
+
+    返回 (生成稿, 合成轨迹, 对标对比, 质量评分)。
+    """
+    benchmark_stats = _load_benchmark_stats(db, skill)
+    ctx = CreationContext(
+        blogger=blogger,
+        skill=skill,
+        payload=payload,
+        platform=blogger.platform,
+        content_type=payload.content_type,
+        benchmark_stats=benchmark_stats,
     )
-    prompt = f"""
-你是{platform_name}内容主编。请基于“博主蒸馏 Skill”生成一个可人工发布的{platform_name}发布包。
+    agent = build_creation_agent(settings, ctx)
 
-重要边界：
-- 只能学习 Skill 中的结构、节奏、表达方法，不要冒充原博主，不要复制原文。
-- 内容必须围绕用户给定主题，不能编造专业事实；不确定的信息要用温和表达。
-- 适合{platform_name}：标题要具体，正文要分段，标签要可用，结尾要有轻量互动引导。
-- 输出必须是合法 JSON，不要 Markdown，不要解释文字。
-- {image_instruction}
-- 生成图片 prompt 时不要出现真实人物姓名、真人肖像、logo、品牌标识、平台 UI 截图；使用干净、生活化、可商用的概念图或场景图。
+    on_event = None
+    if task_id:
+        def on_event(kind: str, event: dict[str, Any]) -> None:
+            triple = humanize_event(kind, event, subject="内容", gerund="起草")
+            if triple:
+                step, status, message = triple
+                record_task_event(db, tenant_id, task_id, step, status, message)
 
-创作输入：
-{json.dumps({
-        "blogger": {
-            "display_name": blogger.display_name,
-            "niche": blogger.niche,
-            "description": blogger.description,
-        },
-        "content_type": payload.content_type,
-        "content_type_label": content_type_label,
-        "topic": payload.topic,
-        "target_audience": payload.target_audience,
-        "content_goal": payload.content_goal,
-        "keywords": payload.keywords,
-        "image_count_mode": payload.image_count_mode,
-        "requested_image_count": payload.requested_image_count,
-    }, ensure_ascii=False, indent=2)}
+    generated, trace = run_agent(settings, agent, ctx, on_event=on_event)
 
-博主蒸馏 Skill：
-{skill.skill_markdown[:12000]}
+    if task_id:
+        record_task_event(db, tenant_id, task_id, "对标对比", "running", "正在和对标博主比对差距…")
+    model = (settings.distill_text_model or "").strip() or None
+    benchmark = build_benchmark_comparison(settings, generated, ctx, model)
+    quality = evaluate_creation_quality(generated, ctx)
+    return generated, trace, benchmark, quality
 
-输出 JSON 字段：
-{{
-  "title": "{platform_name}标题，最多 28 个汉字",
-  "body_text": "可直接复制的{platform_name}正文。图文笔记用正文；脚本类型也要给一段发布说明。",
-  "hashtags": ["话题标签，不要带#号"],
-  "cover_text": "封面文案，最多 18 个汉字",
-  "suitable_image_count": 0,
-  "image_plan": [
-    {{
-      "slot": 1,
-      "purpose": "这张图的作用",
-      "caption": "图上可以放的短文案",
-      "prompt": "English image generation prompt"
-    }}
-  ],
-  "script": {{
-    "duration_seconds": 0,
-    "segments": [
-      {{
-        "start": "0s",
-        "end": "5s",
-        "scene": "画面/镜头建议",
-        "voiceover": "口播或旁白",
-        "subtitle": "屏幕字幕"
-      }}
-    ],
-    "shooting_notes": ["拍摄建议"]
-  }}
-}}
-"""
-    return create_json_response(settings=settings, prompt=prompt)
+
+def _load_benchmark_stats(db: Session, skill: BloggerSkill) -> dict[str, Any]:
+    """从该 Skill 对应蒸馏 run 的 report_json 里取回对标博主的统计画像(供对标对比用)。"""
+    run = db.get(BloggerDistillationRun, skill.run_id)
+    if not run or not run.report_json:
+        return {}
+    try:
+        report = json.loads(run.report_json)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    stats = report.get("stats") if isinstance(report, dict) else None
+    return stats if isinstance(stats, dict) else {}
 
 
 def normalize_topic_idea(item: dict[str, Any]) -> dict[str, Any]:
@@ -306,85 +313,3 @@ def normalize_topic_idea(item: dict[str, Any]) -> dict[str, Any]:
         "keywords": normalize_string_list(item.get("keywords")),
         "reason": str(item.get("reason") or "").strip(),
     }
-
-
-def resolve_image_count(payload: XhsPublishPackageCreate, generated: dict[str, Any], image_plan: list[dict[str, Any]]) -> int:
-    if payload.image_count_mode == "manual":
-        return clamp_int(payload.requested_image_count or 1, 1, 9)
-    raw_count = generated.get("suitable_image_count")
-    if raw_count is None:
-        raw_count = len(image_plan) or 3
-    return clamp_int(raw_count, 1, 9)
-
-
-def normalize_image_plan(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    result: list[dict[str, Any]] = []
-    for index, item in enumerate(value, start=1):
-        if not isinstance(item, dict):
-            continue
-        result.append(
-            {
-                "slot": clamp_int(item.get("slot") or index, 1, 9),
-                "purpose": str(item.get("purpose") or "").strip(),
-                "caption": str(item.get("caption") or "").strip(),
-                "prompt": str(item.get("prompt") or "").strip(),
-            }
-        )
-    return result
-
-
-def build_fallback_image_plan(generated: dict[str, Any], target_count: int) -> list[dict[str, Any]]:
-    title = str(generated.get("title") or "social media lifestyle note")
-    return [
-        {
-            "slot": index,
-            "purpose": "补充正文视觉层次",
-            "caption": title[:18],
-            "prompt": (
-                "Clean social media lifestyle editorial image, soft natural light, practical knowledge sharing scene, "
-                "warm composition, no human face, no celebrity, no logo, no brand mark, no UI screenshot, no text"
-            ),
-        }
-        for index in range(1, target_count + 1)
-    ]
-
-
-def social_platform_name(platform: str) -> str:
-    return "抖音" if platform == "douyin" else "小红书"
-
-
-def normalize_string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    result: list[str] = []
-    for item in value:
-        text = str(item).strip().lstrip("#")
-        if text and text not in result:
-            result.append(text)
-    return result[:12]
-
-
-def normalize_script(value: Any, content_type: str) -> dict[str, Any]:
-    if isinstance(value, dict):
-        script = dict(value)
-    else:
-        script = {}
-    if content_type not in {"spoken_script", "video_script"}:
-        return script if script.get("segments") else {}
-    segments = script.get("segments")
-    if not isinstance(segments, list):
-        script["segments"] = []
-    notes = script.get("shooting_notes")
-    if not isinstance(notes, list):
-        script["shooting_notes"] = []
-    return script
-
-
-def clamp_int(value: Any, minimum: int, maximum: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = minimum
-    return max(minimum, min(maximum, parsed))

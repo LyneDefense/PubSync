@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 # 推理型评审：读已生成结果，产出面向模型的纠错反馈（贵，仅在需要修订前调用）。
 Critic = Callable[[dict[str, Any], Any], str]
 
+# 过程观测回调：循环在每个节点回调 (kind, payload)，由调用方翻译成面向用户的通俗进度。
+# kind ∈ {"attempt_start","verified","reviewing","revising","final"}。回调失败绝不影响生成。
+ProgressSink = Callable[[str, dict[str, Any]], None]
+
+
+def _emit(sink: ProgressSink | None, kind: str, **payload: Any) -> None:
+    if sink is None:
+        return
+    try:
+        sink(kind, payload)
+    except Exception as exc:  # 观测回调失败不应中断主流程
+        logger.warning("合成过程回调失败：kind=%s err=%s", kind, exc)
+
 
 def run_synthesis(
     settings: Settings,
@@ -25,12 +38,15 @@ def run_synthesis(
     budget: SynthesisBudget,
     model: str | None = None,
     critic: Critic | None = None,
+    on_event: ProgressSink | None = None,
 ) -> tuple[dict[str, Any], SynthesisTrace]:
     """生成 → 校验 → 修订 的有界循环（生成-校验-修订核心）。
 
     每轮：用 guide 构造提示词 → 调模型 → normalize → 跑计算型 sensors。
     达标（全部通过且分数≥min_score）即停；否则用 sensors（必要时叠加 critic）的纠错反馈
     重新提示，直到达标或用尽 budget.max_attempts。用尽则返回分数最高的那一版。
+
+    可选 on_event：在生成/校验/修订/收敛各节点回调，供调用方把过程展示给用户（不传则零影响）。
     """
     trace = SynthesisTrace(task=guide.name)
     feedback = ""
@@ -39,8 +55,10 @@ def run_synthesis(
     # 选「最优一版」的排序键：优先选阻断型传感器通过的版本，再比分数。
     # 避免预算用尽时返回一个分数虚高但结构无效（如阻断不通过）的结果。
     best_rank: tuple[bool, int] | None = None
+    total = max(1, budget.max_attempts)
 
-    for attempt in range(1, max(1, budget.max_attempts) + 1):
+    for attempt in range(1, total + 1):
+        _emit(on_event, "attempt_start", attempt=attempt, total=total)
         started = time.perf_counter()
         prompt = with_feedback(guide.build_prompt(context), feedback)
         data = create_json_response(settings, prompt, model=model)
@@ -60,12 +78,22 @@ def run_synthesis(
                 revised_with=feedback,
             )
         )
+        meets_score = verdict.score is None or verdict.score >= budget.min_score
+        _emit(
+            on_event,
+            "verified",
+            attempt=attempt,
+            total=total,
+            score=verdict.score,
+            passed=bool(verdict.passed and meets_score),
+            issues=list(verdict.issues),
+        )
         rank = (verdict.passed, verdict.score if verdict.score is not None else -1)
         if best_rank is None or rank > best_rank:
             best_rank, best_score, best_result = rank, verdict.score, data
 
-        meets_score = verdict.score is None or verdict.score >= budget.min_score
         if verdict.passed and meets_score:
+            _emit(on_event, "final", attempt=attempt, score=verdict.score, passed=True, revisions=attempt - 1)
             return _finish(trace, attempt, verdict.score, True, data)
 
         if attempt >= budget.max_attempts:
@@ -74,6 +102,7 @@ def run_synthesis(
         # 准备下一轮的纠错反馈：计算型反馈 +（可选）推理型评审，仅在确实要修订时才付费调用 critic。
         feedback = verdict.corrective_feedback
         if critic is not None:
+            _emit(on_event, "reviewing", attempt=attempt)
             try:
                 critic_feedback = critic(data, context)
             except Exception as exc:  # critic 失败不应中断主流程
@@ -81,8 +110,10 @@ def run_synthesis(
                 critic_feedback = ""
             if critic_feedback.strip():
                 feedback = f"{feedback}\n【深度评审】{critic_feedback.strip()}" if feedback else critic_feedback.strip()
+        _emit(on_event, "revising", attempt=attempt, next=attempt + 1, issues=list(verdict.issues))
         logger.info("合成修订：task=%s attempt=%s score=%s issues=%s", guide.name, attempt, verdict.score, len(verdict.issues))
 
+    _emit(on_event, "final", attempt=len(trace.attempts), score=best_score, passed=False, revisions=max(0, len(trace.attempts) - 1))
     chosen = best_result if best_result is not None else data
     return _finish(trace, len(trace.attempts), best_score, False, chosen)
 

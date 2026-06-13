@@ -16,6 +16,8 @@ import {
   currentSocialTab,
   currentXhsDraft,
   formatDate,
+  xhsDraftBenchmark,
+  xhsDraftProcess,
   goNextXhsCreationStep,
   goPreviousXhsCreationStep,
   handleCreateXhsPackage,
@@ -325,6 +327,32 @@ import {
                     <strong>{{ segment.subtitle || segment.scene || '脚本片段' }}</strong>
                     <p>{{ segment.voiceover || segment.scene }}</p>
                   </article>
+                </section>
+                <section v-if="xhsDraftProcess.length" class="audit-process">
+                  <div class="inline-card-header">
+                    <h3>创作过程</h3>
+                  </div>
+                  <ol class="process-timeline">
+                    <li v-for="(step, index) in xhsDraftProcess" :key="index">
+                      <strong>{{ step.label }}</strong>
+                      <span>{{ step.detail }}</span>
+                    </li>
+                  </ol>
+                </section>
+                <section v-if="xhsDraftBenchmark" class="audit-benchmark">
+                  <div class="inline-card-header">
+                    <h3>对标对比</h3>
+                  </div>
+                  <p v-if="xhsDraftBenchmark.summary" class="benchmark-summary">{{ xhsDraftBenchmark.summary }}</p>
+                  <ul class="benchmark-points">
+                    <li v-if="xhsDraftBenchmark.title_fit"><b>标题:</b>{{ xhsDraftBenchmark.title_fit }}</li>
+                    <li v-if="xhsDraftBenchmark.language_fit"><b>语言:</b>{{ xhsDraftBenchmark.language_fit }}</li>
+                    <li v-if="xhsDraftBenchmark.formula_fit"><b>套路:</b>{{ xhsDraftBenchmark.formula_fit }}</li>
+                  </ul>
+                  <div v-if="xhsDraftBenchmark.gaps && xhsDraftBenchmark.gaps.length" class="benchmark-gaps">
+                    <h4>还差哪些</h4>
+                    <ul><li v-for="(gap, i) in xhsDraftBenchmark.gaps" :key="i">{{ gap }}</li></ul>
+                  </div>
                 </section>
                 <p v-if="currentXhsDraft.error_message" class="run-error">{{ currentXhsDraft.error_message }}</p>
               </div>

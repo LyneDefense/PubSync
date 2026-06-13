@@ -4,6 +4,7 @@ Re-exported here so existing ``from app.schemas import X`` imports keep working.
 """
 
 from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
+from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead
 from app.schemas.blogger import (
     BloggerCollectRequest,
     BloggerCollectionRunRead,
@@ -71,6 +72,9 @@ __all__ = [
     "DashboardRead",
     "OperationTaskRead",
     "OperationTaskEventRead",
+    "AccountAuditCreate",
+    "AccountAuditReport",
+    "AccountAuditRunRead",
     "SettingRead",
     "SettingUpdate",
     "BloggerProfileCreate",

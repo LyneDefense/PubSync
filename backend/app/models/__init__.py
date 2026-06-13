@@ -5,6 +5,7 @@ so importing this package registers every table on ``Base.metadata``.
 """
 
 from app.models.article import Article, ArticleNewsItem, ArticleStatus
+from app.models.audit import AccountAuditRun
 from app.models.blogger import (
     BloggerCollectionPost,
     BloggerCollectionRun,
@@ -54,4 +55,5 @@ __all__ = [
     "BloggerDistillationRun",
     "BloggerSkill",
     "XhsPublishPackage",
+    "AccountAuditRun",
 ]

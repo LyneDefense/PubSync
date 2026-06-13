@@ -5,18 +5,24 @@
 由各 service 调用，包裹 ai_service.create_json_response。
 """
 
+from app.synthesis.agent import Agent, run_agent
 from app.synthesis.budget import SynthesisBudget
 from app.synthesis.guide import TaskGuide, with_feedback
-from app.synthesis.loop import Critic, run_synthesis
+from app.synthesis.loop import Critic, ProgressSink, run_synthesis
+from app.synthesis.progress import humanize_event
 from app.synthesis.sensors import Sensor, SensorResult, SensorVerdict, evaluate_sensors
 from app.synthesis.trace import AttemptRecord, SynthesisTrace
 
 __all__ = [
+    "Agent",
+    "run_agent",
     "SynthesisBudget",
     "TaskGuide",
     "with_feedback",
     "Critic",
+    "ProgressSink",
     "run_synthesis",
+    "humanize_event",
     "Sensor",
     "SensorResult",
     "SensorVerdict",

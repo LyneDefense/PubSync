@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
+    account_audit,
     admin,
     articles,
     auth,
@@ -87,6 +88,7 @@ for module in (
     articles,
     bloggers,
     xhs,
+    account_audit,
     tasks,
     settings_routes,
 ):

@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.synthesis import Critic, SynthesisBudget, SynthesisTrace, SensorResult, TaskGuide, run_synthesis
+from app.synthesis import Critic, SynthesisBudget, SynthesisTrace, SensorResult, TaskGuide, humanize_event, run_synthesis
 from app.blogger_distillation import analysis, artifacts
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.events import (
@@ -133,7 +133,14 @@ def run_blogger_distillation(
         )
         llm_started_at = time.perf_counter()
         logger.info("认知蒸馏请求已发送：任务ID=%s，平台=%s，模型=%s", task_id, blogger.platform, settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model)
-        distillation, synthesis_trace = distill_with_llm(settings, blogger, user_info, stats, mode)
+
+        def on_distill_event(kind: str, event: dict[str, Any]) -> None:
+            triple = humanize_event(kind, event, subject="博主方法论", gerund="提炼")
+            if triple:
+                step, status, message = triple
+                record_task_event(db, tenant_id, task_id, step, status, message)
+
+        distillation, synthesis_trace = distill_with_llm(settings, blogger, user_info, stats, mode, on_event=on_distill_event)
         quality = evaluate_distillation_quality(distillation, stats, mode)
         quality["revisions"] = synthesis_trace.revisions
         quality["final_passed"] = synthesis_trace.final_passed
@@ -416,6 +423,7 @@ def distill_with_llm(
     user_info: dict[str, Any],
     stats: dict[str, Any],
     mode: str = "A",
+    on_event: Any = None,
 ) -> tuple[dict[str, Any], SynthesisTrace]:
     """复刻 blogger-distiller 的「三层蒸馏」，并用合成循环（生成→校验→修订）包裹：
     生成 → 计算型传感器校验（结构+质量分）→ 不达标则叠加推理型评审反馈修订，直到达标或用尽预算。
@@ -434,7 +442,7 @@ def distill_with_llm(
         max_attempts=1 + max(0, settings.synthesis_max_revise_iterations),
         min_score=settings.synthesis_min_quality_score,
     )
-    result, trace = run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic)
+    result, trace = run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic, on_event=on_event)
     if is_distillation_empty(result):
         raise AIServiceError("博主蒸馏经多轮修订后认知层与内容层仍为空，判定为无效输出")
     return result, trace

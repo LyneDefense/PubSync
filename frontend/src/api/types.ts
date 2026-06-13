@@ -417,9 +417,60 @@ export interface XhsPublishPackageDraft {
   script_json: string
   status: string
   error_message: string | null
+  // 过程与评判(随草稿透传,不入库)。
+  synthesis?: SynthesisTrace
+  benchmark?: BenchmarkComparison
+  quality?: { score?: number; grade?: string; issues?: string[] }
+}
+
+export interface SynthesisAttempt {
+  attempt: number
+  score: number | null
+  passed: boolean
+  issues: string[]
+  revised_with: string
+}
+
+export interface SynthesisTrace {
+  task: string
+  revisions: number
+  final_attempt: number
+  final_score: number | null
+  final_passed: boolean
+  attempts: SynthesisAttempt[]
+}
+
+export interface BenchmarkComparison {
+  title_fit?: string
+  language_fit?: string
+  formula_fit?: string
+  gaps?: string[]
+  summary?: string
 }
 
 export type XhsPublishPackageSave = XhsPublishPackageDraft
+
+export interface AccountAuditCreate {
+  platform: SocialPlatform
+  benchmark_skill_id: number
+  my_content_text: string
+}
+
+export interface AccountAuditRun {
+  id: number
+  tenant_id: number
+  platform: string
+  benchmark_blogger_id: number | null
+  benchmark_skill_id: number | null
+  task_id: string | null
+  status: string
+  input_snapshot: string
+  report_json: string
+  score: number | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface XhsTopicIdeaRequest {
   skill_id: number

@@ -1,4 +1,6 @@
 import type {
+  AccountAuditCreate,
+  AccountAuditRun,
   AdminUser,
   AdminUserCreate,
   Article,
@@ -305,4 +307,15 @@ export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
     method: 'POST',
     body: JSON.stringify(payload)
   })
+}
+
+export function startAccountAuditTask(payload: AccountAuditCreate) {
+  return request<OperationTask>('/account-audit', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function listAccountAuditRuns(platform: SocialPlatform = 'xhs') {
+  return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}`)
 }

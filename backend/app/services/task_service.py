@@ -30,6 +30,7 @@ from app.services.tenant_service import (
     get_wechat_account,
 )
 from app.services.wechat_service import WeChatAPIError
+from app.account_audit.service import run_account_audit
 from app.schemas import XhsPublishPackageCreate
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
@@ -43,6 +44,7 @@ TASK_MESSAGES = {
     "blogger_collection": "已加入博主样本采集任务",
     "blogger_distillation": "已加入博主蒸馏任务",
     "xhs_package_draft": "已加入小红书发布包生成任务",
+    "account_audit": "已加入账号体检任务",
 }
 
 
@@ -203,7 +205,7 @@ def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
         mark_task_running(db, task, "正在生成小红书正文/脚本和素材")
         record_task_event(db, task.tenant_id, task_id, "发布包生成", "running", "开始生成正文/脚本")
         draft_payload = XhsPublishPackageCreate.model_validate(payload)
-        draft = generate_xhs_publish_package_draft(db, get_settings(), task.tenant_id, draft_payload)
+        draft = generate_xhs_publish_package_draft(db, get_settings(), task.tenant_id, draft_payload, task_id=task_id)
         record_task_event(
             db,
             task.tenant_id,
@@ -222,6 +224,36 @@ def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
         fail_message="小红书发布包草稿生成失败",
         work=work,
         expected=(ValueError, AIServiceError),
+    )
+
+
+def run_account_audit_task(task_id: str, payload: dict) -> None:
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, "正在对照对标博主体检你的账号内容")
+        run = run_account_audit(
+            db=db,
+            settings=get_settings(),
+            task_id=task_id,
+            tenant_id=task.tenant_id,
+            platform=str(payload.get("platform") or "xhs"),
+            benchmark_skill_id=int(payload["benchmark_skill_id"]),
+            my_content_text=str(payload.get("my_content_text") or ""),
+        )
+        mark_task_succeeded(db, task, f"账号体检完成,对标接近度 {run.score}")
+        logger.info("任务成功：任务ID=%s，类型=账号体检，运行ID=%s", task_id, run.id)
+
+    def record_failure(db: Session, task_id: str, exc: Exception) -> None:
+        task = get_task(db, task_id)
+        if task:
+            record_task_event(db, task.tenant_id, task_id, "账号体检", "failed", f"账号体检失败：{type(exc).__name__}: {exc}")
+
+    execute_task(
+        task_id,
+        label="账号体检",
+        fail_message="账号体检失败",
+        work=work,
+        expected=(ValueError, AIServiceError),
+        on_unexpected=record_failure,
     )
 
 

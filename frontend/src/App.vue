@@ -16,6 +16,7 @@ import WechatRecordsView from './views/WechatRecordsView.vue'
 import SocialCollectView from './views/SocialCollectView.vue'
 import SocialDistillView from './views/SocialDistillView.vue'
 import SocialAssetsView from './views/SocialAssetsView.vue'
+import SocialAuditView from './views/SocialAuditView.vue'
 import SocialPackagesView from './views/SocialPackagesView.vue'
 import SocialHistoryView from './views/SocialHistoryView.vue'
 import XhsRecordsView from './views/XhsRecordsView.vue'
@@ -167,7 +168,7 @@ onUnmounted(() => {
         <div class="tabs" role="tablist" :aria-label="`${currentSocialPlatformName}模块`">
           <button
             type="button"
-            :class="{ active: ['collect', 'distill', 'assets'].includes(currentSocialTab) }"
+            :class="{ active: ['collect', 'distill', 'assets', 'audit'].includes(currentSocialTab) }"
             @click="setCurrentSocialTab('collect')"
           >
             博主蒸馏
@@ -182,10 +183,11 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')">发布记录</button>
           <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')">设置</button>
         </div>
-        <div v-if="['collect', 'distill', 'assets'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName}博主蒸馏子模块`">
+        <div v-if="['collect', 'distill', 'assets', 'audit'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName}博主蒸馏子模块`">
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')">数据采集</button>
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')">蒸馏</button>
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')">博主资产</button>
+          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')">账号对标</button>
         </div>
         <div v-if="['packages', 'history', 'freecreate'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName} AI 创作子模块`">
           <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">对标博主创作</button>
@@ -215,6 +217,8 @@ onUnmounted(() => {
       <SocialDistillView />
 
       <SocialAssetsView />
+
+      <SocialAuditView />
 
       <SocialPackagesView />
 

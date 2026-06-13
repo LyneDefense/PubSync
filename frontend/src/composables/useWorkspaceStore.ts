@@ -30,6 +30,8 @@ import {
   clearAuthToken,
   clearTenantId,
   collectBlogger,
+  listAccountAuditRuns,
+  startAccountAuditTask,
   confirmBloggerRun,
   createAdminUser,
   createBlogger,
@@ -68,6 +70,7 @@ import {
   updateWorkspaceConfig
 } from '../api'
 import type {
+  AccountAuditRun,
   AdminUser,
   AdminUserCreate,
   Article,
@@ -86,6 +89,7 @@ import type {
   OperationTask,
   OperationTaskEvent,
   SocialPlatform,
+  SynthesisTrace,
   Tenant,
   WorkspaceConfig,
   XhsPublishContentType,
@@ -95,7 +99,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -103,7 +107,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'collect' | 'distill' | 'assets' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
+export type SocialTab = 'collect' | 'distill' | 'assets' | 'audit' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -128,6 +132,9 @@ export const bloggers = ref<BloggerProfile[]>([])
 export const bloggerPosts = ref<BloggerPost[]>([])
 export const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 export const bloggerRuns = ref<BloggerDistillationRun[]>([])
+export const accountAuditRuns = ref<AccountAuditRun[]>([])
+export const selectedAuditRunId = ref<number | null>(null)
+export const auditForm = reactive({ benchmark_skill_id: 0, my_content_text: '' })
 export const bloggerSkills = ref<BloggerSkill[]>([])
 export const xhsPackages = ref<XhsPublishPackage[]>([])
 export const currentXhsDraft = ref<XhsPublishPackageDraft | null>(null)
@@ -179,7 +186,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   generate: 0,
   collect: 0,
   distill: 0,
-  'xhs-package': 0
+  'xhs-package': 0,
+  audit: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -375,6 +383,37 @@ export const xhsPackageScriptSegments = computed(() => {
   const script = parseJsonObject(selectedXhsPackage.value?.script_json)
   return Array.isArray(script.segments) ? script.segments : []
 })
+
+// 创作草稿的「对标对比」(第5点①)。
+export const xhsDraftBenchmark = computed(() => currentXhsDraft.value?.benchmark || null)
+
+// 把合成轨迹翻成通俗的「创作过程」时间线(不暴露原始技术措辞)。
+export interface ProcessStep {
+  label: string
+  detail: string
+}
+
+export function buildProcessTimeline(trace: SynthesisTrace | undefined | null): ProcessStep[] {
+  if (!trace?.attempts?.length) return []
+  const steps: ProcessStep[] = []
+  trace.attempts.forEach((attempt) => {
+    const scoreTxt = typeof attempt.score === 'number' ? `(质量打分 ${attempt.score})` : ''
+    const ordinal = attempt.attempt === 1 ? '起草初稿' : `第 ${attempt.attempt} 版`
+    if (attempt.passed) {
+      steps.push({ label: ordinal, detail: `自检通过${scoreTxt}` })
+    } else {
+      const n = attempt.issues?.length || 0
+      const hint = n ? `发现 ${n} 处可以更好的地方` : '感觉还能更到位'
+      steps.push({ label: ordinal, detail: `自检${hint}${scoreTxt}，继续打磨` })
+    }
+  })
+  const last = trace.attempts[trace.attempts.length - 1]
+  const tail = trace.final_passed ? '最终达标' : '已尽力打磨，采用当前最好的一版'
+  steps.push({ label: '完成', detail: `${tail}，共自我优化 ${trace.revisions} 次${typeof last.score === 'number' ? `(质量打分 ${last.score})` : ''}` })
+  return steps
+}
+
+export const xhsDraftProcess = computed(() => buildProcessTimeline(currentXhsDraft.value?.synthesis))
 export const activeXhsSkills = computed(() =>
   bloggerSkills.value.filter((skill) => skill.status === 'active').map((skill) => ({
     ...skill,
@@ -722,6 +761,7 @@ export async function loadAll() {
     resultCollectionFilterId.value = null
   }
   await refreshSelectedBlogger()
+  await refreshAccountAuditRuns()
   if (isAdmin.value) {
     adminUsers.value = await listAdminUsers()
   }
@@ -1207,6 +1247,72 @@ export function qualityTone(grade: string): string {
   return 'neutral'
 }
 
+// —— 账号体检/对标 ——
+export const selectedAuditRun = computed(
+  () => accountAuditRuns.value.find((run) => run.id === selectedAuditRunId.value) || null
+)
+
+export interface AuditReport {
+  dimensions: { name: string; benchmark: string; mine: string; gap: string }[]
+  strengths: string[]
+  gaps: string[]
+  actions: string[]
+  conclusion: string
+  score: number | null
+}
+
+export function auditRunReport(run: AccountAuditRun | null | undefined): AuditReport {
+  const empty: AuditReport = { dimensions: [], strengths: [], gaps: [], actions: [], conclusion: '', score: null }
+  if (!run?.report_json) return empty
+  try {
+    const parsed = JSON.parse(run.report_json)
+    return {
+      dimensions: Array.isArray(parsed.dimensions) ? parsed.dimensions : [],
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
+      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+      conclusion: typeof parsed.conclusion === 'string' ? parsed.conclusion : '',
+      score: typeof parsed.score === 'number' ? parsed.score : null
+    }
+  } catch {
+    return empty
+  }
+}
+
+export async function refreshAccountAuditRuns() {
+  try {
+    accountAuditRuns.value = await listAccountAuditRuns(currentSocialPlatform.value)
+  } catch {
+    accountAuditRuns.value = []
+  }
+}
+
+export async function handleRunAccountAudit() {
+  if (!auditForm.benchmark_skill_id) {
+    showMessage('请先选择一个对标博主的 Skill', true)
+    return
+  }
+  if (!auditForm.my_content_text.trim()) {
+    showMessage('请先粘贴你自己账号的内容', true)
+    return
+  }
+  await runTaskAction(
+    'audit',
+    '已提交账号体检任务',
+    () =>
+      startAccountAuditTask({
+        platform: currentSocialPlatform.value,
+        benchmark_skill_id: auditForm.benchmark_skill_id,
+        my_content_text: auditForm.my_content_text.trim()
+      }),
+    async () => {
+      await refreshAccountAuditRuns()
+      selectedAuditRunId.value = accountAuditRuns.value[0]?.id ?? null
+    },
+    '账号体检仍在后台执行，请稍后刷新页面查看结果'
+  )
+}
+
 // 拉取采集成本预估；样本/评论数变化或进入配置步骤时调用。
 export async function refreshCollectEstimate() {
   try {
@@ -1620,7 +1726,10 @@ watch(
     bloggerPosts.value = []
     bloggerCollectionRuns.value = []
     bloggerRuns.value = []
+    accountAuditRuns.value = []
+    selectedAuditRunId.value = null
     resetXhsTopicIdeas()
     await refreshBloggers()
+    await refreshAccountAuditRuns()
   }
 )
