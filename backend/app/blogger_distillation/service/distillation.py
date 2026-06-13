@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agent_harness import Critic, HarnessBudget, HarnessTrace, SensorResult, TaskGuide, run_synthesis
 from app.blogger_distillation import analysis, artifacts
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.events import (
@@ -132,8 +133,10 @@ def run_blogger_distillation(
         )
         llm_started_at = time.perf_counter()
         logger.info("认知蒸馏请求已发送：任务ID=%s，平台=%s，模型=%s", task_id, blogger.platform, settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model)
-        distillation = distill_with_llm(settings, blogger, user_info, stats, mode)
+        distillation, harness_trace = distill_with_llm(settings, blogger, user_info, stats, mode)
         quality = evaluate_distillation_quality(distillation, stats, mode)
+        quality["revisions"] = harness_trace.revisions
+        quality["final_passed"] = harness_trace.final_passed
         llm_elapsed = time.perf_counter() - llm_started_at
         logger.info(
             "认知蒸馏返回：任务ID=%s，平台=%s，耗时=%.2fs，输出字段=%s，输出字符=%s",
@@ -172,7 +175,7 @@ def run_blogger_distillation(
         run.tikhub_cost_min_usd = collection_run.tikhub_cost_min_usd
         run.tikhub_cost_max_usd = collection_run.tikhub_cost_max_usd
         run.report_json = json.dumps(
-            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality},
+            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "harness": harness_trace.to_dict()},
             ensure_ascii=False,
             default=str,
         )
@@ -186,7 +189,7 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成，等待确认：批次 #{collection_run.id}，质量评分 {quality['score']}（{quality['grade']}）",
+            f"蒸馏完成，等待确认：批次 #{collection_run.id}，质量评分 {quality['score']}（{quality['grade']}），自我修订 {harness_trace.revisions} 次",
             {
                 "collection_run_id": collection_run.id,
                 "run_id": run.id,
@@ -194,6 +197,7 @@ def run_blogger_distillation(
                 "mode": mode,
                 "quality_score": quality["score"],
                 "quality_grade": quality["grade"],
+                "revisions": harness_trace.revisions,
             },
         )
         return DistillationResult(run=run, skill=skill)
@@ -262,17 +266,22 @@ def abandon_blogger_distillation(db: Session, tenant_id: int, run_id: int) -> Bl
     return run
 
 
-def distill_with_llm(
-    settings: Settings,
-    blogger: BloggerProfile,
-    user_info: dict[str, Any],
-    stats: dict[str, Any],
-    mode: str = "A",
-) -> dict[str, Any]:
-    """复刻 blogger-distiller 的"三层蒸馏"方法：脚本负责事实统计，模型把公开内容提炼成
-    可迁移的「认知层 / 策略层 / 内容层」创作方法论，并逐条拆解 TOP 爆款。"""
-    mode = normalize_mode(mode)
-    if mode == "B":
+@dataclass
+class DistillContext:
+    """一次蒸馏合成的上下文，贯穿 guide/sensors/critic。"""
+
+    blogger: BloggerProfile
+    user_info: dict[str, Any]
+    stats: dict[str, Any]
+    mode: str
+
+
+def build_distill_prompt(ctx: DistillContext) -> str:
+    """构造三层蒸馏的基础提示词（feedforward guide）。"""
+    blogger = ctx.blogger
+    user_info = ctx.user_info
+    stats = ctx.stats
+    if ctx.mode == "B":
         mode_framing = (
             "模式 B：诊断我的账号。下面这个账号就是用户本人的账号，目标不是模仿别人，"
             "而是照镜子——指出账号已经做对的地方、明显的短板，以及可立即执行的增长动作。"
@@ -284,7 +293,7 @@ def distill_with_llm(
             "创作方法论。self_diagnosis 返回空对象（用户本人不是这个账号）。"
         )
 
-    prompt = f"""
+    return f"""
 你是“博主蒸馏器”的分析引擎，复刻 blogger-distiller 的方法论：脚本已经做完确定性统计，你负责把
 公开内容蒸馏成「认知层 / 策略层 / 内容层」三层、可迁移、可执行的创作方法论。
 
@@ -352,9 +361,80 @@ TikHub 用户信息摘要：
   "core_conclusion": "给用户的核心使用建议（一段话）"
 }}
 """
+class DistillSchemaSensor:
+    """计算型阻断传感器：三层结构必须有最低限度内容，否则强制修订。"""
+
+    name = "结构完整性"
+
+    def check(self, result: dict[str, Any], ctx: DistillContext) -> SensorResult:
+        cognitive = result.get("cognitive_layer", {}) or {}
+        content = result.get("content_layer", {}) or {}
+        missing: list[str] = []
+        if not any(cognitive.get(key) for key in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models")):
+            missing.append("认知层(cognitive_layer)四个子项全空，至少补全核心信念与观点张力")
+        if not (content.get("title_formulas") or content.get("body_structures") or content.get("video_script_structures")):
+            missing.append("内容层缺少标题公式与正文/口播结构，至少补全标题公式与一种结构")
+        if missing:
+            return SensorResult(passed=False, issues=missing, corrective_feedback="；".join(missing))
+        return SensorResult(passed=True)
+
+
+class DistillQualitySensor:
+    """计算型评分传感器：复用确定性质量评估，给分并附改进项。"""
+
+    name = "质量评分"
+
+    def check(self, result: dict[str, Any], ctx: DistillContext) -> SensorResult:
+        quality = evaluate_distillation_quality(result, ctx.stats, ctx.mode)
+        feedback = "；".join(quality["issues"]) if quality["issues"] else ""
+        return SensorResult(passed=True, score=quality["score"], issues=quality["issues"], corrective_feedback=feedback)
+
+
+def make_distill_critic(settings: Settings, model: str | None) -> Critic:
+    """推理型评审（inferential sensor）：让模型对蒸馏结果挑刺，产出面向模型的纠错指令。"""
+
+    def critic(result: dict[str, Any], ctx: DistillContext) -> str:
+        prompt = f"""你是博主蒸馏结果的资深审稿人。下面是一份蒸馏 JSON 和原始统计。
+请挑出最多 5 条最该改进的问题（空泛无据、与统计/样本矛盾、把视频当图文、爆款拆解缺来源标注、
+认知层不够锋利等），每条给出具体怎么改。
+
+只输出 JSON：{{"feedback": "一段中文纠错指令，分条列出问题与改法"}}
+
+原始统计：{json.dumps(ctx.stats, ensure_ascii=False, default=str)[:6000]}
+蒸馏结果：{json.dumps(result, ensure_ascii=False, default=str)[:6000]}
+"""
+        data = create_json_response(settings, prompt, model=model)
+        feedback = data.get("feedback")
+        return str(feedback).strip() if isinstance(feedback, str) else ""
+
+    return critic
+
+
+def distill_with_llm(
+    settings: Settings,
+    blogger: BloggerProfile,
+    user_info: dict[str, Any],
+    stats: dict[str, Any],
+    mode: str = "A",
+) -> tuple[dict[str, Any], HarnessTrace]:
+    """复刻 blogger-distiller 的「三层蒸馏」，并用 agent harness 包裹：
+    生成 → 计算型传感器校验（结构+质量分）→ 不达标则叠加推理型评审反馈修订，直到达标或用尽预算。
+    返回（蒸馏结果, 合成轨迹）。"""
+    mode = normalize_mode(mode)
+    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=stats, mode=mode)
     model = (settings.distill_text_model or "").strip() or None
-    data = create_json_response(settings, prompt, model=model)
-    return normalize_distillation(data, mode)
+    guide = TaskGuide(
+        name="博主蒸馏",
+        build_prompt=build_distill_prompt,
+        normalize=lambda data, c: normalize_distillation(data, c.mode),
+    )
+    sensors = [DistillSchemaSensor(), DistillQualitySensor()]
+    critic = make_distill_critic(settings, model) if settings.harness_llm_critic_enabled else None
+    budget = HarnessBudget(
+        max_attempts=1 + max(0, settings.harness_max_revise_iterations),
+        min_score=settings.harness_min_quality_score,
+    )
+    return run_synthesis(settings, guide, ctx, sensors, budget, model=model, critic=critic)
 
 
 # 蒸馏输出的三层结构骨架，缺字段时用它补齐，保证下游渲染与质量评估稳定。

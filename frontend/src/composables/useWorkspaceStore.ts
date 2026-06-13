@@ -1171,22 +1171,24 @@ export interface DistillRunMeta {
   qualityScore: number | null
   qualityGrade: string
   qualityIssues: string[]
+  revisions: number
 }
 
 export function distillRunMeta(run: BloggerDistillationRun | null | undefined): DistillRunMeta {
-  const empty: DistillRunMeta = { mode: 'A', qualityScore: null, qualityGrade: '', qualityIssues: [] }
+  const empty: DistillRunMeta = { mode: 'A', qualityScore: null, qualityGrade: '', qualityIssues: [], revisions: 0 }
   if (!run?.report_json) return empty
   try {
     const parsed = JSON.parse(run.report_json) as {
       mode?: string
-      quality?: { score?: number; grade?: string; issues?: string[] }
+      quality?: { score?: number; grade?: string; issues?: string[]; revisions?: number }
     }
     const quality = parsed.quality || {}
     return {
       mode: parsed.mode === 'B' ? 'B' : 'A',
       qualityScore: typeof quality.score === 'number' ? quality.score : null,
       qualityGrade: typeof quality.grade === 'string' ? quality.grade : '',
-      qualityIssues: Array.isArray(quality.issues) ? quality.issues : []
+      qualityIssues: Array.isArray(quality.issues) ? quality.issues : [],
+      revisions: typeof quality.revisions === 'number' ? quality.revisions : 0
     }
   } catch {
     return empty

@@ -184,6 +184,7 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                   <p class="distill-result-meta">
                     <span class="status-chip status-chip--neutral">{{ selectedRunMeta.mode === 'B' ? '诊断我的账号' : '拆解对标博主' }}</span>
                     <span v-if="selectedRunMeta.qualityScore !== null" class="status-chip" :class="`status-chip--${qualityTone(selectedRunMeta.qualityGrade)}`">质量自检 {{ selectedRunMeta.qualityScore }} 分 · {{ selectedRunMeta.qualityGrade }}</span>
+                    <span v-if="selectedRunMeta.revisions > 0" class="status-chip status-chip--info">已自我修订 {{ selectedRunMeta.revisions }} 次</span>
                   </p>
                 </div>
                 <div v-if="selectedBloggerRun.status === 'pending_confirmation'" class="actions">

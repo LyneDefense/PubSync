@@ -115,9 +115,11 @@ def render_quality_panel(quality: dict[str, Any]) -> str:
     score = quality.get("score", 0)
     grade = quality.get("grade", "")
     issues = quality.get("issues") or []
+    revisions = quality.get("revisions")
+    revise_note = f"，已自我修订 {revisions} 次" if isinstance(revisions, int) and revisions > 0 else "（一次通过）"
     parts = [
         '<div class="distill-quality">',
-        f"<h2>蒸馏质量自检：{html.escape(str(score))} 分 · {html.escape(str(grade))}</h2>",
+        f"<h2>蒸馏质量自检：{html.escape(str(score))} 分 · {html.escape(str(grade))}{html.escape(revise_note)}</h2>",
     ]
     if issues:
         parts.append("<p>可改进项：</p>")
