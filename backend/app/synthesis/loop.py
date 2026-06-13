@@ -34,8 +34,11 @@ def run_synthesis(
     """
     trace = SynthesisTrace(task=guide.name)
     feedback = ""
-    best_score: int | None = None
     best_result: dict[str, Any] | None = None
+    best_score: int | None = None
+    # 选「最优一版」的排序键：优先选阻断型传感器通过的版本，再比分数。
+    # 避免预算用尽时返回一个分数虚高但结构无效（如阻断不通过）的结果。
+    best_rank: tuple[bool, int] | None = None
 
     for attempt in range(1, max(1, budget.max_attempts) + 1):
         started = time.perf_counter()
@@ -57,8 +60,9 @@ def run_synthesis(
                 revised_with=feedback,
             )
         )
-        if best_result is None or (verdict.score is not None and (best_score is None or verdict.score > best_score)):
-            best_score, best_result = verdict.score, data
+        rank = (verdict.passed, verdict.score if verdict.score is not None else -1)
+        if best_rank is None or rank > best_rank:
+            best_rank, best_score, best_result = rank, verdict.score, data
 
         meets_score = verdict.score is None or verdict.score >= budget.min_score
         if verdict.passed and meets_score:

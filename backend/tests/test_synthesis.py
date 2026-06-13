@@ -55,6 +55,21 @@ class _BlockingOnceSensor:
         return SensorResult(passed=True)
 
 
+class _ScriptedSensor:
+    """按 attempt 顺序返回预设的 (passed, score)。"""
+
+    name = "scripted"
+
+    def __init__(self, verdicts):
+        self.verdicts = list(verdicts)
+        self.index = 0
+
+    def check(self, result, ctx):
+        passed, score = self.verdicts[min(self.index, len(self.verdicts) - 1)]
+        self.index += 1
+        return SensorResult(passed=passed, score=score, corrective_feedback="" if passed else "修一下")
+
+
 def _guide() -> TaskGuide:
     return TaskGuide(name="t", build_prompt=lambda ctx: "base-prompt")
 
@@ -106,6 +121,19 @@ def test_blocking_sensor_forces_revision(monkeypatch):
     assert model.calls == 2
     assert trace.revisions == 1
     assert trace.final_passed is True
+
+
+def test_budget_exhausted_prefers_passing_over_higher_scoring_failed(monkeypatch):
+    # attempt1: 通过但分数 60（未达 80，不停）；attempt2: 不通过但分数 95。
+    # 预算用尽后应返回「通过」的那一版（attempt1 / {"v":1}），而不是分数更高但不通过的 attempt2。
+    model = _ScriptedModel([{"v": 1}, {"v": 2}])
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
+    result, trace = run_synthesis(
+        _settings(), _guide(), None, [_ScriptedSensor([(True, 60), (False, 95)])], _budget(max_attempts=2)
+    )
+    assert trace.final_passed is False
+    assert result == {"v": 1}
+    assert trace.final_score == 60
 
 
 def test_critic_runs_only_before_revision(monkeypatch):
