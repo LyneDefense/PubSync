@@ -3,7 +3,6 @@
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { computed } from 'vue'
 import { sanitizeHtml } from '../utils/sanitize'
-import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   article,
@@ -97,7 +96,6 @@ const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                   <strong>诊断我的账号</strong><small>这个账号就是我，给出优势/短板/增长动作</small>
                 </button>
               </div>
-              <InlineTaskProgress :active="pendingAction === 'distill'" title="正在蒸馏风格" fallback="大模型正在按「认知层 / 策略层 / 内容层」提炼方法论并逐条拆解爆款。" />
               <p class="form-hint">蒸馏完成后会进入结果确认页，并给出质量自检评分；保存后 Skill 才会生效。</p>
             </section>
             <section v-if="xhsDistillStep === 4" class="creation-stage-card active">

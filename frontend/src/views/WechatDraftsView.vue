@@ -2,7 +2,6 @@
 // 公众号·文章草稿：标题/导语/封面/正文编辑与发送到公众号草稿箱。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { sanitizeHtml } from '../utils/sanitize'
-import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import {
   activeArticleTab,
   activeMainTab,
@@ -43,7 +42,6 @@ import {
             </button>
           </div>
         </div>
-        <InlineTaskProgress :active="pendingAction === 'generate'" title="正在生成文章" fallback="正在生成公众号文章,可能需要数分钟。" />
         <div class="module-subnav">
           <div class="tabs" role="tablist" aria-label="文章草稿">
             <button

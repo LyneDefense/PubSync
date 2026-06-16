@@ -3,7 +3,6 @@
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImageOutputGrid from '../components/ImageOutputGrid.vue'
-import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import {
   parseJsonObject,
   xhsContentTypeLabel,
@@ -153,7 +152,6 @@ import {
                 关键词
                 <input v-model="xhsPackageForm.keywords" type="text" placeholder="用逗号分隔，例如：猫粮, 配料表, 蛋白质" />
               </label>
-              <InlineTaskProgress :active="pendingAction === 'xhs-topic'" title="正在生成选题" fallback="大模型正在结合 Skill、主题和目标人群整理方向。" />
               <div v-if="xhsTopicIdeas.length" class="topic-idea-grid">
                 <button
                   v-for="(idea, index) in xhsTopicIdeas"
@@ -207,7 +205,6 @@ import {
                   <span>分镜、旁白、字幕建议</span>
                 </label>
               </div>
-              <InlineTaskProgress :active="pendingAction === 'xhs-package'" title="正在生成正文/脚本" fallback="会先生成内容结构；如果选择配图，会继续规划并生成图片。" />
               <section v-if="currentXhsDraft" class="package-copy-block">
                 <div class="inline-card-header">
                   <h3>{{ currentXhsDraft.title }}</h3>
@@ -263,7 +260,6 @@ import {
                   <button type="button" :disabled="!currentXhsDraft" @click="handleDiscardXhsDraft">放弃本次创作</button>
                 </div>
               </div>
-              <InlineTaskProgress :active="pendingAction === 'xhs-package-save'" title="正在保存发布包" fallback="保存后会进入发布包历史，方便后续查看和复制。" />
               <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会显示本次创作的最终预览。保存后才会进入发布包历史。</p>
               <div v-else class="package-preview draft-preview">
                 <div class="package-preview-head">
