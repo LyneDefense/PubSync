@@ -257,7 +257,10 @@ button.task-button.running span {
 }
 
 .side-nav button {
+  display: flex;
+  align-items: center;
   justify-content: flex-start;
+  gap: var(--space-2xs);
   min-height: 38px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -266,6 +269,15 @@ button.task-button.running span {
   padding: 0 var(--space-sm);
   text-align: left;
   font-weight: 600;
+}
+
+.side-nav button .nav-icon {
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+}
+
+.side-nav button.active .nav-icon {
+  color: var(--color-accent);
 }
 
 .side-nav button:hover {

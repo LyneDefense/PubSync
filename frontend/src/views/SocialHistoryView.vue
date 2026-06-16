@@ -31,7 +31,7 @@ import {
       <section v-if="isSocialPlatform && currentSocialTab === 'history'" class="panel">
         <div class="section-header">
           <div>
-            <h2>{{ currentSocialPlatformName }}发布包历史</h2>
+            <h2>{{ currentSocialPlatformName }}发布草稿</h2>
             <p class="toolbar-subtitle">这里专门查看、复制和管理历史生成结果，不进入生成流程。</p>
           </div>
           </div>

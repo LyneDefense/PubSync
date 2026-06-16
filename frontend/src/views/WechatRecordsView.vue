@@ -7,7 +7,7 @@ import { activeMainTab, activeWechatTab } from '../composables/useWorkspaceStore
 <template>
   <ComingSoonPanel
     v-if="activeMainTab === 'wechat' && activeWechatTab === 'records'"
-    title="公众号发布记录"
-    description="这里会汇总每日早报和 AI 创作文章的草稿箱推送记录。"
+    title="公众号发布草稿"
+    description="这里会汇总每日早报和 AI 创作文章推送到草稿箱的记录。"
   />
 </template>

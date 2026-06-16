@@ -164,6 +164,7 @@ export const activeXhsTab = ref<XhsTab>('collect')
 export const activeDouyinTab = ref<DouyinTab>('collect')
 export const xhsCollectStep = ref(1)
 export const xhsDistillStep = ref(1)
+export const wechatBriefStep = ref(1)
 export const activeNewsTab = ref<NewsTab>('')
 export const activeArticleTab = ref<ArticleTab>('preview')
 export const activeSettingsTab = ref<SettingsTab>('general')
@@ -427,6 +428,17 @@ export const selectedXhsTopicIdea = computed(() =>
 export const xhsCreationStepLabels = ['选择博主', '选择 Skill', '生成选题', '生成正文', '封面配图', '确认发布']
 export const xhsCollectStepLabels = ['选择博主', '配置采集', '执行采集', '查看结果']
 export const xhsDistillStepLabels = ['选择博主', '选择批次', '执行蒸馏', '确认结果']
+export const wechatBriefStepLabels = ['选新闻', '生成文章', '预览/编辑', '发布草稿箱']
+export const canGoNextWechatBriefStep = computed(() => {
+  // 第 1 步「选新闻」不强制勾选(允许用已有勾选直接生成);第 2 步要先生成出文章才能进预览。
+  if (wechatBriefStep.value === 2) {
+    return hasArticle.value
+  }
+  if (wechatBriefStep.value === 3) {
+    return hasArticle.value
+  }
+  return wechatBriefStep.value === 1
+})
 export const canGoNextXhsCollectStep = computed(() => {
   if (xhsCollectStep.value === 1) {
     return Boolean(selectedBlogger.value)
@@ -975,6 +987,18 @@ export function goNextXhsDistillStep() {
   xhsDistillStep.value = Math.min(4, xhsDistillStep.value + 1)
 }
 
+export function goPreviousWechatBriefStep() {
+  wechatBriefStep.value = Math.max(1, wechatBriefStep.value - 1)
+}
+
+export function goNextWechatBriefStep() {
+  if (!canGoNextWechatBriefStep.value) {
+    showMessage('请先生成文章再进入预览', true)
+    return
+  }
+  wechatBriefStep.value = Math.min(4, wechatBriefStep.value + 1)
+}
+
 export async function refreshSelectedBlogger() {
   if (!selectedBloggerId.value) {
     bloggerPosts.value = []
@@ -1504,6 +1528,10 @@ export async function handleGenerateArticle() {
     async () => {
       await refreshArticle()
       activeArticleTab.value = 'preview'
+      // 生成成功后自动进入「预览/编辑」步骤(第 3 步)。
+      if (hasArticle.value) {
+        wechatBriefStep.value = 3
+      }
     },
     '文章还在后台生成，请稍后刷新页面查看最新文章'
   )
