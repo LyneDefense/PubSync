@@ -124,7 +124,7 @@ import {
                   <span>03 生成/选择选题</span>
                   <h3>先确定这次要写什么</h3>
                 </div>
-                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill" @click="handleGenerateXhsTopicIdeas">
+                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill" :title="!selectedXhsSkill ? '请先在第 2 步选择一个 Skill' : ''" @click="handleGenerateXhsTopicIdeas">
                   {{ pendingAction === 'xhs-topic' ? '生成中' : xhsTopicIdeas.length ? '重新生成选题' : '生成选题方案' }}
                 </button>
               </div>
@@ -174,7 +174,7 @@ import {
                   <span>04 生成正文/脚本</span>
                   <h3>选择内容类型并生成</h3>
                 </div>
-                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill || !xhsPackageForm.topic.trim()" @click="handleCreateXhsPackage">
+                <button type="button" class="primary" :disabled="Boolean(pendingAction) || !selectedXhsSkill || !xhsPackageForm.topic.trim()" :title="!selectedXhsSkill ? '请先选择 Skill' : (!xhsPackageForm.topic.trim() ? '请先在上方选择或填写一个选题' : '')" @click="handleCreateXhsPackage">
                   {{ pendingAction === 'xhs-package' ? '生成中' : currentXhsDraft ? '重新生成' : '开始生成' }}
                 </button>
               </div>

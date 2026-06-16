@@ -83,10 +83,13 @@ const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
             <section v-if="xhsDistillStep === 3" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div><span>03 执行蒸馏</span><h3>基于采集批次生成 Skill</h3></div>
-                <button type="button" class="task-button primary" :class="{ running: pendingAction === 'distill' }" :style="taskButtonStyle('distill')" :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)" @click="handleDistillBlogger">
+                <button type="button" class="task-button primary" :class="{ running: pendingAction === 'distill' }" :style="taskButtonStyle('distill')" :disabled="!selectedBloggerId || !selectedCollectionRunId || Boolean(pendingAction)" :title="!selectedBloggerId ? '请先在第 1 步选择博主' : (!selectedCollectionRunId ? '请先在第 2 步选择采集批次' : '')" @click="handleDistillBlogger">
                   <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
                 </button>
               </div>
+              <p v-if="!selectedBloggerId || !selectedCollectionRunId" class="form-hint">
+                {{ !selectedBloggerId ? '还没选择博主——请回到第 1 步选择。' : '还没选择采集批次——请回到第 2 步选择一次已完成的采集。' }}
+              </p>
               <p class="form-hint">把对标博主的公开内容提炼成可迁移的创作方法论 Skill。蒸馏完成后进入结果确认页并给出质量自检评分；保存后 Skill 才会生效。</p>
             </section>
             <section v-if="xhsDistillStep === 4" class="creation-stage-card active">

@@ -1337,11 +1337,19 @@ export async function refreshSelfDiagnoseRuns() {
 
 export async function handleRunAccountAudit() {
   if (!auditForm.my_blogger_id) {
-    showMessage('请选择我的账号', true)
+    showMessage('请先选择我的账号', true)
     return
   }
   if (!auditForm.benchmark_blogger_id) {
-    showMessage('请选择对标账号', true)
+    showMessage('请先选择对标账号', true)
+    return
+  }
+  if (!bloggers.value.find((b) => b.id === auditForm.my_blogger_id)?.sample_count) {
+    showMessage('「我的账号」还没有采集内容，请先到「我的账号」采集', true)
+    return
+  }
+  if (!bloggers.value.find((b) => b.id === auditForm.benchmark_blogger_id)?.sample_count) {
+    showMessage('「对标账号」还没有采集内容，请先到「数据采集」采集', true)
     return
   }
   await runTaskAction(
@@ -1365,7 +1373,11 @@ export async function handleRunAccountAudit() {
 
 export async function handleRunSelfDiagnose() {
   if (!selfForm.my_blogger_id) {
-    showMessage('请选择我的账号', true)
+    showMessage('请先选择我的账号', true)
+    return
+  }
+  if (!bloggers.value.find((b) => b.id === selfForm.my_blogger_id)?.sample_count) {
+    showMessage('该账号还没有采集内容，请先到「我的账号」采集', true)
     return
   }
   await runTaskAction(
@@ -1588,6 +1600,11 @@ export async function handleFetchNews() {
 }
 
 export async function handleGenerateArticle() {
+  if (!news.value.some((item) => item.selected)) {
+    showMessage('请先在第 1 步勾选要写进文章的新闻', true)
+    wechatBriefStep.value = 1
+    return
+  }
   await runTaskAction(
     'generate',
     '已提交后台生成任务',

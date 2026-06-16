@@ -59,12 +59,14 @@ function pick(id: number) {
           </label>
           <p v-if="!(accountPosts[selfForm.my_blogger_id] || []).length" class="empty-region">这个账号还没采集内容,去「我的账号」刷新一下。</p>
         </div>
+        <p v-if="!selfForm.my_blogger_id" class="form-hint">请先在上方选择一个「我的账号」(没有就点「去添加」)。</p>
         <button
           type="button"
           class="task-button primary audit-run"
           :class="{ running: pendingAction === 'self-diagnose' }"
           :style="taskButtonStyle('self-diagnose')"
           :disabled="!selfForm.my_blogger_id || Boolean(pendingAction)"
+          :title="!selfForm.my_blogger_id ? '请先选择我的账号' : ''"
           @click="handleRunSelfDiagnose"
         >
           <span>{{ pendingAction === 'self-diagnose' ? `诊断中 ${Math.round(taskProgress['self-diagnose'])}%` : '开始诊断' }}</span>
