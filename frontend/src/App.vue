@@ -158,9 +158,9 @@ onUnmounted(() => {
         </template>
         <template v-else-if="isSocialPlatform">
           <p class="side-group">博主蒸馏</p>
+          <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')"><NavIcon name="folder" />博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')"><NavIcon name="download" />数据采集</button>
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')"><NavIcon name="funnel" />蒸馏</button>
-          <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')"><NavIcon name="folder" />博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')"><NavIcon name="target" />账号对标</button>
           <p class="side-group">AI 创作</p>
           <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')"><NavIcon name="sparkles" />对标博主创作</button>
