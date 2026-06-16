@@ -87,6 +87,41 @@ export interface AppSettingRead {
   updated_at?: string
 }
 
+export interface CostEvent {
+  id: number
+  created_at: string
+  tenant_id: number | null
+  tenant_name: string | null
+  task_id: string | null
+  provider: string
+  kind: string
+  model: string | null
+  quantity: number
+  unit: string
+  cost_usd: number
+  meta_json: string | null
+}
+
+export interface CostByKey {
+  key: string
+  label: string
+  cost_usd: number
+  count: number
+}
+
+export interface CostSummary {
+  days: number
+  total_usd: number
+  event_count: number
+  by_provider: CostByKey[]
+  by_tenant: CostByKey[]
+}
+
+export interface ModelPrices {
+  text: Record<string, { input_per_1k: number; output_per_1k: number }>
+  image: Record<string, number>
+}
+
 export interface ContentProfile {
   tenant_id: number
   publication_name: string

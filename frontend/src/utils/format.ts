@@ -1,6 +1,4 @@
 import type {
-  BloggerCollectionRun,
-  BloggerDistillationRun,
   BloggerPost,
   OperationTaskEvent,
   XhsPublishPackage,
@@ -39,14 +37,6 @@ export function parseJsonObject(raw?: string | null): Record<string, unknown> {
   } catch {
     return {}
   }
-}
-
-export function runCostLabel(run: BloggerDistillationRun): string {
-  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
-}
-
-export function collectionCostLabel(run: BloggerCollectionRun): string {
-  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}`
 }
 
 // 全站统一的状态语义。色调：success=墨绿 / danger=砖红 / info=蓝(进行中) /

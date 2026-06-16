@@ -21,7 +21,10 @@ import type {
   BloggerSkill,
   ConfigView,
   ContentProfile,
+  CostEvent,
+  CostSummary,
   CurrentUser,
+  ModelPrices,
   QueueHealth,
   LoginResponse,
   NewsItem,
@@ -192,6 +195,28 @@ export function retryAdminTask(taskId: string) {
 
 export function getAdminQueueHealth() {
   return request<QueueHealth>('/admin/queue')
+}
+
+export function getAdminCosts(params: { provider?: string; tenant_id?: number; days?: number; limit?: number } = {}) {
+  const search = new URLSearchParams()
+  if (params.provider) search.set('provider', params.provider)
+  if (params.tenant_id) search.set('tenant_id', String(params.tenant_id))
+  if (params.days) search.set('days', String(params.days))
+  if (params.limit) search.set('limit', String(params.limit))
+  const qs = search.toString()
+  return request<CostEvent[]>(`/admin/costs${qs ? `?${qs}` : ''}`)
+}
+
+export function getAdminCostSummary(days: number) {
+  return request<CostSummary>(`/admin/costs/summary?days=${days}`)
+}
+
+export function getModelPrices() {
+  return request<ModelPrices>('/admin/costs/prices')
+}
+
+export function putModelPrices(payload: ModelPrices) {
+  return request<ModelPrices>('/admin/costs/prices', { method: 'PUT', body: JSON.stringify(payload) })
 }
 
 export function listAppSettings() {

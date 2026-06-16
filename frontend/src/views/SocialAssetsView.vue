@@ -4,10 +4,7 @@
 import { computed } from 'vue'
 import { sanitizeHtml } from '../utils/sanitize'
 import StatusChip from '../components/StatusChip.vue'
-import {
-  bloggerCommentLabel,
-  runCostLabel
-} from '../utils/format'
+import { bloggerCommentLabel } from '../utils/format'
 import {
   article,
   bloggerCollectionRuns,
@@ -38,7 +35,6 @@ import {
   selectedBloggerSkill,
   selectedCollectionRun,
   selectedCollectionRunId,
-  selectedRunCostLabel,
   showAllBloggerRuns,
   showCollectionResults,
   visibleBloggerRunCount,
@@ -147,7 +143,7 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                     @click="selectBloggerRun(run.id)"
                   >
                     <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · <StatusChip :status="run.status" /> 样本 {{ run.sample_count }} · {{ runCostLabel(run) }}</span>
+                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · <StatusChip :status="run.status" /> 样本 {{ run.sample_count }}</span>
                     <em v-if="run.status === 'failed'" class="run-error">失败原因：{{ run.error_message || '未记录失败原因' }}</em>
                   </button>
                   <p v-if="!visibleBloggerRuns.length && resultCollectionFilter" class="empty-region">这个采集批次还没有蒸馏结果。</p>
@@ -198,8 +194,6 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
               </div>
               <div class="workspace-snapshot scoped-snapshot">
                 <div><span>样本数量</span><strong>{{ selectedBloggerRun.sample_count }}</strong></div>
-                <div><span>TikHub 请求</span><strong>{{ selectedBloggerRun.tikhub_request_count }}</strong></div>
-                <div><span>本次费用</span><strong>{{ selectedRunCostLabel }}</strong></div>
               </div>
               <div class="distill-grid compact-result">
                 <article class="distill-card">

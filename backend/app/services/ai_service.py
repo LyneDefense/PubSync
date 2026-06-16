@@ -9,6 +9,7 @@ from uuid import uuid4
 import httpx
 
 from app.config import Settings
+from app.cost.context import record_image_usage, record_text_usage
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ def openai_text(settings: Settings, prompt: str, model: str | None = None) -> st
         "text": {"format": {"type": "json_object"}},
     }
     data = openai_post(settings=settings, path="/responses", payload=payload, timeout=180)
+    record_text_usage("openai", payload["model"], data)
     return extract_openai_response_text(data)
 
 
@@ -159,6 +161,7 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> s
     if supports_minimax_response_format(model):
         payload["response_format"] = {"type": "json_object"}
     data = minimax_post(settings, "/chat/completions", payload, timeout=180)
+    record_text_usage("minimax", model, data)
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
@@ -214,6 +217,7 @@ def generate_openai_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
     first = images[0]
     if not isinstance(first, dict) or not first.get("b64_json"):
         raise AIServiceError("OpenAI 图片生成返回缺少 b64_json")
+    record_image_usage("openai", settings.openai_image_model, 1)
     return base64.b64decode(str(first["b64_json"])), "png"
 
 
@@ -235,6 +239,7 @@ def generate_minimax_image(settings: Settings, prompt: str) -> tuple[bytes, str]
     image = first_base64_image(data)
     if not image:
         raise AIServiceError(f"MiniMax 图片生成返回缺少 base64 图片：{data}")
+    record_image_usage("minimax", settings.minimax_image_model, 1)
     return base64.b64decode(image), "jpg"
 
 

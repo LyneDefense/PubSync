@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.admin.runtime_config import apply_overrides
+from app.cost.context import cost_capture
 from app.blogger_distillation.service import (
     DistillationCancelled,
     record_task_event,
@@ -94,7 +95,9 @@ def execute_task(
         if cancellable and task.status == TaskStatus.cancel_requested:
             mark_task_cancelled(db, task, f"{label}已停止")
             return
-        work(db, task)
+        # 包裹任务执行:期间所有 TikHub/LLM 调用的费用归属到该 task/tenant,结束统一落库。
+        with cost_capture(tenant_id=task.tenant_id, task_id=task_id):
+            work(db, task)
     except DistillationCancelled as exc:
         logger.info("任务停止：任务ID=%s，类型=%s，原因=%s", task_id, label, exc)
         mark_task_cancelled_by_id(db, task_id, f"{label}已停止", str(exc))

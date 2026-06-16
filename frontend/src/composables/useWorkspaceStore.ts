@@ -13,12 +13,10 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useToast } from './useToast'
 import {
   bloggerCommentLabel,
-  collectionCostLabel,
   findXhsDraftFromEvents,
   parseEventPayload,
   parseJsonArray,
   parseJsonObject,
-  runCostLabel,
   sampledCommentCount,
   wait,
   xhsContentTypeLabel,
@@ -40,7 +38,6 @@ import {
   generateArticle,
   generateXhsTopicIdeas,
   getAuthToken,
-  getCollectEstimate,
   getCurrentUser,
   getLatestArticle,
   getTenantId,
@@ -77,7 +74,6 @@ import type {
   BloggerProfile,
   BloggerSearchResult,
   BloggerSkill,
-  CollectEstimate,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -213,9 +209,6 @@ export const bloggerDistillForm = reactive({
 // 蒸馏模式：A=拆解对标博主（默认），B=诊断我的账号。
 export const xhsDistillMode = ref<'A' | 'B'>('A')
 
-// 采集成本预估（P5）：在配置采集步骤按样本数实时展示预计请求数与费用区间。
-export const bloggerCollectEstimate = ref<CollectEstimate | null>(null)
-
 export const xhsPackageForm = reactive({
   skill_id: 0,
   content_type: 'text_note' as XhsPublishContentType,
@@ -350,13 +343,6 @@ export const visibleBloggerRuns = computed(() =>
   resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
 )
 export const visibleBloggerRunCount = computed(() => visibleBloggerRuns.value.length)
-export const selectedRunCostLabel = computed(() => {
-  const run = selectedBloggerRun.value
-  if (!run) {
-    return '暂无'
-  }
-  return `$${run.tikhub_estimated_cost_usd.toFixed(4)}（区间 $${run.tikhub_cost_min_usd.toFixed(4)} - $${run.tikhub_cost_max_usd.toFixed(4)}）`
-})
 export const xhsPackageImageUrls = computed(() => parseJsonArray(selectedXhsPackage.value?.image_urls_json))
 export const xhsPackageImagePlan = computed(() => parseJsonArray(selectedXhsPackage.value?.image_plan_json))
 export const xhsPackageHashtags = computed(() => parseJsonArray(selectedXhsPackage.value?.hashtags_json))
@@ -1304,18 +1290,6 @@ export async function handleRunAccountAudit() {
     },
     '账号体检仍在后台执行，请稍后刷新页面查看结果'
   )
-}
-
-// 拉取采集成本预估；样本/评论数变化或进入配置步骤时调用。
-export async function refreshCollectEstimate() {
-  try {
-    bloggerCollectEstimate.value = await getCollectEstimate(
-      bloggerDistillForm.sample_limit,
-      bloggerDistillForm.comments_per_post
-    )
-  } catch {
-    bloggerCollectEstimate.value = null
-  }
 }
 
 export async function handleCreateXhsPackage() {

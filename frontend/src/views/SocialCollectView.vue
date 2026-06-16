@@ -1,11 +1,9 @@
 <script setup lang="ts">
 // 社媒·数据采集：选择博主、配置并执行小红书/抖音样本采集。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
-import { onMounted } from 'vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   article,
-  bloggerCollectEstimate,
   bloggerCollectionRuns,
   bloggerDistillForm,
   bloggers,
@@ -19,7 +17,6 @@ import {
   isSocialPlatform,
   openCreateBloggerModal,
   pendingAction,
-  refreshCollectEstimate,
   selectBlogger,
   selectCollectionRun,
   selectedBlogger,
@@ -31,9 +28,6 @@ import {
   xhsCollectStep,
   xhsCollectStepLabels
 } from '../composables/useWorkspaceStore'
-
-// 进入采集面板时拉一次成本预估；样本/评论数改变时再刷新。
-onMounted(refreshCollectEstimate)
 </script>
 
 <template>
@@ -75,14 +69,9 @@ onMounted(refreshCollectEstimate)
             <section v-if="xhsCollectStep === 2" class="creation-stage-card active">
               <div class="inline-card-header"><div><span>02 配置采集</span><h3>设置样本和评论范围</h3></div></div>
               <div class="config-grid">
-                <label>采样笔记数<input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" @change="refreshCollectEstimate" /></label>
-                <label>每条评论数<input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" @change="refreshCollectEstimate" /></label>
+                <label>采样笔记数<input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" /></label>
+                <label>每条评论数<input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" /></label>
               </div>
-              <p v-if="bloggerCollectEstimate" class="collect-estimate">
-                预计 TikHub 请求约 <strong>{{ bloggerCollectEstimate.request_estimate }}</strong> 次，
-                预计费用 <strong>${{ bloggerCollectEstimate.cost_usd.toFixed(3) }}</strong>
-                （区间 ${{ bloggerCollectEstimate.cost_usd_min.toFixed(3) }} - ${{ bloggerCollectEstimate.cost_usd_max.toFixed(3) }}）。实际以采集结果为准。
-              </p>
               <label class="asr-callout">
                 <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
                 <span><strong>启用视频字幕/ASR 分析</strong><small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。</small></span>

@@ -67,3 +67,39 @@ class AdminTenantRead(BaseModel):
 
 class PasswordReset(BaseModel):
     password: str = Field(min_length=6, max_length=120)
+
+
+# —— 费用台账 ——
+class CostEventRead(BaseModel):
+    id: int
+    created_at: datetime
+    tenant_id: int | None
+    tenant_name: str | None = None
+    task_id: str | None
+    provider: str
+    kind: str
+    model: str | None
+    quantity: int
+    unit: str
+    cost_usd: float
+    meta_json: str | None
+
+
+class CostByKey(BaseModel):
+    key: str
+    label: str
+    cost_usd: float
+    count: int
+
+
+class CostSummary(BaseModel):
+    days: int
+    total_usd: float
+    event_count: int
+    by_provider: list[CostByKey]
+    by_tenant: list[CostByKey]
+
+
+class ModelPrices(BaseModel):
+    text: dict[str, Any] = {}
+    image: dict[str, Any] = {}

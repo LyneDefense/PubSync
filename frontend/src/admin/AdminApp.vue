@@ -7,16 +7,18 @@ import { clearAuthToken, clearTenantId, getAuthToken, getCurrentUser, login } fr
 import type { CurrentUser } from '../api/types'
 import AccountsPanel from './panels/AccountsPanel.vue'
 import ConfigPanel from './panels/ConfigPanel.vue'
+import CostsPanel from './panels/CostsPanel.vue'
 import SystemSettingsPanel from './panels/SystemSettingsPanel.vue'
 import TaskQueuePanel from './panels/TaskQueuePanel.vue'
 
-type Section = 'accounts' | 'models' | 'collect' | 'tasks' | 'settings'
+type Section = 'accounts' | 'models' | 'collect' | 'tasks' | 'costs' | 'settings'
 
 const NAV: { key: Section; label: string }[] = [
   { key: 'accounts', label: '账号与工作空间' },
   { key: 'models', label: '模型与生成' },
   { key: 'collect', label: '采集 / ASR' },
   { key: 'tasks', label: '任务队列' },
+  { key: 'costs', label: '费用记录' },
   { key: 'settings', label: '系统设置' }
 ]
 
@@ -106,6 +108,7 @@ function logout() {
       <ConfigPanel v-else-if="section === 'models'" title="模型与生成" :group-keys="['model']" />
       <ConfigPanel v-else-if="section === 'collect'" title="采集 / ASR" :group-keys="['tikhub', 'asr']" />
       <TaskQueuePanel v-else-if="section === 'tasks'" />
+      <CostsPanel v-else-if="section === 'costs'" />
       <SystemSettingsPanel v-else-if="section === 'settings'" />
     </div>
   </div>
