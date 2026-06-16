@@ -18,3 +18,7 @@ class CreationContext:
     content_type: str
     # 对标博主的统计画像（来自该 Skill 对应蒸馏 run 的 report_json.stats），用于收敛后的对标对比；可为空。
     benchmark_stats: dict[str, Any] = field(default_factory=dict)
+    # 租户自定义的额外限流词（来自 AppSetting，可为空）；与内置词库合并后参与合规检查。
+    extra_block_words: list[str] = field(default_factory=list)
+    # 是否启用限流词规避（提示词段 + 阻断 sensor）；由 settings.creation_compliance_enabled 决定。
+    compliance_enabled: bool = True

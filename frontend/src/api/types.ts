@@ -421,6 +421,19 @@ export interface XhsPublishPackageDraft {
   synthesis?: SynthesisTrace
   benchmark?: BenchmarkComparison
   quality?: { score?: number; grade?: string; issues?: string[] }
+  compliance?: ComplianceResult
+}
+
+export interface ComplianceHit {
+  word: string
+  field: string
+  category: string
+}
+
+export interface ComplianceResult {
+  enabled?: boolean
+  passed: boolean
+  hits: ComplianceHit[]
 }
 
 export interface SynthesisAttempt {

@@ -3,10 +3,20 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.compliance import prompt_guidance
 from app.xhs_creation.agent.content_types import BASE_SCHEMA, CONTENT_TYPE_SPECS
 from app.xhs_creation.agent.context import CreationContext
 from app.xhs_creation.agent.platforms import PLATFORM_SPECS
 from app.xhs_creation.normalize import normalize_image_plan, normalize_script, normalize_string_list
+
+
+def _compliance_block(ctx: CreationContext) -> str:
+    if not ctx.compliance_enabled:
+        return ""
+    return (
+        "\n平台限流词规避(这些词会被平台限流/违禁,标题、正文、标签、封面、脚本里都不要出现):\n"
+        f"{prompt_guidance(ctx.platform)}\n"
+    )
 
 
 def build_creation_prompt(ctx: CreationContext) -> str:
@@ -52,7 +62,7 @@ def build_creation_prompt(ctx: CreationContext) -> str:
 本次内容类型:{spec.label}
 - {spec.instruction}
 - {image_instruction}
-
+{_compliance_block(ctx)}
 对标博主蒸馏方法论 Skill:
 {ctx.skill.skill_markdown[:12000]}
 

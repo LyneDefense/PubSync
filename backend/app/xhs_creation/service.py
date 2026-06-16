@@ -5,8 +5,9 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
+from app.compliance import scan_creation_output
 from app.config import Settings
-from app.models import BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
+from app.models import AppSetting, BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
 from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
 from app.services.ai_service import AIServiceError, create_json_response, generate_image, is_ai_enabled
 from app.synthesis import humanize_event, run_agent
@@ -50,7 +51,7 @@ def generate_xhs_publish_package_draft(
         payload.content_type,
         payload.topic,
     )
-    generated, trace, benchmark, quality = generate_package_content(
+    generated, trace, benchmark, quality, compliance = generate_package_content(
         db, settings, tenant_id, blogger, skill, payload, task_id=task_id
     )
     image_plan = normalize_image_plan(generated.get("image_plan"))
@@ -96,10 +97,11 @@ def generate_xhs_publish_package_draft(
         "script_json": json.dumps(normalize_script(generated.get("script"), payload.content_type), ensure_ascii=False),
         "status": "draft",
         "error_message": error_message,
-        # 过程与评判(随草稿透传,不入库):合成轨迹、对标对比、质量评分。
+        # 过程与评判(随草稿透传,不入库):合成轨迹、对标对比、质量评分、合规结果。
         "synthesis": trace.to_dict(),
         "benchmark": benchmark,
         "quality": quality,
+        "compliance": compliance,
     }
     logger.info(
         "%s发布包草稿生成完成：skill_id=%s，图片=%s，自我修订=%s，质量=%s",
@@ -257,10 +259,10 @@ def generate_package_content(
     skill: BloggerSkill,
     payload: XhsPublishPackageCreate,
     task_id: str | None = None,
-) -> tuple[dict[str, Any], Any, dict[str, Any], dict[str, Any]]:
-    """用创作 agent 跑「生成→自检→修订」循环,收敛后做一次对标对比。
+) -> tuple[dict[str, Any], Any, dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """用创作 agent 跑「生成→自检→修订」循环,收敛后做对标对比与限流词残留扫描。
 
-    返回 (生成稿, 合成轨迹, 对标对比, 质量评分)。
+    返回 (生成稿, 合成轨迹, 对标对比, 质量评分, 合规结果)。
     """
     benchmark_stats = _load_benchmark_stats(db, skill)
     ctx = CreationContext(
@@ -270,6 +272,8 @@ def generate_package_content(
         platform=blogger.platform,
         content_type=payload.content_type,
         benchmark_stats=benchmark_stats,
+        extra_block_words=_load_extra_block_words(db),
+        compliance_enabled=settings.creation_compliance_enabled,
     )
     agent = build_creation_agent(settings, ctx)
 
@@ -283,12 +287,35 @@ def generate_package_content(
 
     generated, trace = run_agent(settings, agent, ctx, on_event=on_event)
 
+    # 收敛后再扫一次限流词,把残留(若预算耗尽仍有)标注给用户。
+    compliance: dict[str, Any] = {"enabled": ctx.compliance_enabled, "passed": True, "hits": []}
+    if ctx.compliance_enabled:
+        hits = scan_creation_output(generated, ctx.platform, ctx.extra_block_words)
+        compliance = {"enabled": True, "passed": not hits, "hits": hits}
+        if task_id:
+            if hits:
+                record_task_event(db, tenant_id, task_id, "平台合规", "running", f"已尽力规避,还有 {len(hits)} 个限流词建议手动调整")
+            else:
+                record_task_event(db, tenant_id, task_id, "平台合规", "running", "内容已规避平台限流词 ✓")
+
     if task_id:
         record_task_event(db, tenant_id, task_id, "对标对比", "running", "正在和对标博主比对差距…")
     model = (settings.distill_text_model or "").strip() or None
     benchmark = build_benchmark_comparison(settings, generated, ctx, model)
     quality = evaluate_creation_quality(generated, ctx)
-    return generated, trace, benchmark, quality
+    return generated, trace, benchmark, quality, compliance
+
+
+def _load_extra_block_words(db: Session) -> list[str]:
+    """从 AppSetting(key=compliance_extra_words,JSON 数组)读租户自定义限流词;缺省空。"""
+    setting = db.get(AppSetting, "compliance_extra_words")
+    if not setting or not setting.value:
+        return []
+    try:
+        words = json.loads(setting.value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [str(w).strip() for w in words if isinstance(words, list) and str(w).strip()]
 
 
 def _load_benchmark_stats(db: Session, skill: BloggerSkill) -> dict[str, Any]:

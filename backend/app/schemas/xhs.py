@@ -35,10 +35,11 @@ class XhsPublishPackageDraftRead(BaseModel):
     script_json: str
     status: str
     error_message: str | None
-    # 过程与评判(随草稿透传,不入库):合成轨迹 / 对标对比 / 质量评分。
+    # 过程与评判(随草稿透传,不入库):合成轨迹 / 对标对比 / 质量评分 / 合规结果。
     synthesis: dict[str, Any] = Field(default_factory=dict)
     benchmark: dict[str, Any] = Field(default_factory=dict)
     quality: dict[str, Any] = Field(default_factory=dict)
+    compliance: dict[str, Any] = Field(default_factory=dict)
 
 
 class XhsPublishPackageSave(BaseModel):

@@ -17,6 +17,7 @@ import {
   currentXhsDraft,
   formatDate,
   xhsDraftBenchmark,
+  xhsDraftCompliance,
   xhsDraftProcess,
   goNextXhsCreationStep,
   goPreviousXhsCreationStep,
@@ -328,6 +329,20 @@ import {
                     <p>{{ segment.voiceover || segment.scene }}</p>
                   </article>
                 </section>
+                <section v-if="xhsDraftCompliance && xhsDraftCompliance.enabled !== false" class="compliance-box" :class="{ warn: !xhsDraftCompliance.passed }">
+                  <div class="inline-card-header">
+                    <h3>平台合规</h3>
+                  </div>
+                  <p v-if="xhsDraftCompliance.passed" class="compliance-ok">已规避平台限流词 ✓</p>
+                  <template v-else>
+                    <p class="compliance-warn">还有 {{ xhsDraftCompliance.hits.length }} 个限流词建议手动调整(改掉后更不容易被限流):</p>
+                    <ul class="compliance-hits">
+                      <li v-for="(hit, i) in xhsDraftCompliance.hits" :key="i">
+                        <b>{{ hit.word }}</b><span>{{ hit.category }} · 在{{ hit.field }}</span>
+                      </li>
+                    </ul>
+                  </template>
+                </section>
                 <section v-if="xhsDraftProcess.length" class="audit-process">
                   <div class="inline-card-header">
                     <h3>创作过程</h3>
@@ -365,3 +380,87 @@ import {
         </div>
       </section>
 </template>
+
+<style scoped>
+.compliance-box {
+  margin-top: var(--space-md, 16px);
+  border: var(--rule-hair);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-sm, 12px);
+}
+
+.compliance-box.warn {
+  border-color: var(--color-warn, #d97706);
+}
+
+.compliance-ok {
+  color: var(--color-ink-3, inherit);
+  font-size: var(--text-sm);
+}
+
+.compliance-warn {
+  color: var(--color-warn, #b45309);
+  font-size: var(--text-sm);
+  margin-bottom: 8px;
+}
+
+.compliance-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.compliance-hits li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border: var(--rule-hair);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--text-sm);
+}
+
+.compliance-hits li span {
+  color: var(--color-ink-3, inherit);
+  font-size: var(--text-xs, 12px);
+}
+
+.process-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.process-timeline li {
+  display: flex;
+  gap: 10px;
+  font-size: var(--text-sm);
+}
+
+.process-timeline strong {
+  flex: 0 0 auto;
+  min-width: 64px;
+  color: var(--color-ink-2, inherit);
+}
+
+.audit-process,
+.audit-benchmark {
+  margin-top: var(--space-md, 16px);
+}
+
+.benchmark-points {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.benchmark-points li {
+  font-size: var(--text-sm);
+  margin: 2px 0;
+}
+</style>

@@ -387,6 +387,9 @@ export const xhsPackageScriptSegments = computed(() => {
 // 创作草稿的「对标对比」(第5点①)。
 export const xhsDraftBenchmark = computed(() => currentXhsDraft.value?.benchmark || null)
 
+// 创作草稿的「平台限流词」合规结果。
+export const xhsDraftCompliance = computed(() => currentXhsDraft.value?.compliance || null)
+
 // 把合成轨迹翻成通俗的「创作过程」时间线(不暴露原始技术措辞)。
 export interface ProcessStep {
   label: string

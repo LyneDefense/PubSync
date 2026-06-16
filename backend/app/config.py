@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     creation_max_revise_iterations: int = 1
     creation_min_quality_score: int = 80
     creation_llm_critic_enabled: bool = True
+    # 创作产出的平台限流词/违禁词规避（提示词规避 + 命中强制重写）。
+    creation_compliance_enabled: bool = True
     # 账号体检/对标的合成循环参数（偏诊断，阈值略低）。
     audit_max_revise_iterations: int = 1
     audit_min_quality_score: int = 75
