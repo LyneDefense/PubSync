@@ -175,8 +175,8 @@ button.task-button.running span {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  min-height: 100vh;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
 }
 
 .topbar {
@@ -207,9 +207,126 @@ button.task-button.running span {
 .topbar-controls {
   grid-column: 2;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-end;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
+}
+
+.platform-switch {
+  display: inline-flex;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.platform-switch button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  padding: 0 var(--space-sm);
+  font-weight: 700;
+}
+
+.platform-switch button:hover {
+  background: var(--color-paper-3);
+}
+
+.platform-switch button.active {
+  background: var(--color-accent);
+  color: var(--color-paper);
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-content: start;
+  border-right: var(--rule-hair);
+  background: var(--color-paper);
+  padding: var(--space-md) var(--space-xs);
+  overflow-y: auto;
+}
+
+.side-nav button {
+  justify-content: flex-start;
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink-2);
+  padding: 0 var(--space-sm);
+  text-align: left;
+  font-weight: 600;
+}
+
+.side-nav button:hover {
+  border-color: transparent;
+  background: var(--color-paper-3);
+}
+
+.side-nav button.active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-weight: 800;
+}
+
+.side-group {
+  margin: var(--space-sm) 0 var(--space-2xs);
+  padding: 0 var(--space-sm);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.side-group:first-child {
+  margin-top: 0;
+}
+
+.side-sep {
+  border: 0;
+  border-top: var(--rule-hair);
+  margin: var(--space-sm) var(--space-2xs);
+  width: auto;
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .app-body {
+    grid-template-columns: 1fr;
+  }
+
+  .side-nav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: var(--space-2xs);
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: var(--rule-hair);
+    padding: var(--space-2xs) var(--space-sm);
+  }
+
+  .side-group,
+  .side-sep {
+    display: none;
+  }
+
+  .side-nav button {
+    white-space: nowrap;
+  }
 }
 
 .main-tabs {
@@ -391,6 +508,8 @@ button.task-button.running span {
   align-content: start;
   gap: var(--space-md);
   padding: var(--space-lg);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .workspace-snapshot {

@@ -98,6 +98,35 @@ onUnmounted(() => {
     <header class="topbar">
       <h1 class="topbar-title">多平台内容自动化</h1>
       <div class="topbar-controls">
+        <div class="platform-switch" role="tablist" aria-label="媒体平台">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeMainTab === 'wechat'"
+            :class="{ active: activeMainTab === 'wechat' }"
+            @click="activeMainTab = 'wechat'"
+          >
+            公众号
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeMainTab === 'xhs'"
+            :class="{ active: activeMainTab === 'xhs' }"
+            @click="activeMainTab = 'xhs'"
+          >
+            小红书
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeMainTab === 'douyin'"
+            :class="{ active: activeMainTab === 'douyin' }"
+            @click="activeMainTab = 'douyin'"
+          >
+            抖音
+          </button>
+        </div>
         <a v-if="isAdmin" class="admin-console-link" :href="adminConsoleUrl">管理后台</a>
         <div class="user-menu" @mouseleave="showUserMenu = false">
           <button
@@ -116,80 +145,33 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <nav class="main-tabs" role="tablist" aria-label="媒体平台">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="activeMainTab === 'wechat'"
-        :class="{ active: activeMainTab === 'wechat' }"
-        @click="activeMainTab = 'wechat'"
-      >
-        公众号
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="activeMainTab === 'xhs'"
-        :class="{ active: activeMainTab === 'xhs' }"
-        @click="activeMainTab = 'xhs'"
-      >
-        小红书
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="activeMainTab === 'douyin'"
-        :class="{ active: activeMainTab === 'douyin' }"
-        @click="activeMainTab = 'douyin'"
-      >
-        抖音
-      </button>
-    </nav>
-
-    <main class="workspace">
-      <div v-if="activeMainTab === 'wechat'" class="module-subnav platform-subnav">
-        <div class="tabs" role="tablist" aria-label="公众号模块">
+    <div class="app-body">
+      <aside class="side-nav" aria-label="功能导航">
+        <template v-if="activeMainTab === 'wechat'">
           <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>
           <button type="button" :class="{ active: activeWechatTab === 'distill' }" @click="activeWechatTab = 'distill'">博主蒸馏</button>
           <button type="button" :class="{ active: activeWechatTab === 'ai' }" @click="activeWechatTab = 'ai'">AI 创作</button>
           <button type="button" :class="{ active: activeWechatTab === 'drafts' }" @click="activeWechatTab = 'drafts'">文章草稿</button>
           <button type="button" :class="{ active: activeWechatTab === 'records' }" @click="activeWechatTab = 'records'">发布记录</button>
           <button type="button" :class="{ active: activeWechatTab === 'settings' }" @click="activeWechatTab = 'settings'">设置</button>
-        </div>
-      </div>
-
-      <div v-if="isSocialPlatform" class="module-subnav platform-subnav xhs-module-subnav">
-        <div class="tabs" role="tablist" :aria-label="`${currentSocialPlatformName}模块`">
-          <button
-            type="button"
-            :class="{ active: ['collect', 'distill', 'assets', 'audit'].includes(currentSocialTab) }"
-            @click="setCurrentSocialTab('collect')"
-          >
-            博主蒸馏
-          </button>
-          <button
-            type="button"
-            :class="{ active: ['packages', 'history', 'freecreate'].includes(currentSocialTab) }"
-            @click="setCurrentSocialTab('packages')"
-          >
-            AI 创作
-          </button>
-          <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')">发布记录</button>
-          <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')">设置</button>
-        </div>
-        <div v-if="['collect', 'distill', 'assets', 'audit'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName}博主蒸馏子模块`">
+        </template>
+        <template v-else-if="isSocialPlatform">
+          <p class="side-group">博主蒸馏</p>
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')">数据采集</button>
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')">蒸馏</button>
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')">博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')">账号对标</button>
-        </div>
-        <div v-if="['packages', 'history', 'freecreate'].includes(currentSocialTab)" class="tabs sub-tabs" role="tablist" :aria-label="`${currentSocialPlatformName} AI 创作子模块`">
+          <p class="side-group">AI 创作</p>
           <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">对标博主创作</button>
           <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="setCurrentSocialTab('history')">发布包历史</button>
           <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')">自由创作</button>
-        </div>
-      </div>
+          <hr class="side-sep" />
+          <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')">发布记录</button>
+          <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')">设置</button>
+        </template>
+      </aside>
 
+      <main class="workspace">
       <InlineTaskProgress :active="isProgressTaskRunning" title="流程执行进度" fallback="正在处理，请稍候…" />
 
       <WechatBriefView />
@@ -311,7 +293,8 @@ onUnmounted(() => {
       </div>
 
       <ImagePreviewModal :image="previewImage" @close="closeImagePreview" />
-    </main>
+      </main>
+    </div>
   </div>
 </template>
 
