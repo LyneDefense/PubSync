@@ -2,6 +2,9 @@
 // PubSync 落地页(面向内容创作者/运营)。纯展示;复用 main.css 设计变量。
 // 进入工作台/登录 = 登录入口 login.html(如 /PubSync/login.html)。
 const appUrl = `${import.meta.env.BASE_URL || '/'}login.html`
+// 检测本地是否已登录:有 token 就把按钮文案换成「进入工作台」,点了直接进工作台(login.html 已登录态直达,跳过登录页)。
+// token 失效也无妨:进入后 App 会做 401 处理并退回登录。
+const loggedIn = Boolean(window.localStorage.getItem('pubsync_token'))
 
 const valueProps = [
   { t: '不知道写什么', d: '采集对标博主内容,蒸馏成可复用的「创作方法论 Skill」。选题、结构、表达照着打法走,不再拍脑袋。' },
@@ -37,7 +40,7 @@ const highlights = [
     <header class="lp-nav">
       <div class="lp-wrap lp-nav__inner">
         <div class="lp-brand"><strong>PubSync</strong><span>多平台内容自动化</span></div>
-        <a class="link-button primary" :href="appUrl">进入工作台</a>
+        <a class="link-button primary" :href="appUrl">{{ loggedIn ? '进入工作台' : '登录' }}</a>
       </div>
     </header>
 
@@ -50,10 +53,11 @@ const highlights = [
           从找选题到出稿,自动化搞定,把时间还给真正重要的事。
         </p>
         <div class="lp-cta">
-          <a class="link-button primary lp-cta__main" :href="appUrl">免费进入工作台</a>
+          <a class="link-button primary lp-cta__main" :href="appUrl">{{ loggedIn ? '进入工作台' : '免费进入工作台' }}</a>
           <a class="link-button" href="#how">看看怎么用</a>
         </div>
-        <p class="lp-note">基于真实采集内容驱动 · 产出自带质量自检 · 自动规避平台限流词</p>
+        <p v-if="loggedIn" class="lp-note">检测到你已登录,点上方按钮直接进入工作台。</p>
+        <p v-else class="lp-note">基于真实采集内容驱动 · 产出自带质量自检 · 自动规避平台限流词</p>
       </div>
     </section>
 
