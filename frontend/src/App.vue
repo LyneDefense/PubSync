@@ -9,6 +9,7 @@ import InlineTaskProgress from './components/InlineTaskProgress.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
+import NavIcon from './components/NavIcon.vue'
 import WechatBriefView from './views/WechatBriefView.vue'
 import WechatAiView from './views/WechatAiView.vue'
 import WechatDraftsView from './views/WechatDraftsView.vue'
@@ -148,26 +149,30 @@ onUnmounted(() => {
     <div class="app-body">
       <aside class="side-nav" aria-label="功能导航">
         <template v-if="activeMainTab === 'wechat'">
-          <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'">每日早报</button>
-          <button type="button" :class="{ active: activeWechatTab === 'distill' }" @click="activeWechatTab = 'distill'">博主蒸馏</button>
-          <button type="button" :class="{ active: activeWechatTab === 'ai' }" @click="activeWechatTab = 'ai'">AI 创作</button>
-          <button type="button" :class="{ active: activeWechatTab === 'drafts' }" @click="activeWechatTab = 'drafts'">文章草稿</button>
-          <button type="button" :class="{ active: activeWechatTab === 'records' }" @click="activeWechatTab = 'records'">发布记录</button>
-          <button type="button" :class="{ active: activeWechatTab === 'settings' }" @click="activeWechatTab = 'settings'">设置</button>
+          <p class="side-group">每日早报</p>
+          <button type="button" :class="{ active: activeWechatTab === 'brief' }" @click="activeWechatTab = 'brief'"><NavIcon name="sun" />每日早报</button>
+          <p class="side-group">博主蒸馏</p>
+          <button type="button" :class="{ active: activeWechatTab === 'distill' }" @click="activeWechatTab = 'distill'"><NavIcon name="funnel" />博主蒸馏</button>
+          <p class="side-group">AI 创作</p>
+          <button type="button" :class="{ active: activeWechatTab === 'ai' }" @click="activeWechatTab = 'ai'"><NavIcon name="sparkles" />AI 创作</button>
+          <button type="button" :class="{ active: activeWechatTab === 'drafts' }" @click="activeWechatTab = 'drafts'"><NavIcon name="file" />文章草稿</button>
+          <hr class="side-sep" />
+          <button type="button" :class="{ active: activeWechatTab === 'records' }" @click="activeWechatTab = 'records'"><NavIcon name="list" />发布记录</button>
+          <button type="button" :class="{ active: activeWechatTab === 'settings' }" @click="activeWechatTab = 'settings'"><NavIcon name="settings" />设置</button>
         </template>
         <template v-else-if="isSocialPlatform">
           <p class="side-group">博主蒸馏</p>
-          <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')">数据采集</button>
-          <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')">蒸馏</button>
-          <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')">博主资产</button>
-          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')">账号对标</button>
+          <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')"><NavIcon name="download" />数据采集</button>
+          <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')"><NavIcon name="funnel" />蒸馏</button>
+          <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')"><NavIcon name="folder" />博主资产</button>
+          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')"><NavIcon name="target" />账号对标</button>
           <p class="side-group">AI 创作</p>
-          <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')">对标博主创作</button>
-          <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="setCurrentSocialTab('history')">发布包历史</button>
-          <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')">自由创作</button>
+          <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')"><NavIcon name="sparkles" />对标博主创作</button>
+          <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="setCurrentSocialTab('history')"><NavIcon name="history" />发布包历史</button>
+          <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')"><NavIcon name="edit" />自由创作</button>
           <hr class="side-sep" />
-          <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')">发布记录</button>
-          <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')">设置</button>
+          <button type="button" :class="{ active: currentSocialTab === 'records' }" @click="setCurrentSocialTab('records')"><NavIcon name="list" />发布记录</button>
+          <button type="button" :class="{ active: currentSocialTab === 'settings' }" @click="setCurrentSocialTab('settings')"><NavIcon name="settings" />设置</button>
         </template>
       </aside>
 
