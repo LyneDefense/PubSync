@@ -22,7 +22,8 @@ export default defineConfig(({ mode }) => {
         // 多页:用户端 index.html + 独立管理后台 admin.html(自带登录与导航)。
         input: {
           main: fileURLToPath(new URL('./index.html', import.meta.url)),
-          admin: fileURLToPath(new URL('./admin.html', import.meta.url))
+          admin: fileURLToPath(new URL('./admin.html', import.meta.url)),
+          landing: fileURLToPath(new URL('./landing.html', import.meta.url))
         }
       }
     },
