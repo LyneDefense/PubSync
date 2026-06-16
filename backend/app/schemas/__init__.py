@@ -18,7 +18,7 @@ from app.schemas.admin import (
     QueueHealth,
 )
 from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
-from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead
+from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead, SelfDiagnoseCreate
 from app.schemas.blogger import (
     BloggerCollectRequest,
     BloggerCollectionRunRead,
@@ -101,6 +101,7 @@ __all__ = [
     "AccountAuditCreate",
     "AccountAuditReport",
     "AccountAuditRunRead",
+    "SelfDiagnoseCreate",
     "SettingRead",
     "SettingUpdate",
     "BloggerProfileCreate",

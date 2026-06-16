@@ -235,29 +235,35 @@ def run_xhs_package_draft_task(task_id: str, payload: dict) -> None:
 
 
 def run_account_audit_task(task_id: str, payload: dict) -> None:
+    kind = "self" if str(payload.get("kind") or "").strip().lower() == "self" else "benchmark"
+    subject = "诊断我的" if kind == "self" else "对标诊断"
+
     def work(db: Session, task: OperationTask) -> None:
-        mark_task_running(db, task, "正在对照对标博主体检你的账号内容")
+        mark_task_running(db, task, f"正在{subject}…")
         run = run_account_audit(
             db=db,
             settings=get_settings(),
             task_id=task_id,
             tenant_id=task.tenant_id,
             platform=str(payload.get("platform") or "xhs"),
-            benchmark_skill_id=int(payload["benchmark_skill_id"]),
-            my_content_text=str(payload.get("my_content_text") or ""),
+            kind=kind,
+            my_blogger_id=int(payload["my_blogger_id"]),
+            my_post_ids=[int(x) for x in (payload.get("my_post_ids") or [])],
+            benchmark_blogger_id=int(payload["benchmark_blogger_id"]) if payload.get("benchmark_blogger_id") else None,
+            benchmark_post_ids=[int(x) for x in (payload.get("benchmark_post_ids") or [])],
         )
-        mark_task_succeeded(db, task, f"账号体检完成,对标接近度 {run.score}")
-        logger.info("任务成功：任务ID=%s，类型=账号体检，运行ID=%s", task_id, run.id)
+        mark_task_succeeded(db, task, f"{subject}完成,评分 {run.score}")
+        logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)
 
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)
         if task:
-            record_task_event(db, task.tenant_id, task_id, "账号体检", "failed", f"账号体检失败：{type(exc).__name__}: {exc}")
+            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
 
     execute_task(
         task_id,
-        label="账号体检",
-        fail_message="账号体检失败",
+        label=subject,
+        fail_message=f"{subject}失败",
         work=work,
         expected=(ValueError, AIServiceError),
         on_unexpected=record_failure,

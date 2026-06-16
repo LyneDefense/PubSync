@@ -15,7 +15,9 @@ import WechatRecordsView from './views/WechatRecordsView.vue'
 import SocialCollectView from './views/SocialCollectView.vue'
 import SocialDistillView from './views/SocialDistillView.vue'
 import SocialAssetsView from './views/SocialAssetsView.vue'
+import MyAccountsView from './views/MyAccountsView.vue'
 import SocialAuditView from './views/SocialAuditView.vue'
+import SelfDiagnosisView from './views/SelfDiagnosisView.vue'
 import SocialPackagesView from './views/SocialPackagesView.vue'
 import SocialHistoryView from './views/SocialHistoryView.vue'
 import XhsRecordsView from './views/XhsRecordsView.vue'
@@ -161,7 +163,10 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')"><NavIcon name="folder" />博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')"><NavIcon name="download" />数据采集</button>
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')"><NavIcon name="funnel" />蒸馏</button>
-          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')"><NavIcon name="target" />账号对标</button>
+          <p class="side-group">账号诊断</p>
+          <button type="button" :class="{ active: currentSocialTab === 'my-accounts' }" @click="setCurrentSocialTab('my-accounts')"><NavIcon name="user" />我的账号</button>
+          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')"><NavIcon name="target" />对标诊断</button>
+          <button type="button" :class="{ active: currentSocialTab === 'self-diagnosis' }" @click="setCurrentSocialTab('self-diagnosis')"><NavIcon name="pulse" />诊断我的</button>
           <p class="side-group">AI 创作</p>
           <button type="button" :class="{ active: currentSocialTab === 'packages' }" @click="setCurrentSocialTab('packages')"><NavIcon name="sparkles" />对标博主创作</button>
           <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')"><NavIcon name="edit" />自由创作</button>
@@ -190,7 +195,11 @@ onUnmounted(() => {
 
       <SocialAssetsView />
 
+      <MyAccountsView />
+
       <SocialAuditView />
+
+      <SelfDiagnosisView />
 
       <SocialPackagesView />
 

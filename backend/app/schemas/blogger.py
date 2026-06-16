@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class BloggerProfileCreate(BaseModel):
     platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
+    account_type: str = Field(default="benchmark", pattern="^(benchmark|mine)$")
     external_id: str | None = Field(default=None, max_length=200)
     display_name: str = Field(min_length=1, max_length=160)
     homepage_url: str = Field(min_length=1, max_length=1000)
@@ -32,6 +33,7 @@ class BloggerProfileRead(BaseModel):
     id: int
     tenant_id: int
     platform: str
+    account_type: str
     external_id: str | None
     display_name: str
     homepage_url: str

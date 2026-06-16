@@ -16,6 +16,8 @@ class BloggerProfile(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     platform: Mapped[str] = mapped_column(String(30), nullable=False, default="xhs")
+    # 账号类型:benchmark=对标博主(默认),mine=我的账号。
+    account_type: Mapped[str] = mapped_column(String(20), nullable=False, default="benchmark", index=True)
     external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     homepage_url: Mapped[str] = mapped_column(String(1000), nullable=False)

@@ -30,6 +30,7 @@ import {
   collectBlogger,
   listAccountAuditRuns,
   startAccountAuditTask,
+  startSelfDiagnoseTask,
   confirmBloggerRun,
   createBlogger,
   deleteBlogger,
@@ -45,6 +46,7 @@ import {
   getTaskEvents,
   getWorkspaceConfig,
   listBloggerCollectionPosts,
+  listBloggerPosts,
   listBloggerCollectionRuns,
   listBloggerRuns,
   listBloggerSkills,
@@ -91,7 +93,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -99,7 +101,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'collect' | 'distill' | 'assets' | 'audit' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
+export type SocialTab = 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -126,7 +128,24 @@ export const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 export const bloggerRuns = ref<BloggerDistillationRun[]>([])
 export const accountAuditRuns = ref<AccountAuditRun[]>([])
 export const selectedAuditRunId = ref<number | null>(null)
-export const auditForm = reactive({ benchmark_skill_id: 0, my_content_text: '' })
+export const selfDiagnoseRuns = ref<AccountAuditRun[]>([])
+export const selectedSelfRunId = ref<number | null>(null)
+// 对标诊断:选我的账号 + 对标账号,各自勾选要比的内容(post id)。
+export const auditForm = reactive<{
+  my_blogger_id: number
+  my_post_ids: number[]
+  benchmark_blogger_id: number
+  benchmark_post_ids: number[]
+}>({ my_blogger_id: 0, my_post_ids: [], benchmark_blogger_id: 0, benchmark_post_ids: [] })
+// 诊断我的:只选我的账号 + 勾选内容。
+export const selfForm = reactive<{ my_blogger_id: number; my_post_ids: number[] }>({ my_blogger_id: 0, my_post_ids: [] })
+// 我的账号(account_type=mine)与对标账号拆分。
+export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
+export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
+// 各账号内容列表缓存(按 blogger id);进页面只读缓存,刷新才重采。
+export const accountPosts = reactive<Record<number, BloggerPost[]>>({})
+// 创建博主弹窗的账号类型上下文(benchmark / mine)。
+export const bloggerModalAccountType = ref<'benchmark' | 'mine'>('benchmark')
 export const bloggerSkills = ref<BloggerSkill[]>([])
 export const xhsPackages = ref<XhsPublishPackage[]>([])
 export const currentXhsDraft = ref<XhsPublishPackageDraft | null>(null)
@@ -179,7 +198,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   collect: 0,
   distill: 0,
   'xhs-package': 0,
-  audit: 0
+  audit: 0,
+  'self-diagnose': 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -753,6 +773,7 @@ export async function loadAll() {
   }
   await refreshSelectedBlogger()
   await refreshAccountAuditRuns()
+  await refreshSelfDiagnoseRuns()
 }
 
 export function setWorkspaceConfig(config: WorkspaceConfig) {
@@ -1050,6 +1071,7 @@ export function closeBloggerModal() {
 
 export function openCreateBloggerModal() {
   editingBloggerId.value = null
+  bloggerModalAccountType.value = 'benchmark'
   resetBloggerForm()
   resetBloggerSearch()
   showBloggerModal.value = true
@@ -1113,6 +1135,7 @@ export async function handleCreateBlogger() {
       ? await updateBlogger(editingBloggerId.value!, payload)
       : await createBlogger({
           platform: currentSocialPlatform.value,
+          account_type: bloggerModalAccountType.value,
           ...payload
         })
     selectedBloggerId.value = blogger.id
@@ -1177,7 +1200,8 @@ export async function handleDistillBlogger() {
     () =>
       distillBlogger(selectedBloggerId.value!, {
         collection_run_id: selectedCollectionRunId.value!,
-        mode: xhsDistillMode.value
+        // 蒸馏只做「拆解对标博主」(模式 A);自我诊断已独立到「诊断我的」。
+        mode: 'A'
       }),
     async () => {
       await refreshSelectedBlogger()
@@ -1226,10 +1250,43 @@ export function qualityTone(grade: string): string {
   return 'neutral'
 }
 
-// —— 账号体检/对标 ——
+// —— 账号诊断(对标诊断 / 诊断我的) ——
 export const selectedAuditRun = computed(
   () => accountAuditRuns.value.find((run) => run.id === selectedAuditRunId.value) || null
 )
+export const selectedSelfRun = computed(
+  () => selfDiagnoseRuns.value.find((run) => run.id === selectedSelfRunId.value) || null
+)
+
+// 账号内容缓存:有缓存就不重拉;force=true 强制重拉。
+export async function loadAccountPosts(id: number, force = false) {
+  if (!id) return
+  if (!force && accountPosts[id]) return
+  try {
+    accountPosts[id] = await listBloggerPosts(id)
+  } catch {
+    accountPosts[id] = []
+  }
+}
+
+// 刷新某账号内容 = 重新采集一次(消耗 TikHub),完成后重载该账号 posts。
+export async function handleCollectAccount(id: number) {
+  if (!id) return
+  await runTaskAction(
+    'collect',
+    '已提交内容采集任务',
+    () => collectBlogger(id, { sample_limit: 30, comments_per_post: 0, asr_enabled: false }),
+    async () => {
+      await loadAccountPosts(id, true)
+    },
+    '内容采集仍在后台执行，请稍后点刷新查看'
+  )
+}
+
+export function openCreateMyAccountModal() {
+  openCreateBloggerModal()
+  bloggerModalAccountType.value = 'mine'
+}
 
 export interface AuditReport {
   dimensions: { name: string; benchmark: string; mine: string; gap: string }[]
@@ -1260,35 +1317,67 @@ export function auditRunReport(run: AccountAuditRun | null | undefined): AuditRe
 
 export async function refreshAccountAuditRuns() {
   try {
-    accountAuditRuns.value = await listAccountAuditRuns(currentSocialPlatform.value)
+    accountAuditRuns.value = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')
   } catch {
     accountAuditRuns.value = []
   }
 }
 
+export async function refreshSelfDiagnoseRuns() {
+  try {
+    selfDiagnoseRuns.value = await listAccountAuditRuns(currentSocialPlatform.value, 'self')
+  } catch {
+    selfDiagnoseRuns.value = []
+  }
+}
+
 export async function handleRunAccountAudit() {
-  if (!auditForm.benchmark_skill_id) {
-    showMessage('请先选择一个对标博主的 Skill', true)
+  if (!auditForm.my_blogger_id) {
+    showMessage('请选择我的账号', true)
     return
   }
-  if (!auditForm.my_content_text.trim()) {
-    showMessage('请先粘贴你自己账号的内容', true)
+  if (!auditForm.benchmark_blogger_id) {
+    showMessage('请选择对标账号', true)
     return
   }
   await runTaskAction(
     'audit',
-    '已提交账号体检任务',
+    '已提交对标诊断任务',
     () =>
       startAccountAuditTask({
         platform: currentSocialPlatform.value,
-        benchmark_skill_id: auditForm.benchmark_skill_id,
-        my_content_text: auditForm.my_content_text.trim()
+        my_blogger_id: auditForm.my_blogger_id,
+        my_post_ids: auditForm.my_post_ids,
+        benchmark_blogger_id: auditForm.benchmark_blogger_id,
+        benchmark_post_ids: auditForm.benchmark_post_ids
       }),
     async () => {
       await refreshAccountAuditRuns()
       selectedAuditRunId.value = accountAuditRuns.value[0]?.id ?? null
     },
-    '账号体检仍在后台执行，请稍后刷新页面查看结果'
+    '对标诊断仍在后台执行，请稍后刷新页面查看结果'
+  )
+}
+
+export async function handleRunSelfDiagnose() {
+  if (!selfForm.my_blogger_id) {
+    showMessage('请选择我的账号', true)
+    return
+  }
+  await runTaskAction(
+    'self-diagnose',
+    '已提交诊断任务',
+    () =>
+      startSelfDiagnoseTask({
+        platform: currentSocialPlatform.value,
+        my_blogger_id: selfForm.my_blogger_id,
+        my_post_ids: selfForm.my_post_ids
+      }),
+    async () => {
+      await refreshSelfDiagnoseRuns()
+      selectedSelfRunId.value = selfDiagnoseRuns.value[0]?.id ?? null
+    },
+    '诊断仍在后台执行，请稍后刷新页面查看结果'
   )
 }
 

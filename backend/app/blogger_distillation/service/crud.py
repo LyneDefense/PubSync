@@ -42,8 +42,10 @@ def create_blogger(
     follower_count: int,
     niche: str,
     description: str,
+    account_type: str = "benchmark",
 ) -> BloggerProfile:
     platform = validate_platform(platform)
+    account_type = "mine" if str(account_type).strip().lower() == "mine" else "benchmark"
     clean_external_id = (external_id or "").strip() or None
     existing = None
     if clean_external_id:
@@ -59,6 +61,7 @@ def create_blogger(
     )
     if existing:
         existing.platform = platform
+        existing.account_type = account_type
         existing.external_id = clean_external_id or existing.external_id
         existing.display_name = display_name
         existing.niche = niche
@@ -71,6 +74,7 @@ def create_blogger(
     blogger = BloggerProfile(
         tenant_id=tenant_id,
         platform=platform,
+        account_type=account_type,
         external_id=clean_external_id,
         display_name=display_name,
         homepage_url=homepage_url,

@@ -52,6 +52,7 @@ router = APIRouter()
 @router.get("/bloggers", response_model=list[BloggerProfileRead])
 def list_bloggers_endpoint(
     platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
+    account_type: str | None = Query(default=None, pattern="^(benchmark|mine)$"),
     limit: int | None = LimitQuery,
     offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
@@ -62,6 +63,8 @@ def list_bloggers_endpoint(
         .where(BloggerProfile.tenant_id == tenant.id, BloggerProfile.platform == platform)
         .order_by(BloggerProfile.is_favorite.desc(), BloggerProfile.updated_at.desc(), BloggerProfile.id.desc())
     )
+    if account_type:
+        stmt = stmt.where(BloggerProfile.account_type == account_type)
     return list(db.scalars(apply_pagination(stmt, limit, offset)))
 
 
@@ -99,6 +102,7 @@ def create_blogger_endpoint(
             payload.follower_count,
             payload.niche,
             payload.description,
+            account_type=payload.account_type,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

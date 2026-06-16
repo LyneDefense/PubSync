@@ -31,7 +31,6 @@ import {
   selectedCollectionRunId,
   taskButtonStyle,
   taskProgress,
-  xhsDistillMode,
   xhsDistillStep,
   xhsDistillStepLabels
 } from '../composables/useWorkspaceStore'
@@ -88,15 +87,7 @@ const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                   <span>{{ pendingAction === 'distill' ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '开始蒸馏' }}</span>
                 </button>
               </div>
-              <div class="distill-mode" role="group" aria-label="蒸馏模式">
-                <button type="button" :class="{ active: xhsDistillMode === 'A' }" :disabled="Boolean(pendingAction)" @click="xhsDistillMode = 'A'">
-                  <strong>拆解对标博主</strong><small>把对标博主的方法论迁移到你的账号</small>
-                </button>
-                <button type="button" :class="{ active: xhsDistillMode === 'B' }" :disabled="Boolean(pendingAction)" @click="xhsDistillMode = 'B'">
-                  <strong>诊断我的账号</strong><small>这个账号就是我，给出优势/短板/增长动作</small>
-                </button>
-              </div>
-              <p class="form-hint">蒸馏完成后会进入结果确认页，并给出质量自检评分；保存后 Skill 才会生效。</p>
+              <p class="form-hint">把对标博主的公开内容提炼成可迁移的创作方法论 Skill。蒸馏完成后进入结果确认页并给出质量自检评分；保存后 Skill 才会生效。</p>
             </section>
             <section v-if="xhsDistillStep === 4" class="creation-stage-card active">
               <div class="inline-card-header">

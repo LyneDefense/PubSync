@@ -17,6 +17,9 @@ class AccountAuditRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     platform: Mapped[str] = mapped_column(String(30), nullable=False, default="xhs", index=True)
+    # 诊断类型:benchmark=对标诊断(我的账号 vs 对标账号),self=诊断我的(只看我的账号)。
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="benchmark", index=True)
+    my_blogger_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=True, index=True)
     benchmark_blogger_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=True, index=True)
     benchmark_skill_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_skills.id"), nullable=True, index=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("operation_tasks.id"), nullable=True, index=True)
@@ -29,5 +32,7 @@ class AccountAuditRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[Tenant] = relationship()
-    benchmark_blogger: Mapped[BloggerProfile | None] = relationship()
+    # 两个外键都指向 blogger_profiles,需显式指明各自的 foreign_keys 以消除歧义。
+    my_blogger: Mapped[BloggerProfile | None] = relationship(foreign_keys=[my_blogger_id])
+    benchmark_blogger: Mapped[BloggerProfile | None] = relationship(foreign_keys=[benchmark_blogger_id])
     benchmark_skill: Mapped[BloggerSkill | None] = relationship()

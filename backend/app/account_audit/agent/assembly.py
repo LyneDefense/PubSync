@@ -9,13 +9,14 @@ from app.synthesis import Agent, SynthesisBudget, TaskGuide
 
 
 def build_audit_agent(settings: Settings, ctx: AuditContext) -> Agent:
-    """装配账号体检 agent:对比 guide + 结构/质量传感器 + 评审 + 预算。"""
+    """装配账号诊断 agent(对标诊断/诊断我的);guide 按 ctx.kind 内部分流。"""
     model = (settings.distill_text_model or "").strip() or None
-    guide = TaskGuide(name="账号对标", build_prompt=build_audit_prompt, normalize=normalize_audit_output)
+    name = "诊断我的" if ctx.kind == "self" else "对标诊断"
+    guide = TaskGuide(name=name, build_prompt=build_audit_prompt, normalize=normalize_audit_output)
     sensors = [AuditSchemaSensor(), AuditQualitySensor()]
     critic = make_audit_critic(settings, model) if settings.audit_llm_critic_enabled else None
     budget = SynthesisBudget(
         max_attempts=1 + max(0, settings.audit_max_revise_iterations),
         min_score=settings.audit_min_quality_score,
     )
-    return Agent(name="账号对标", guide=guide, sensors=sensors, budget=budget, critic=critic, model=model)
+    return Agent(name=name, guide=guide, sensors=sensors, budget=budget, critic=critic, model=model)

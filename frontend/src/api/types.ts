@@ -321,6 +321,7 @@ export interface BloggerProfile {
   id: number
   tenant_id: number
   platform: string
+  account_type: string
   external_id: string | null
   display_name: string
   homepage_url: string
@@ -337,6 +338,7 @@ export interface BloggerProfile {
 
 export interface BloggerProfileCreate {
   platform?: SocialPlatform
+  account_type?: 'benchmark' | 'mine'
   external_id?: string | null
   display_name: string
   homepage_url: string
@@ -553,14 +555,24 @@ export type XhsPublishPackageSave = XhsPublishPackageDraft
 
 export interface AccountAuditCreate {
   platform: SocialPlatform
-  benchmark_skill_id: number
-  my_content_text: string
+  my_blogger_id: number
+  my_post_ids: number[]
+  benchmark_blogger_id: number
+  benchmark_post_ids: number[]
+}
+
+export interface SelfDiagnoseCreate {
+  platform: SocialPlatform
+  my_blogger_id: number
+  my_post_ids: number[]
 }
 
 export interface AccountAuditRun {
   id: number
   tenant_id: number
   platform: string
+  kind: string
+  my_blogger_id: number | null
   benchmark_blogger_id: number | null
   benchmark_skill_id: number | null
   task_id: string | null

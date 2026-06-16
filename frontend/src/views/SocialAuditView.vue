@@ -1,18 +1,21 @@
 <script setup lang="ts">
-// 社媒·账号对标体检:粘贴自己账号的内容,选一个对标博主的 Skill,AI 逐维度对比给结论。
-// 状态与方法来自 useWorkspaceStore 单例;本组件仅负责视图与交互。
-import { watchEffect } from 'vue'
+// 社媒·对标诊断:选我的账号(勾内容) + 对标账号(勾内容),比真实内容,逐维度给结论。
 import StatusChip from '../components/StatusChip.vue'
 import {
   accountAuditRuns,
-  activeXhsSkills,
+  accountPosts,
   auditForm,
   auditRunReport,
+  benchmarkAccounts,
   currentSocialPlatformName,
   currentSocialTab,
   formatDate,
   handleRunAccountAudit,
   isSocialPlatform,
+  loadAccountPosts,
+  myAccounts,
+  openCreateBloggerModal,
+  openCreateMyAccountModal,
   pendingAction,
   selectedAuditRun,
   selectedAuditRunId,
@@ -20,83 +23,91 @@ import {
   taskProgress
 } from '../composables/useWorkspaceStore'
 
-// 进入页面时,若还没选对标 Skill,默认选中第一个可用的。
-watchEffect(() => {
-  if (!auditForm.benchmark_skill_id && activeXhsSkills.value.length) {
-    auditForm.benchmark_skill_id = activeXhsSkills.value[0].id
-  }
-})
+function toggle(arr: number[], id: number) {
+  const i = arr.indexOf(id)
+  if (i >= 0) arr.splice(i, 1)
+  else arr.push(id)
+}
+function pickMy(id: number) {
+  auditForm.my_blogger_id = id
+  auditForm.my_post_ids = []
+  loadAccountPosts(id)
+}
+function pickBench(id: number) {
+  auditForm.benchmark_blogger_id = id
+  auditForm.benchmark_post_ids = []
+  loadAccountPosts(id)
+}
 </script>
 
 <template>
   <section v-if="isSocialPlatform && currentSocialTab === 'audit'" class="panel">
     <div class="section-header">
       <div>
-        <h2>{{ currentSocialPlatformName }}账号对标体检</h2>
-        <p class="toolbar-subtitle">粘贴你自己账号的内容,选一个对标博主,AI 逐维度对比、指出差距并给出可执行动作。</p>
+        <h2>{{ currentSocialPlatformName }}对标诊断</h2>
+        <p class="toolbar-subtitle">选我的账号和对标账号,各自勾选要对比的内容,AI 逐维度对比、指出差距和动作。</p>
       </div>
     </div>
 
     <div class="audit-grid">
-      <div class="audit-form">
-        <label class="audit-field">
-          <span>对标博主(选一个已蒸馏的 Skill)</span>
-        </label>
-        <div v-if="activeXhsSkills.length" class="topic-idea-grid">
-          <button
-            v-for="skill in activeXhsSkills"
-            :key="skill.id"
-            type="button"
-            :class="{ active: auditForm.benchmark_skill_id === skill.id }"
-            :disabled="Boolean(pendingAction)"
-            @click="auditForm.benchmark_skill_id = skill.id"
-          >
-            <strong>{{ skill.name }}</strong>
-            <span>{{ skill.description }}</span>
-            <small>{{ formatDate(skill.created_at) }}</small>
+      <div class="audit-col">
+        <h3>我的账号</h3>
+        <div v-if="myAccounts.length" class="blogger-list compact">
+          <button v-for="acc in myAccounts" :key="acc.id" type="button" :class="{ active: auditForm.my_blogger_id === acc.id }" @click="pickMy(acc.id)">
+            <strong>{{ acc.display_name }}</strong><span>样本 {{ acc.sample_count }}</span>
           </button>
         </div>
-        <p v-else class="empty-region">还没有可对标的 Skill。请先到“博主蒸馏”完成一次风格蒸馏。</p>
+        <p v-else class="empty-region">还没有我的账号。<a href="#" @click.prevent="openCreateMyAccountModal">去添加</a></p>
+        <div v-if="auditForm.my_blogger_id" class="check-list">
+          <p class="form-hint">勾选要对比的内容({{ auditForm.my_post_ids.length }} 已选);不选则用最近内容。</p>
+          <label v-for="post in accountPosts[auditForm.my_blogger_id] || []" :key="post.id" class="check-row">
+            <input type="checkbox" :checked="auditForm.my_post_ids.includes(post.id)" @change="toggle(auditForm.my_post_ids, post.id)" />
+            <span>{{ post.title || '(无标题)' }}</span>
+          </label>
+          <p v-if="!(accountPosts[auditForm.my_blogger_id] || []).length" class="empty-region">这个账号还没采集内容,去「我的账号」刷新一下。</p>
+        </div>
+      </div>
 
-        <label class="audit-field">
-          <span>粘贴你自己账号的内容(可放多篇,标题+正文都行)</span>
-          <textarea
-            v-model="auditForm.my_content_text"
-            rows="10"
-            :disabled="Boolean(pendingAction)"
-            placeholder="把你最近发布的几篇笔记/脚本的标题和正文粘进来,越真实越准。"
-          ></textarea>
-        </label>
+      <div class="audit-col">
+        <h3>对标账号</h3>
+        <div v-if="benchmarkAccounts.length" class="blogger-list compact">
+          <button v-for="acc in benchmarkAccounts" :key="acc.id" type="button" :class="{ active: auditForm.benchmark_blogger_id === acc.id }" @click="pickBench(acc.id)">
+            <strong>{{ acc.display_name }}</strong><span>{{ acc.niche || '未设置领域' }} · 样本 {{ acc.sample_count }}</span>
+          </button>
+        </div>
+        <p v-else class="empty-region">还没有对标账号。<a href="#" @click.prevent="openCreateBloggerModal">去添加</a>(或到「数据采集」创建并采集)。</p>
+        <div v-if="auditForm.benchmark_blogger_id" class="check-list">
+          <p class="form-hint">勾选要对比的内容({{ auditForm.benchmark_post_ids.length }} 已选);不选则用最近内容。</p>
+          <label v-for="post in accountPosts[auditForm.benchmark_blogger_id] || []" :key="post.id" class="check-row">
+            <input type="checkbox" :checked="auditForm.benchmark_post_ids.includes(post.id)" @change="toggle(auditForm.benchmark_post_ids, post.id)" />
+            <span>{{ post.title || '(无标题)' }}</span>
+          </label>
+          <p v-if="!(accountPosts[auditForm.benchmark_blogger_id] || []).length" class="empty-region">这个账号还没采集内容,去「数据采集」采一下。</p>
+        </div>
+      </div>
+    </div>
 
-        <button
-          type="button"
-          class="task-button primary"
-          :class="{ running: pendingAction === 'audit' }"
-          :style="taskButtonStyle('audit')"
-          :disabled="!auditForm.benchmark_skill_id || !auditForm.my_content_text.trim() || Boolean(pendingAction)"
-          @click="handleRunAccountAudit"
-        >
-          <span>{{ pendingAction === 'audit' ? `体检中 ${Math.round(taskProgress.audit)}%` : '开始体检对标' }}</span>
+    <button
+      type="button"
+      class="task-button primary audit-run"
+      :class="{ running: pendingAction === 'audit' }"
+      :style="taskButtonStyle('audit')"
+      :disabled="!auditForm.my_blogger_id || !auditForm.benchmark_blogger_id || Boolean(pendingAction)"
+      @click="handleRunAccountAudit"
+    >
+      <span>{{ pendingAction === 'audit' ? `对标中 ${Math.round(taskProgress.audit)}%` : '开始对标诊断' }}</span>
+    </button>
+
+    <div class="audit-results">
+      <h3>历史对标</h3>
+      <div v-if="accountAuditRuns.length" class="audit-run-list">
+        <button v-for="run in accountAuditRuns" :key="run.id" type="button" :class="{ active: selectedAuditRunId === run.id }" @click="selectedAuditRunId = run.id">
+          <span>{{ formatDate(run.created_at) }}</span>
+          <StatusChip :status="run.status" />
+          <em v-if="run.score !== null">接近度 {{ run.score }}</em>
         </button>
       </div>
-
-      <div class="audit-results">
-        <h3>历史体检</h3>
-        <div v-if="accountAuditRuns.length" class="audit-run-list">
-          <button
-            v-for="run in accountAuditRuns"
-            :key="run.id"
-            type="button"
-            :class="{ active: selectedAuditRunId === run.id }"
-            @click="selectedAuditRunId = run.id"
-          >
-            <span>{{ formatDate(run.created_at) }}</span>
-            <StatusChip :status="run.status" />
-            <em v-if="run.score !== null">接近度 {{ run.score }}</em>
-          </button>
-        </div>
-        <p v-else class="empty-region">还没有体检记录。填好左边、点“开始体检对标”。</p>
-      </div>
+      <p v-else class="empty-region">还没有对标记录。</p>
     </div>
 
     <div v-if="selectedAuditRun && selectedAuditRun.status === 'succeeded'" class="audit-report">
@@ -105,33 +116,22 @@ watchEffect(() => {
         <em v-if="auditRunReport(selectedAuditRun).score !== null">对标接近度 {{ auditRunReport(selectedAuditRun).score }} / 100</em>
       </div>
       <p v-if="auditRunReport(selectedAuditRun).conclusion" class="audit-conclusion">{{ auditRunReport(selectedAuditRun).conclusion }}</p>
-
       <div v-if="auditRunReport(selectedAuditRun).dimensions.length" class="audit-dimensions">
         <article v-for="dim in auditRunReport(selectedAuditRun).dimensions" :key="dim.name" class="audit-dim">
           <h4>{{ dim.name }}</h4>
-          <p><b>对标博主:</b>{{ dim.benchmark }}</p>
-          <p><b>你现在:</b>{{ dim.mine }}</p>
+          <p><b>对标账号:</b>{{ dim.benchmark }}</p>
+          <p><b>我现在:</b>{{ dim.mine }}</p>
           <p class="audit-dim__gap"><b>差距与改法:</b>{{ dim.gap }}</p>
         </article>
       </div>
-
       <div class="audit-lists">
-        <div v-if="auditRunReport(selectedAuditRun).strengths.length">
-          <h4>你已经做对的</h4>
-          <ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).strengths" :key="i">{{ item }}</li></ul>
-        </div>
-        <div v-if="auditRunReport(selectedAuditRun).gaps.length">
-          <h4>明显短板</h4>
-          <ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).gaps" :key="i">{{ item }}</li></ul>
-        </div>
-        <div v-if="auditRunReport(selectedAuditRun).actions.length">
-          <h4>立即可执行的动作</h4>
-          <ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).actions" :key="i">{{ item }}</li></ul>
-        </div>
+        <div v-if="auditRunReport(selectedAuditRun).strengths.length"><h4>我已经做对的</h4><ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).strengths" :key="i">{{ item }}</li></ul></div>
+        <div v-if="auditRunReport(selectedAuditRun).gaps.length"><h4>明显短板</h4><ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).gaps" :key="i">{{ item }}</li></ul></div>
+        <div v-if="auditRunReport(selectedAuditRun).actions.length"><h4>立即可执行的动作</h4><ul><li v-for="(item, i) in auditRunReport(selectedAuditRun).actions" :key="i">{{ item }}</li></ul></div>
       </div>
     </div>
     <p v-else-if="selectedAuditRun && selectedAuditRun.status === 'failed'" class="empty-region">
-      这次体检失败了:{{ selectedAuditRun.error_message || '请稍后重试' }}
+      这次对标失败了:{{ selectedAuditRun.error_message || '请稍后重试' }}
     </p>
   </section>
 </template>
@@ -139,38 +139,32 @@ watchEffect(() => {
 <style scoped>
 .audit-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-lg, 24px);
   align-items: start;
 }
-
-.audit-field {
-  display: block;
-  margin-top: var(--space-md, 16px);
+.check-list {
+  margin-top: var(--space-sm, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 360px;
+  overflow-y: auto;
 }
-
-.audit-field > span {
-  display: block;
-  margin-bottom: 6px;
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: var(--text-sm);
-  color: var(--color-ink-2, inherit);
 }
-
-.audit-field textarea {
-  width: 100%;
-  resize: vertical;
-}
-
-.task-button {
+.audit-run {
   margin-top: var(--space-md, 16px);
 }
-
 .audit-run-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-
 .audit-run-list button {
   display: flex;
   align-items: center;
@@ -178,56 +172,49 @@ watchEffect(() => {
   justify-content: space-between;
   text-align: left;
 }
-
+.audit-results {
+  margin-top: var(--space-lg, 24px);
+}
 .audit-report {
   margin-top: var(--space-lg, 24px);
   border-top: var(--rule-hair);
   padding-top: var(--space-md, 16px);
 }
-
 .audit-report__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
-
 .audit-conclusion {
   margin: 8px 0 16px;
 }
-
 .audit-dimensions {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--space-sm, 12px);
 }
-
 .audit-dim {
   border: var(--rule-hair);
   border-radius: var(--radius-md, 8px);
   padding: var(--space-sm, 12px);
 }
-
 .audit-dim h4 {
   margin: 0 0 6px;
 }
-
 .audit-dim p {
   margin: 4px 0;
   font-size: var(--text-sm);
 }
-
 .audit-dim__gap {
   color: var(--color-accent, inherit);
 }
-
 .audit-lists {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-md, 16px);
   margin-top: var(--space-md, 16px);
 }
-
 @media (max-width: 900px) {
   .audit-grid {
     grid-template-columns: 1fr;

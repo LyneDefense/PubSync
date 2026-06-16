@@ -32,6 +32,7 @@ import type {
   OperationTaskEvent,
   SocialPlatform,
   Tenant,
+  SelfDiagnoseCreate,
   WorkspaceConfig,
   WorkspaceConfigUpdate,
   XhsPublishPackage,
@@ -291,8 +292,9 @@ export function sendArticleToWechat(id: number) {
   return request<Article>(`/articles/${id}/send-to-wechat`, { method: 'POST' })
 }
 
-export function listBloggers(platform: SocialPlatform = 'xhs') {
-  return request<BloggerProfile[]>(`/bloggers?platform=${encodeURIComponent(platform)}`)
+export function listBloggers(platform: SocialPlatform = 'xhs', accountType?: 'benchmark' | 'mine') {
+  const qs = accountType ? `&account_type=${accountType}` : ''
+  return request<BloggerProfile[]>(`/bloggers?platform=${encodeURIComponent(platform)}${qs}`)
 }
 
 export function searchBloggers(platform: SocialPlatform, keyword: string, page = 1) {
@@ -416,6 +418,14 @@ export function startAccountAuditTask(payload: AccountAuditCreate) {
   })
 }
 
-export function listAccountAuditRuns(platform: SocialPlatform = 'xhs') {
-  return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}`)
+export function startSelfDiagnoseTask(payload: SelfDiagnoseCreate) {
+  return request<OperationTask>('/account-audit/self', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function listAccountAuditRuns(platform: SocialPlatform = 'xhs', kind?: 'benchmark' | 'self') {
+  const qs = kind ? `&kind=${kind}` : ''
+  return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}${qs}`)
 }

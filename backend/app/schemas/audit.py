@@ -5,17 +5,29 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class AccountAuditCreate(BaseModel):
+    """对标诊断:我的账号(勾选内容)vs 对标账号(勾选内容)。"""
+
     platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
-    benchmark_skill_id: int
-    my_content_text: str = Field(min_length=1, max_length=20000)
-    # 预留:本轮前端只走手动粘贴,后续可改为复用已采集的「我自己」博主。
-    benchmark_blogger_id: int | None = None
+    my_blogger_id: int
+    my_post_ids: list[int] = Field(default_factory=list)
+    benchmark_blogger_id: int
+    benchmark_post_ids: list[int] = Field(default_factory=list)
+
+
+class SelfDiagnoseCreate(BaseModel):
+    """诊断我的:只看我的账号(勾选内容)。"""
+
+    platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
+    my_blogger_id: int
+    my_post_ids: list[int] = Field(default_factory=list)
 
 
 class AccountAuditRunRead(BaseModel):
     id: int
     tenant_id: int
     platform: str
+    kind: str
+    my_blogger_id: int | None
     benchmark_blogger_id: int | None
     benchmark_skill_id: int | None
     task_id: str | None
