@@ -1261,7 +1261,8 @@ export const selectedSelfRun = computed(
 // 账号内容缓存:有缓存就不重拉;force=true 强制重拉。
 export async function loadAccountPosts(id: number, force = false) {
   if (!id) return
-  if (!force && accountPosts[id]) return
+  // 注意:空数组也是 truthy,不能用它当"已加载"。只有真正有内容才跳过(避免账号在无内容时被缓存成空、之后采集了也不刷新)。
+  if (!force && accountPosts[id]?.length) return
   try {
     accountPosts[id] = await listBloggerPosts(id)
   } catch {
