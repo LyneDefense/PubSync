@@ -34,6 +34,59 @@ export interface AdminUserCreate {
   is_admin: boolean
 }
 
+export interface AdminTenant {
+  id: number
+  name: string
+  slug: string
+  status: TenantStatus
+  created_at: string
+}
+
+export interface ConfigFieldView {
+  key: string
+  label: string
+  type: 'str' | 'int' | 'bool' | 'float'
+  is_secret: boolean
+  source: 'env' | 'db' | 'unset'
+  value?: string | number | boolean | null
+  configured?: boolean | null
+}
+
+export interface ConfigGroupView {
+  key: string
+  label: string
+  fields: ConfigFieldView[]
+}
+
+export interface ConfigView {
+  groups: ConfigGroupView[]
+}
+
+export interface AdminTask {
+  id: string
+  tenant_id: number
+  task_type: string
+  status: TaskStatus
+  message: string
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QueueHealth {
+  use_task_queue: boolean
+  queue_name?: string | null
+  queued?: number | null
+  failed?: number | null
+  note?: string | null
+}
+
+export interface AppSettingRead {
+  key: string
+  value: string
+  updated_at?: string
+}
+
 export interface ContentProfile {
   tenant_id: number
   publication_name: string

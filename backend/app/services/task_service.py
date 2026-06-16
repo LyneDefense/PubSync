@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.admin.runtime_config import apply_overrides
 from app.blogger_distillation.service import (
     DistillationCancelled,
     record_task_event,
@@ -84,6 +85,9 @@ def execute_task(
     db = SessionLocal()
     try:
         logger.info("任务开始：任务ID=%s，类型=%s", task_id, label)
+        # worker 进程在每个任务开跑前刷新一次后台运行时配置(模型/ASR/密钥等),
+        # 这样管理员在后台改的配置无需重启 worker 即可生效。
+        apply_overrides(get_settings(), db)
         task = get_task(db, task_id)
         if not task:
             return

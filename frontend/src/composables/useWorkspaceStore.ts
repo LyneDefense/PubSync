@@ -768,9 +768,6 @@ export async function loadAll() {
   }
   await refreshSelectedBlogger()
   await refreshAccountAuditRuns()
-  if (isAdmin.value) {
-    adminUsers.value = await listAdminUsers()
-  }
 }
 
 export function setWorkspaceConfig(config: WorkspaceConfig) {

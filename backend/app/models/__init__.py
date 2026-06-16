@@ -16,6 +16,7 @@ from app.models.blogger import (
 )
 from app.models.common import utc_now
 from app.models.news import NewsItem, NewsSource, SourceStatus
+from app.models.system_config import SystemConfig
 from app.models.task import OperationTask, OperationTaskEvent, TaskStatus
 from app.models.tenant import Tenant, TenantStatus, User
 from app.models.workspace import (
@@ -48,6 +49,7 @@ __all__ = [
     "OperationTask",
     "OperationTaskEvent",
     "TaskStatus",
+    "SystemConfig",
     "BloggerProfile",
     "BloggerPost",
     "BloggerCollectionRun",

@@ -1,0 +1,91 @@
+"""可被后台覆盖的配置字段白名单 + 元数据。
+
+只收录「运营/AI 相关」字段。**基础设施字段**(database_url / redis_url / auth_secret /
+config_encryption_key / static_dir / use_task_queue / cors_origins / 队列连接等)**不在此**,
+仍只走 .env,避免在运行时把自己锁死或泄露引导密钥。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+FieldType = str  # "str" | "int" | "bool" | "float"
+
+
+@dataclass(frozen=True)
+class ConfigField:
+    key: str
+    group: str
+    label: str
+    type: FieldType = "str"
+    is_secret: bool = False
+
+
+# 分组展示顺序与中文名。
+GROUPS: list[tuple[str, str]] = [
+    ("model", "模型与生成"),
+    ("tikhub", "采集 / TikHub"),
+    ("asr", "ASR 语音转写"),
+]
+
+
+OVERRIDABLE: list[ConfigField] = [
+    # —— 模型与生成 ——
+    ConfigField("llm_provider", "model", "文本模型供应商 (openai/minimax)"),
+    ConfigField("image_provider", "model", "图像模型供应商 (openai/minimax)"),
+    ConfigField("openai_base_url", "model", "OpenAI Base URL"),
+    ConfigField("openai_api_key", "model", "OpenAI API Key", is_secret=True),
+    ConfigField("openai_text_model", "model", "OpenAI 文本模型"),
+    ConfigField("openai_image_model", "model", "OpenAI 图像模型"),
+    ConfigField("minimax_base_url", "model", "MiniMax Base URL"),
+    ConfigField("minimax_api_key", "model", "MiniMax API Key", is_secret=True),
+    ConfigField("minimax_text_model", "model", "MiniMax 文本模型"),
+    ConfigField("minimax_image_model", "model", "MiniMax 图像模型"),
+    ConfigField("distill_text_model", "model", "蒸馏/体检专用文本模型(留空=用上面的)"),
+    ConfigField("synthesis_max_revise_iterations", "model", "蒸馏-最大修订次数", "int"),
+    ConfigField("synthesis_min_quality_score", "model", "蒸馏-质量阈值", "int"),
+    ConfigField("synthesis_llm_critic_enabled", "model", "蒸馏-启用 LLM 评审", "bool"),
+    ConfigField("creation_max_revise_iterations", "model", "创作-最大修订次数", "int"),
+    ConfigField("creation_min_quality_score", "model", "创作-质量阈值", "int"),
+    ConfigField("creation_llm_critic_enabled", "model", "创作-启用 LLM 评审", "bool"),
+    ConfigField("creation_compliance_enabled", "model", "创作-启用限流词规避", "bool"),
+    ConfigField("audit_max_revise_iterations", "model", "体检-最大修订次数", "int"),
+    ConfigField("audit_min_quality_score", "model", "体检-质量阈值", "int"),
+    ConfigField("audit_llm_critic_enabled", "model", "体检-启用 LLM 评审", "bool"),
+    # —— 采集 / TikHub ——
+    ConfigField("tikhub_base_url", "tikhub", "TikHub Base URL"),
+    ConfigField("tikhub_api_key", "tikhub", "TikHub API Key", is_secret=True),
+    ConfigField("tikhub_request_price_usd", "tikhub", "单请求估价 (USD)", "float"),
+    ConfigField("tikhub_min_request_price_usd", "tikhub", "单请求估价下限 (USD)", "float"),
+    ConfigField("tikhub_max_request_price_usd", "tikhub", "单请求估价上限 (USD)", "float"),
+    ConfigField("tikhub_min_request_interval_seconds", "tikhub", "请求最小间隔(秒,0=不限)", "float"),
+    # —— ASR ——
+    ConfigField("asr_enabled", "asr", "启用 ASR", "bool"),
+    ConfigField("asr_provider", "asr", "ASR 供应商"),
+    ConfigField("asr_max_duration_seconds", "asr", "最大时长(秒)", "int"),
+    ConfigField("asr_poll_interval_seconds", "asr", "轮询间隔(秒)", "int"),
+    ConfigField("asr_timeout_seconds", "asr", "总超时(秒)", "int"),
+    ConfigField("tencent_asr_secret_id", "asr", "腾讯 ASR SecretId", is_secret=True),
+    ConfigField("tencent_asr_secret_key", "asr", "腾讯 ASR SecretKey", is_secret=True),
+    ConfigField("tencent_asr_region", "asr", "腾讯 ASR Region"),
+    ConfigField("tencent_asr_engine_model_type", "asr", "腾讯 ASR 引擎模型"),
+    ConfigField("tencent_cos_secret_id", "asr", "腾讯 COS SecretId", is_secret=True),
+    ConfigField("tencent_cos_secret_key", "asr", "腾讯 COS SecretKey", is_secret=True),
+    ConfigField("tencent_cos_region", "asr", "腾讯 COS Region"),
+    ConfigField("tencent_cos_bucket", "asr", "腾讯 COS Bucket"),
+    ConfigField("tencent_cos_prefix", "asr", "腾讯 COS 路径前缀"),
+]
+
+FIELDS_BY_KEY: dict[str, ConfigField] = {f.key: f for f in OVERRIDABLE}
+
+
+def coerce(field: ConfigField, raw: str):
+    """把存库的字符串值转成对应的 Python 类型,用于 setattr 到 Settings。"""
+    value = (raw or "").strip()
+    if field.type == "bool":
+        return value.lower() in {"1", "true", "yes", "on"}
+    if field.type == "int":
+        return int(value or "0")
+    if field.type == "float":
+        return float(value or "0")
+    return raw  # str:保留原值(可含前后空白以外的内容)

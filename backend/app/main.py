@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from app.api import (
     account_audit,
     admin,
+    admin_config,
+    admin_tasks,
     articles,
     auth,
     bloggers,
@@ -22,7 +24,9 @@ from app.api import (
     xhs,
 )
 from app.api import settings as settings_routes
+from app.admin.runtime_config import apply_overrides
 from app.config import get_settings
+from app.database import SessionLocal
 from app.db.migrate import run_migrations
 from app.logging_config import configure_logging
 from app.services.auth_service import verify_token
@@ -38,6 +42,12 @@ scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 async def lifespan(app: FastAPI):
     # 启动时把数据库迁移到最新版本（Alembic 是 schema 的唯一来源）。
     run_migrations()
+    # 迁移完成后,把后台运行时配置覆盖项叠加到 settings 单例。
+    db = SessionLocal()
+    try:
+        apply_overrides(settings, db)
+    finally:
+        db.close()
     scheduler.add_job(
         scheduled_workspace_publish,
         "interval",
@@ -82,6 +92,8 @@ for module in (
     auth,
     tenants,
     admin,
+    admin_config,
+    admin_tasks,
     workspace,
     dashboard,
     news,

@@ -3,6 +3,16 @@
 Re-exported here so existing ``from app.schemas import X`` imports keep working.
 """
 
+from app.schemas.admin import (
+    AdminTaskRead,
+    AdminTenantRead,
+    ConfigFieldView,
+    ConfigGroupView,
+    ConfigUpdate,
+    ConfigView,
+    PasswordReset,
+    QueueHealth,
+)
 from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
 from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead
 from app.schemas.blogger import (
@@ -48,6 +58,14 @@ from app.schemas.xhs import (
 )
 
 __all__ = [
+    "ConfigView",
+    "ConfigGroupView",
+    "ConfigFieldView",
+    "ConfigUpdate",
+    "AdminTaskRead",
+    "QueueHealth",
+    "AdminTenantRead",
+    "PasswordReset",
     "TenantRead",
     "CurrentUserRead",
     "AdminUserRead",

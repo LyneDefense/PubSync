@@ -22,8 +22,10 @@ import SocialHistoryView from './views/SocialHistoryView.vue'
 import XhsRecordsView from './views/XhsRecordsView.vue'
 import DouyinRecordsView from './views/DouyinRecordsView.vue'
 import WorkspaceSettingsView from './views/WorkspaceSettingsView.vue'
-import AdminView from './views/AdminView.vue'
 import { clearAuthToken, clearTenantId } from './api'
+
+// 管理后台是独立入口(自带登录),仅给管理员一个跳转链接。
+const adminConsoleUrl = `${import.meta.env.BASE_URL}admin.html`
 
 import {
   activeMainTab,
@@ -96,6 +98,7 @@ onUnmounted(() => {
     <header class="topbar">
       <h1 class="topbar-title">多平台内容自动化</h1>
       <div class="topbar-controls">
+        <a v-if="isAdmin" class="admin-console-link" :href="adminConsoleUrl">管理后台</a>
         <div class="user-menu" @mouseleave="showUserMenu = false">
           <button
             type="button"
@@ -140,16 +143,6 @@ onUnmounted(() => {
         @click="activeMainTab = 'douyin'"
       >
         抖音
-      </button>
-      <button
-        v-if="isAdmin"
-        type="button"
-        role="tab"
-        :aria-selected="activeMainTab === 'admin'"
-        :class="{ active: activeMainTab === 'admin' }"
-        @click="activeMainTab = 'admin'"
-      >
-        后台管理
       </button>
     </nav>
 
@@ -236,8 +229,6 @@ onUnmounted(() => {
       <DouyinRecordsView />
 
       <WorkspaceSettingsView />
-
-      <AdminView />
 
       <div v-if="showBloggerModal" class="modal-backdrop" role="presentation" @click.self="closeBloggerModal">
         <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`${editingBlogger ? '编辑' : '创建'}${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">

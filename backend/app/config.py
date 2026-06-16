@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     admin_password: str = "change_me"
     auth_secret: str = ""
     session_hours: int = 24
+    # 后台运行时配置中密钥(API key 等)落库时的 Fernet 加密钥。留空则由 auth_secret 派生;
+    # auth_secret 也为空时,后台拒绝保存密钥类配置(fail-safe,本地默认即如此)。
+    config_encryption_key: str = ""
     use_task_queue: bool = False
     redis_url: str = "redis://localhost:6379/0"
     task_queue_name: str = "pubsync"

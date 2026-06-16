@@ -1,8 +1,11 @@
 import type {
   AccountAuditCreate,
   AccountAuditRun,
+  AdminTask,
+  AdminTenant,
   AdminUser,
   AdminUserCreate,
+  AppSettingRead,
   Article,
   ArticleUpdate,
   BloggerCollectRequest,
@@ -16,8 +19,10 @@ import type {
   BloggerSearchResult,
   CollectEstimate,
   BloggerSkill,
+  ConfigView,
   ContentProfile,
   CurrentUser,
+  QueueHealth,
   LoginResponse,
   NewsItem,
   OperationTask,
@@ -127,6 +132,76 @@ export function createAdminUser(payload: AdminUserCreate) {
   return request<AdminUser>('/admin/users', {
     method: 'POST',
     body: JSON.stringify(payload)
+  })
+}
+
+export function listAdminTenants() {
+  return request<AdminTenant[]>('/admin/tenants')
+}
+
+export function disableAdminUser(userId: number) {
+  return request<AdminUser>(`/admin/users/${userId}/disable`, { method: 'POST' })
+}
+
+export function enableAdminUser(userId: number) {
+  return request<AdminUser>(`/admin/users/${userId}/enable`, { method: 'POST' })
+}
+
+export function resetAdminUserPassword(userId: number, password: string) {
+  return request<AdminUser>(`/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ password })
+  })
+}
+
+export function getAdminConfig() {
+  return request<ConfigView>('/admin/config')
+}
+
+export function updateAdminConfig(key: string, value: string) {
+  return request<ConfigView>('/admin/config', {
+    method: 'PUT',
+    body: JSON.stringify({ key, value })
+  })
+}
+
+export function clearAdminConfig(key: string) {
+  return request<ConfigView>(`/admin/config/${encodeURIComponent(key)}`, { method: 'DELETE' })
+}
+
+export function listAdminTasks(params: { status?: string; task_type?: string; limit?: number } = {}) {
+  const search = new URLSearchParams()
+  if (params.status) search.set('status', params.status)
+  if (params.task_type) search.set('task_type', params.task_type)
+  if (params.limit) search.set('limit', String(params.limit))
+  const qs = search.toString()
+  return request<AdminTask[]>(`/admin/tasks${qs ? `?${qs}` : ''}`)
+}
+
+export function getAdminTaskEvents(taskId: string) {
+  return request<OperationTaskEvent[]>(`/admin/tasks/${taskId}/events`)
+}
+
+export function cancelAdminTask(taskId: string) {
+  return request<AdminTask>(`/admin/tasks/${taskId}/cancel`, { method: 'POST' })
+}
+
+export function retryAdminTask(taskId: string) {
+  return request<AdminTask>(`/admin/tasks/${taskId}/retry`, { method: 'POST' })
+}
+
+export function getAdminQueueHealth() {
+  return request<QueueHealth>('/admin/queue')
+}
+
+export function listAppSettings() {
+  return request<AppSettingRead[]>('/settings')
+}
+
+export function upsertAppSetting(key: string, value: string) {
+  return request<AppSettingRead>(`/settings/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value })
   })
 }
 
