@@ -217,11 +217,26 @@ def normalize_container_item(item: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
+# 搜索结果里混着的"筛选项/聚合块"标志键(如粉丝区间筛选 All/0-100/100-1k),据此排除。
+FILTER_MARKER_KEYS = ("sub_filters", "sub_filters_select_type", "need_location_info", "icon_tail_url")
+# 真实用户至少带一个这样的信号(头像/链接/小红书号/粉丝文案/简介)。
+USER_SIGNAL_KEYS = [
+    "avatar", "avatar_url", "avatarUrl", "image", "image_url", "imageUrl",
+    "red_id", "redId", "sub_title", "subTitle", "link", "share_url", "shareUrl",
+    "homepage_url", "signature", "desc", "follower_count", "fans_count",
+]
+
+
 def looks_like_user(item: dict[str, Any]) -> bool:
-    return bool(
-        deep_first_str(item, ["sec_uid", "secUid", "uid", "user_id", "userId", "userid", "id"])
-        and deep_first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
-    )
+    has_id = deep_first_str(item, ["sec_uid", "secUid", "uid", "user_id", "userId", "userid", "id"])
+    has_name = deep_first_str(item, ["nickname", "nick_name", "name", "display_name", "displayName"])
+    if not (has_id and has_name):
+        return False
+    # 排除粉丝区间筛选项等噪声块。
+    if any(key in item for key in FILTER_MARKER_KEYS):
+        return False
+    # 必须带至少一个用户信号,避免把纯 id+name 的非用户对象当成博主。
+    return bool(deep_first_str(item, USER_SIGNAL_KEYS) or deep_first_int(item, ["follower_count", "fans_count", "fansCount"]))
 
 
 def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult | None:

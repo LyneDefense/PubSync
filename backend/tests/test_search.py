@@ -1,4 +1,12 @@
-from app.blogger_distillation.search import fans_from_text, normalize_user
+from app.blogger_distillation.search import fans_from_text, looks_like_user, normalize_user
+
+
+def test_looks_like_user_excludes_filter_items():
+    # 粉丝区间筛选项(All/0-100/...)有 id+name 但不是用户,应被排除。
+    filt = {"id": "all", "name": "All", "sub_filters": None, "need_location_info": False, "icon_url": ""}
+    assert looks_like_user(filt) is False
+    user = {"id": "631", "name": "李子做美食", "image": "http://a", "sub_title": "Fans 160.8k", "link": "x"}
+    assert looks_like_user(user) is True
 
 
 def test_fans_from_text():
