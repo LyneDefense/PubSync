@@ -33,7 +33,6 @@ import {
   listAccountAuditRuns,
   startAccountAuditTask,
   confirmBloggerRun,
-  createAdminUser,
   createBlogger,
   deleteBlogger,
   distillBlogger,
@@ -48,7 +47,6 @@ import {
   getTask,
   getTaskEvents,
   getWorkspaceConfig,
-  listAdminUsers,
   listBloggerCollectionPosts,
   listBloggerCollectionRuns,
   listBloggerRuns,
@@ -71,8 +69,6 @@ import {
 } from '../api'
 import type {
   AccountAuditRun,
-  AdminUser,
-  AdminUserCreate,
   Article,
   ArticleUpdate,
   BloggerCollectionRun,
@@ -138,7 +134,6 @@ export const auditForm = reactive({ benchmark_skill_id: 0, my_content_text: '' }
 export const bloggerSkills = ref<BloggerSkill[]>([])
 export const xhsPackages = ref<XhsPublishPackage[]>([])
 export const currentXhsDraft = ref<XhsPublishPackageDraft | null>(null)
-export const adminUsers = ref<AdminUser[]>([])
 export const currentUser = ref<CurrentUser | null>(null)
 export const selectedBloggerId = ref<number | null>(null)
 export const selectedCollectionRunId = ref<number | null>(null)
@@ -190,14 +185,6 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   audit: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
-
-export const adminUserForm = reactive<AdminUserCreate>({
-  username: '',
-  password: '',
-  tenant_name: '',
-  tenant_slug: '',
-  is_admin: false
-})
 
 export const form = reactive<ArticleUpdate>({
   title: '',
@@ -850,7 +837,6 @@ export function handleLogout() {
   resultCollectionFilterId.value = null
   selectedXhsPackageId.value = null
   currentUser.value = null
-  adminUsers.value = []
   tenants.value = []
   profile.value = null
   contentGroups.value = []
@@ -1161,26 +1147,6 @@ export async function handleDeleteBlogger(blogger: BloggerProfile) {
     await refreshBloggers()
     await refreshXhsPackages()
     showMessage('博主及关联资产已删除')
-  })
-}
-
-export async function handleCreateAdminUser() {
-  await runAction('admin-user', '正在创建账号和工作空间', async () => {
-    const user = await createAdminUser({
-      username: adminUserForm.username,
-      password: adminUserForm.password,
-      tenant_name: adminUserForm.tenant_name,
-      tenant_slug: adminUserForm.tenant_slug || undefined,
-      is_admin: adminUserForm.is_admin
-    })
-    adminUsers.value = await listAdminUsers()
-    tenants.value = await listTenants()
-    adminUserForm.username = ''
-    adminUserForm.password = ''
-    adminUserForm.tenant_name = ''
-    adminUserForm.tenant_slug = ''
-    adminUserForm.is_admin = false
-    showMessage(`账号 ${user.username} 已创建`)
   })
 }
 
