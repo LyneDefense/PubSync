@@ -143,6 +143,74 @@ button:disabled {
   transform: none;
 }
 
+/* 次级/幽灵按钮:用于「关闭」「取消」等弱操作,透明底、灰字,但保持系统按钮的尺寸与边框。 */
+button.ghost {
+  background: transparent;
+  color: var(--color-ink-2);
+}
+
+/* 链接型按钮:语义是 <a>(跳转),但视觉与系统按钮一致(避免默认蓝色下划线链接混在按钮里)。 */
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 var(--space-sm);
+  border: var(--rule-hair);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  border-color: var(--color-rule-strong);
+  background: var(--color-paper-3);
+}
+
+.link-button.primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-paper);
+  font-weight: 800;
+}
+
+.link-button.primary:hover {
+  background: var(--color-accent-ink);
+}
+
+/* 顶栏「管理后台」入口:紧凑安静的胶囊按钮,与平台切换器/用户菜单同行同感。 */
+.admin-console-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-accent-ink);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.admin-console-link:hover {
+  background: var(--color-paper-3);
+}
+
+/* 空状态正文里的行内动作链接(如「去添加」):用品牌色,而非浏览器默认蓝色下划线。 */
+.empty-region a {
+  color: var(--color-accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.empty-region a:hover {
+  text-decoration: underline;
+}
+
 button.task-button {
   position: relative;
   isolation: isolate;

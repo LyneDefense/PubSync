@@ -74,7 +74,7 @@ function logout() {
     <h1>无权限</h1>
     <p>当前账号 <strong>{{ currentUser.username }}</strong> 不是管理员，无法访问管理后台。</p>
     <div class="admin-denied__actions">
-      <a :href="userAppUrl" class="primary-link">返回工作台</a>
+      <a :href="userAppUrl" class="link-button primary">返回工作台</a>
       <button type="button" @click="logout">退出登录</button>
     </div>
   </main>
@@ -125,9 +125,6 @@ function logout() {
   gap: 12px;
   justify-content: center;
   margin-top: 16px;
-}
-.primary-link {
-  text-decoration: none;
 }
 .admin-shell {
   display: grid;
