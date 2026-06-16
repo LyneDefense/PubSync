@@ -19,11 +19,11 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
-        // 多页:用户端 index.html + 独立管理后台 admin.html(自带登录与导航)。
+        // 多页:index.html=落地页;login.html=登录+工作台;admin.html=独立管理后台。
         input: {
           main: fileURLToPath(new URL('./index.html', import.meta.url)),
-          admin: fileURLToPath(new URL('./admin.html', import.meta.url)),
-          landing: fileURLToPath(new URL('./landing.html', import.meta.url))
+          login: fileURLToPath(new URL('./login.html', import.meta.url)),
+          admin: fileURLToPath(new URL('./admin.html', import.meta.url))
         }
       }
     },

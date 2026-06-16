@@ -29,7 +29,7 @@ const loginMessage = ref('')
 const ready = ref(false)
 
 const isAdmin = computed(() => Boolean(currentUser.value?.is_admin))
-const userAppUrl = `${import.meta.env.BASE_URL}`
+const userAppUrl = `${import.meta.env.BASE_URL}login.html`
 
 async function refreshUser() {
   try {

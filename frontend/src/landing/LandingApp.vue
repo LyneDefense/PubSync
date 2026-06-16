@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // PubSync 落地页(面向内容创作者/运营)。纯展示;复用 main.css 设计变量。
-// 进入工作台 = 用户端 app(BASE_URL,如 /PubSync/)。
-const appUrl = import.meta.env.BASE_URL || '/'
+// 进入工作台/登录 = 登录入口 login.html(如 /PubSync/login.html)。
+const appUrl = `${import.meta.env.BASE_URL || '/'}login.html`
 
 const valueProps = [
   { t: '不知道写什么', d: '采集对标博主内容,蒸馏成可复用的「创作方法论 Skill」。选题、结构、表达照着打法走,不再拍脑袋。' },
