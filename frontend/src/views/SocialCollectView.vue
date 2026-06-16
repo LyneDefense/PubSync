@@ -2,6 +2,7 @@
 // 社媒·数据采集：选择博主、配置并执行小红书/抖音样本采集。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { onMounted } from 'vue'
+import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   article,
@@ -97,9 +98,7 @@ onMounted(refreshCollectEstimate)
                   <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
                 </button>
               </div>
-              <div v-if="pendingAction === 'collect'" class="inline-progress-card" aria-live="polite">
-                <div><strong>正在采集数据</strong><span>系统正在读取公开笔记、互动数据和评论样本。</span></div><i aria-hidden="true"></i>
-              </div>
+              <InlineTaskProgress :active="pendingAction === 'collect'" title="正在采集数据" fallback="系统正在读取公开笔记、互动数据和评论样本。" />
               <p class="form-hint">采集耗时取决于样本数量、评论数量和视频 ASR 开关。</p>
             </section>
 

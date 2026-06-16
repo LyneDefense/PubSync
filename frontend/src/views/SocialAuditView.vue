@@ -2,6 +2,7 @@
 // 社媒·账号对标体检:粘贴自己账号的内容,选一个对标博主的 Skill,AI 逐维度对比给结论。
 // 状态与方法来自 useWorkspaceStore 单例;本组件仅负责视图与交互。
 import { watchEffect } from 'vue'
+import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   accountAuditRuns,
@@ -78,6 +79,7 @@ watchEffect(() => {
         >
           <span>{{ pendingAction === 'audit' ? `体检中 ${Math.round(taskProgress.audit)}%` : '开始体检对标' }}</span>
         </button>
+        <InlineTaskProgress :active="pendingAction === 'audit'" title="正在体检对标" fallback="正在对照对标博主分析你的内容…" />
       </div>
 
       <div class="audit-results">

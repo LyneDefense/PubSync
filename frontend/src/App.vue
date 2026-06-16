@@ -8,7 +8,6 @@ import HashtagCloud from './components/HashtagCloud.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
-import TaskEventsBanner from './views/TaskEventsBanner.vue'
 import WechatBriefView from './views/WechatBriefView.vue'
 import WechatAiView from './views/WechatAiView.vue'
 import WechatDraftsView from './views/WechatDraftsView.vue'
@@ -195,8 +194,6 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="setCurrentSocialTab('freecreate')">自由创作</button>
         </div>
       </div>
-
-      <TaskEventsBanner />
 
       <WechatBriefView />
 

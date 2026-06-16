@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 公众号·每日早报：新闻抓取、分组、勾选与文章生成入口。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
+import InlineTaskProgress from '../components/InlineTaskProgress.vue'
 import {
   activeMainTab,
   activeNews,
@@ -62,6 +63,7 @@ import {
             </button>
           </div>
         </div>
+        <InlineTaskProgress :active="pendingAction === 'fetch'" title="正在抓取新闻" fallback="正在抓取新闻并做大模型筛选,可能需要一会儿。" />
         <div class="module-subnav">
           <div class="tabs" role="tablist" aria-label="新闻分组">
             <button
