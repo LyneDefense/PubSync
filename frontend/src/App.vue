@@ -5,7 +5,6 @@ import { onMounted, onUnmounted } from 'vue'
 
 import ComingSoonPanel from './components/ComingSoonPanel.vue'
 import HashtagCloud from './components/HashtagCloud.vue'
-import InlineTaskProgress from './components/InlineTaskProgress.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
@@ -47,7 +46,6 @@ import {
   handleLogout,
   handleSearchBloggerCandidates,
   isAdmin,
-  isProgressTaskRunning,
   isAuthenticated,
   isLoggingIn,
   isSocialPlatform,
@@ -174,8 +172,6 @@ onUnmounted(() => {
       </aside>
 
       <main class="workspace">
-      <InlineTaskProgress :active="isProgressTaskRunning" title="流程执行进度" fallback="正在处理，请稍候…" />
-
       <WechatBriefView />
 
       <ComingSoonPanel
