@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -241,6 +242,9 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
     )
     description = first_str(item, ["description"]) or deep_first_str(item, ["desc", "signature", "user_desc", "userDesc", "signature_extra"])
     follower_count = first_int(item, ["fans"]) or deep_first_int(item, ["follower_count", "fans_count", "fansCount", "followerCount", "followers"])
+    if not follower_count:
+        # 小红书搜索把粉丝数放在 sub_title(如 "Fans 160.8k" / "粉丝 16.5万"),没有独立数值字段,需解析。
+        follower_count = fans_from_text(deep_first_str(item, ["sub_title", "subTitle", "fans_desc", "fansDesc"]))
     return BloggerSearchResult(
         platform=platform,
         external_id=external_id,
@@ -251,6 +255,22 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
         follower_count=follower_count,
         raw=item,
     )
+
+
+def fans_from_text(text: str) -> int:
+    """从 "Fans 160.8k" / "粉丝 16.5万" 这类文案里解析粉丝数。解析不出返回 0。"""
+    if not text:
+        return 0
+    match = re.search(r"([\d.]+)\s*([kKmMwW万亿])?", text)
+    if not match:
+        return 0
+    try:
+        num = float(match.group(1))
+    except (TypeError, ValueError):
+        return 0
+    suffix = (match.group(2) or "").lower()
+    multiplier = {"k": 1_000, "m": 1_000_000, "w": 10_000, "万": 10_000, "亿": 100_000_000}.get(suffix, 1)
+    return int(num * multiplier)
 
 
 def build_homepage_url(platform: str, external_id: str) -> str:
