@@ -1265,8 +1265,11 @@ export async function loadAccountPosts(id: number, force = false) {
   if (!force && accountPosts[id]?.length) return
   try {
     accountPosts[id] = await listBloggerPosts(id)
-  } catch {
+  } catch (error) {
     accountPosts[id] = []
+    // 不再静默吞错:取内容失败时给提示并打日志,便于定位"选了账号却没内容"的问题。
+    console.error('加载账号内容失败 blogger_id=' + id, error)
+    showMessage(error instanceof Error ? `加载账号内容失败：${error.message}` : '加载账号内容失败', true)
   }
 }
 
