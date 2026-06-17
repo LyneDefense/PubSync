@@ -90,6 +90,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             Region=self.settings.tencent_cos_region,
             SecretId=self.settings.tencent_cos_secret_id,
             SecretKey=self.settings.tencent_cos_secret_key,
+            Timeout=60,  # 连接/读取超时,避免上传卡死把整个采集任务挂住
         )
         client = CosS3Client(config)
         safe_source = source_id or str(uuid4())
@@ -111,6 +112,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             Region=self.settings.tencent_cos_region,
             SecretId=self.settings.tencent_cos_secret_id,
             SecretKey=self.settings.tencent_cos_secret_key,
+            Timeout=60,  # 连接/读取超时,避免上传卡死把整个采集任务挂住
         )
         client = CosS3Client(config)
         return client.get_presigned_url(
@@ -127,6 +129,7 @@ class TencentRecTaskASRProvider(ASRProvider):
         from tencentcloud.common.profile.http_profile import HttpProfile
 
         http_profile = HttpProfile(endpoint="asr.tencentcloudapi.com")
+        http_profile.reqTimeout = 60  # 单次 API 调用超时,避免无限挂
         client_profile = ClientProfile(httpProfile=http_profile)
         cred = credential.Credential(self.settings.tencent_asr_secret_id, self.settings.tencent_asr_secret_key)
         client = asr_client.AsrClient(cred, self.settings.tencent_asr_region, client_profile)
@@ -156,6 +159,7 @@ class TencentRecTaskASRProvider(ASRProvider):
         from tencentcloud.common.profile.http_profile import HttpProfile
 
         http_profile = HttpProfile(endpoint="asr.tencentcloudapi.com")
+        http_profile.reqTimeout = 60  # 单次 API 调用超时,避免无限挂
         client_profile = ClientProfile(httpProfile=http_profile)
         cred = credential.Credential(self.settings.tencent_asr_secret_id, self.settings.tencent_asr_secret_key)
         client = asr_client.AsrClient(cred, self.settings.tencent_asr_region, client_profile)
@@ -199,21 +203,25 @@ def download_file(url: str, output_path: Path) -> None:
 def probe_duration(input_path: Path) -> float | None:
     if not shutil.which("ffprobe"):
         return None
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(input_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     try:
         return float(result.stdout.strip())
     except ValueError:
@@ -223,21 +231,25 @@ def probe_duration(input_path: Path) -> float | None:
 def probe_media_streams(input_path: Path) -> dict[str, list[str]]:
     if not shutil.which("ffprobe"):
         return {"types": [], "codecs": []}
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_type,codec_name",
-            "-of",
-            "json",
-            str(input_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type,codec_name",
+                "-of",
+                "json",
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return {"types": [], "codecs": []}
     try:
         payload = json.loads(result.stdout or "{}")
     except json.JSONDecodeError:
@@ -260,11 +272,15 @@ def probe_media_streams(input_path: Path) -> dict[str, list[str]]:
 
 
 def extract_audio(video_path: Path, audio_path: Path) -> None:
-    result = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(video_path), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", str(audio_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video_path), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", str(audio_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ASRError("ffmpeg 提取音频超时(180s)") from exc
     if result.returncode != 0 or not audio_path.exists():
         raise ASRError(f"ffmpeg 提取音频失败：{result.stderr[-800:]}")
