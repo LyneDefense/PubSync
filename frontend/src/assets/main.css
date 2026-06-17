@@ -3219,3 +3219,9 @@ dd {
   color: var(--color-accent-ink);
   font-size: var(--text-base, 1rem);
 }
+
+/* 采集样本:显示全部,超出滚动(放开此前只显示前 8 条的上限)。 */
+.asset-samples--scroll {
+  max-height: 460px;
+  overflow-y: auto;
+}

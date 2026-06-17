@@ -186,13 +186,13 @@ const selectedRunModalityComparison = computed(() => {
             <section v-if="selectedCollectionRun" class="asset-panel">
               <div class="inline-card-header">
                 <div>
-                  <span>采集样本</span>
+                  <span>采集样本 · 共 {{ bloggerPosts.length }} 条</span>
                   <h3>第 {{ collectionRunOrdinal(selectedCollectionRun.id) }} 次采集</h3>
                 </div>
                 <button v-if="collectionDistillationCount(selectedCollectionRun.id)" type="button" @click="showCollectionResults(selectedCollectionRun.id)">查看对应蒸馏</button>
               </div>
-              <div v-if="bloggerPosts.length" class="sample-list asset-samples">
-                <div v-for="post in bloggerPosts.slice(0, 8)" :key="post.id">
+              <div v-if="bloggerPosts.length" class="sample-list asset-samples asset-samples--scroll">
+                <div v-for="post in bloggerPosts" :key="post.id">
                   <strong>{{ post.title }}<span v-if="post.status === 'delisted'" class="tag-chip tag-chip--delisted">已下架</span></strong>
                   <span>
                     {{ subtypeLabel(post.content_subtype) }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}

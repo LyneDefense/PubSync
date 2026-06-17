@@ -93,6 +93,18 @@ class TikHubXhsClient(TikHubBaseClient):
                 if len(candidates) >= limit:
                     return UserNotesResult(candidates=candidates, reached_end=False)
             next_cursor = page_data["next_cursor"]
+            # 兜底:has_more 为真但没解析到游标时,用最后一条 note_id 当游标(小红书常见做法),
+            # 否则会卡在第 1 页(~20 条)永远翻不动。重复/同游标会在下面 break,不会死循环。
+            if page_data["has_more"] and not next_cursor and candidates:
+                next_cursor = candidates[-1].external_id
+            logger.info(
+                "小红书翻页:page=%s,本页=%s,累计候选=%s,has_more=%s,next_cursor=%s",
+                page + 1,
+                len(notes),
+                len(candidates),
+                page_data["has_more"],
+                next_cursor or "<empty>",
+            )
             if not page_data["has_more"]:
                 reached_end = True
                 break
