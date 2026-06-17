@@ -7,9 +7,9 @@ import StatusChip from '../components/StatusChip.vue'
 import { bloggerCommentLabel } from '../utils/format'
 import {
   article,
+  benchmarkAccounts,
   bloggerCollectionRuns,
   bloggerPosts,
-  bloggers,
   collectionDistillationCount,
   currentSocialPlatformName,
   currentSocialTab,
@@ -58,10 +58,10 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
           <aside class="asset-sidebar" aria-label="小红书博主列表">
             <div class="run-list-header">
               <strong>博主</strong>
-              <span>{{ bloggers.length }} 个</span>
+              <span>{{ benchmarkAccounts.length }} 个</span>
             </div>
             <button
-              v-for="blogger in bloggers"
+              v-for="blogger in benchmarkAccounts"
               :key="blogger.id"
               type="button"
               :class="{ active: selectedBloggerId === blogger.id }"
@@ -70,7 +70,7 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
               <strong>{{ blogger.display_name }}</strong>
               <span>{{ blogger.is_favorite ? '已标记 · ' : '' }}{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
             </button>
-            <p v-if="!bloggers.length" class="empty-region">还没有博主档案。请先到“数据采集”创建博主。</p>
+            <p v-if="!benchmarkAccounts.length" class="empty-region">还没有对标博主。请先到“数据采集”创建博主。</p>
           </aside>
 
           <div v-if="selectedBlogger" class="asset-detail">
@@ -118,8 +118,8 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                     :class="{ active: selectedCollectionRunId === run.id }"
                     @click="selectCollectionRun(run.id)"
                   >
-                    <strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong>
-                    <span><StatusChip :status="run.status" /> 样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开' : '关' }} · 蒸馏 {{ collectionDistillationCount(run.id) }}</span>
+                    <span class="asset-run-row"><strong>#{{ run.id }} · {{ formatDate(run.created_at) }}</strong><StatusChip :status="run.status" /></span>
+                    <span class="asset-run-meta">样本 {{ run.post_count }} · 评论 {{ run.comment_count }} · ASR {{ run.asr_enabled ? '开' : '关' }} · 蒸馏 {{ collectionDistillationCount(run.id) }} 次</span>
                   </button>
                   <p v-if="!bloggerCollectionRuns.length" class="empty-region">这个博主还没有采集批次。</p>
                 </div>
@@ -142,8 +142,8 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                     :class="{ active: selectedBloggerRunId === run.id, failed: run.status === 'failed' }"
                     @click="selectBloggerRun(run.id)"
                   >
-                    <strong>{{ formatDate(run.created_at) }}</strong>
-                    <span>批次 #{{ run.collection_run_id || '旧数据' }} · <StatusChip :status="run.status" /> 样本 {{ run.sample_count }}</span>
+                    <span class="asset-run-row"><strong>{{ formatDate(run.created_at) }}</strong><StatusChip :status="run.status" /></span>
+                    <span class="asset-run-meta">批次 #{{ run.collection_run_id || '旧数据' }} · 样本 {{ run.sample_count }}</span>
                     <em v-if="run.status === 'failed'" class="run-error">失败原因：{{ run.error_message || '未记录失败原因' }}</em>
                   </button>
                   <p v-if="!visibleBloggerRuns.length && resultCollectionFilter" class="empty-region">这个采集批次还没有蒸馏结果。</p>

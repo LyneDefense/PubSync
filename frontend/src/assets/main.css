@@ -1437,6 +1437,25 @@ p {
   font-size: var(--text-xs);
 }
 
+/* 采集/蒸馏历史条目:首行(标题 + 状态徽标)与次行(指标)分开,避免徽标夹在文字中间换行错乱。 */
+.asset-run-list button .asset-run-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2xs);
+  width: 100%;
+}
+.asset-run-list button .asset-run-row strong {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.asset-run-list button .asset-run-meta {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
 .asset-detail {
   display: grid;
   gap: var(--space-md);
