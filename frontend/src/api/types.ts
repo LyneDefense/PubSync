@@ -379,12 +379,14 @@ export interface BloggerSearchResult {
 export interface BloggerDistillRequest {
   collection_run_id: number
   mode?: string
+  subtypes?: string[]
 }
 
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
   asr_enabled: boolean
+  content_types?: string[]
 }
 
 export interface CollectEstimate {
@@ -406,6 +408,7 @@ export interface BloggerPost {
   title: string
   body_text: string
   content_type: string
+  content_subtype: string
   hashtags_json: string
   cover_url: string
   media_urls_json: string
@@ -475,6 +478,7 @@ export interface BloggerSkill {
   name: string
   description: string
   skill_markdown: string
+  scope_json: string
   status: string
   created_at: string
   updated_at: string

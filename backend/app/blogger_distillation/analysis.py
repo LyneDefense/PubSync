@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any
 
+from app.blogger_distillation.modality import coarse_modality
 from app.models import BloggerPost
 
 
@@ -39,10 +40,63 @@ OPENING_PATTERNS: dict[str, str] = {
 }
 
 
+def _percentile_within_modality(posts: list[BloggerPost]) -> dict[int, float]:
+    """每条 post 在「同模态(图文/视频)」内按 score 的百分位(1.0=同模态最高)。
+    用它排爆款,避免量级大的模态(常是某一类)垄断 TOP。"""
+    groups: dict[str, list[BloggerPost]] = defaultdict(list)
+    for post in posts:
+        groups[coarse_modality(post.content_type)].append(post)
+    pct: dict[int, float] = {}
+    for items in groups.values():
+        ordered = sorted(items, key=lambda item: item.score)
+        n = len(ordered)
+        for rank, post in enumerate(ordered):
+            pct[id(post)] = (rank + 1) / n if n else 0.0
+    return pct
+
+
+def analyze_by_modality(posts: list[BloggerPost]) -> dict[str, dict[str, Any]]:
+    """按粗模态(image/video)分别算互动:均赞/均藏、藏赞比、爆款基线。"""
+    groups: dict[str, list[BloggerPost]] = defaultdict(list)
+    for post in posts:
+        groups[coarse_modality(post.content_type)].append(post)
+    result: dict[str, dict[str, Any]] = {}
+    for modality, items in groups.items():
+        n = len(items)
+        total_like = sum(item.like_count for item in items)
+        avg_like = total_like / max(n, 1)
+        result[modality] = {
+            "count": n,
+            "average_like": round(avg_like, 2),
+            "average_favorite": round(sum(item.favorite_count for item in items) / max(n, 1), 2),
+            "favorite_like_ratio": round(sum(item.favorite_count for item in items) / max(total_like, 1), 4),
+            "hot_threshold_3x": round(avg_like * 3, 1),
+        }
+    return result
+
+
+def modality_comparison(by_modality: dict[str, dict[str, Any]]) -> str:
+    """一句话:视频 vs 图文 表现对比(仅两类都有时)。"""
+    image = by_modality.get("image")
+    video = by_modality.get("video")
+    if not image or not video:
+        return ""
+    iv = image["average_like"]
+    vv = video["average_like"]
+    if vv > iv * 1.5:
+        return f"视频均赞 {vv:,.0f} 显著高于图文 {iv:,.0f}"
+    if iv > vv * 1.5:
+        return f"图文均赞 {iv:,.0f} 显著高于视频 {vv:,.0f}"
+    return f"视频均赞 {vv:,.0f}、图文均赞 {iv:,.0f},两种形式基本持平"
+
+
 def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
-    sorted_posts = sorted(posts, key=lambda item: item.score, reverse=True)
+    # 爆款排序在「模态内」做:先按同模态百分位,再按绝对分数兜底。
+    within_pct = _percentile_within_modality(posts)
+    sorted_posts = sorted(posts, key=lambda item: (within_pct.get(id(item), 0.0), item.score), reverse=True)
     hot_count = min(10, max(3, int(len(sorted_posts) * 0.2))) if sorted_posts else 0
     hot_posts = sorted_posts[:hot_count]
+    by_modality = analyze_by_modality(posts)
     comments = collect_comments(posts)
     category_stats = classify_posts(posts)
     frequency_info = analyze_posting_frequency(posts)
@@ -62,6 +116,9 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
         "average_favorite": round(sum(item.favorite_count for item in posts) / max(len(posts), 1), 2),
         "average_comment": round(sum(item.comment_count for item in posts) / max(len(posts), 1), 2),
         "favorite_like_ratio": round(sum(item.favorite_count for item in posts) / max(sum(item.like_count for item in posts), 1), 4),
+        "by_modality": by_modality,
+        "modality_comparison": modality_comparison(by_modality),
+        "subtype_counts": dict(Counter(post.content_subtype for post in posts)),
         "title_patterns": title_patterns,
         "opening_patterns": opening_patterns,
         "cta_patterns": cta_patterns,

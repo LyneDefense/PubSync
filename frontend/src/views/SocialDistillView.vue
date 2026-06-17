@@ -9,9 +9,13 @@ import {
   bloggerCollectionRuns,
   bloggers,
   collectionDistillationCount,
+  collectionSubtypeCounts,
   currentSocialPlatformName,
   currentSocialTab,
   distillRunMeta,
+  DISTILL_MIN_SAMPLES,
+  DISTILL_SUBTYPES,
+  distillSelectedSubtypes,
   form,
   formatDate,
   goNextXhsDistillStep,
@@ -29,6 +33,7 @@ import {
   selectedBloggerRun,
   selectedBloggerSkill,
   selectedCollectionRunId,
+  subtypeLabel,
   taskButtonStyle,
   taskProgress,
   xhsDistillStep,
@@ -37,6 +42,15 @@ import {
 
 // 当前待确认/已选蒸馏结果的模式与质量分（解析自 report_json）。
 const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
+
+function subtypeDisabled(subtype: string) {
+  return (collectionSubtypeCounts.value[subtype] || 0) < DISTILL_MIN_SAMPLES
+}
+function toggleSubtype(subtype: string) {
+  const index = distillSelectedSubtypes.value.indexOf(subtype)
+  if (index >= 0) distillSelectedSubtypes.value.splice(index, 1)
+  else distillSelectedSubtypes.value.push(subtype)
+}
 </script>
 
 <template>
@@ -90,6 +104,16 @@ const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
               <p v-if="!selectedBloggerId || !selectedCollectionRunId" class="form-hint">
                 {{ !selectedBloggerId ? '还没选择博主——请回到第 1 步选择。' : '还没选择采集批次——请回到第 2 步选择一次已完成的采集。' }}
               </p>
+              <div v-if="selectedCollectionRunId" class="subtype-picker">
+                <p class="form-hint">蒸馏内容模态（不勾选 = 全选 = 通用 Skill；少于 {{ DISTILL_MIN_SAMPLES }} 条的模态不可单独蒸馏）：</p>
+                <div class="subtype-options">
+                  <label v-for="st in DISTILL_SUBTYPES" :key="st" class="subtype-option" :class="{ disabled: subtypeDisabled(st) }">
+                    <input type="checkbox" :checked="distillSelectedSubtypes.includes(st)" :disabled="subtypeDisabled(st)" @change="toggleSubtype(st)" />
+                    {{ subtypeLabel(st) }}（{{ collectionSubtypeCounts[st] || 0 }}）
+                  </label>
+                </div>
+                <p class="form-hint">将蒸馏：<strong>{{ distillSelectedSubtypes.length ? distillSelectedSubtypes.map(subtypeLabel).join(' + ') : '通用（全部模态）' }}</strong></p>
+              </div>
               <p class="form-hint">把对标博主的公开内容提炼成可迁移的创作方法论 Skill。蒸馏完成后进入结果确认页并给出质量自检评分；保存后 Skill 才会生效。</p>
             </section>
             <section v-if="xhsDistillStep === 4" class="creation-stage-card active">

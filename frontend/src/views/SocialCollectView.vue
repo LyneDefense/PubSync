@@ -7,6 +7,7 @@ import {
   benchmarkAccounts,
   bloggerCollectionRuns,
   bloggerDistillForm,
+  collectContentTypes,
   currentSocialPlatformName,
   currentSocialTab,
   form,
@@ -28,6 +29,12 @@ import {
   xhsCollectStep,
   xhsCollectStepLabels
 } from '../composables/useWorkspaceStore'
+
+function toggleContentType(value: string) {
+  const index = collectContentTypes.value.indexOf(value)
+  if (index >= 0) collectContentTypes.value.splice(index, 1)
+  else collectContentTypes.value.push(value)
+}
 </script>
 
 <template>
@@ -71,6 +78,17 @@ import {
               <div class="config-grid">
                 <label>采样笔记数<input v-model.number="bloggerDistillForm.sample_limit" type="number" min="5" max="200" /></label>
                 <label>每条评论数<input v-model.number="bloggerDistillForm.comments_per_post" type="number" min="0" max="100" /></label>
+              </div>
+              <div class="subtype-picker">
+                <p class="form-hint">拉取范围（不勾选视频可省去视频详情与 ASR 开销）：</p>
+                <div class="subtype-options">
+                  <label class="subtype-option">
+                    <input type="checkbox" :checked="collectContentTypes.includes('image')" @change="toggleContentType('image')" /> 图文
+                  </label>
+                  <label class="subtype-option">
+                    <input type="checkbox" :checked="collectContentTypes.includes('video')" @change="toggleContentType('video')" /> 视频
+                  </label>
+                </div>
               </div>
               <label class="asr-callout">
                 <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />

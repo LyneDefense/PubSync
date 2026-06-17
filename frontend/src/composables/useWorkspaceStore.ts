@@ -227,6 +227,26 @@ export const bloggerDistillForm = reactive({
   asr_enabled: false
 })
 
+// 内容模态标签(与后端 app/blogger_distillation/modality.py 对齐)。
+export const SUBTYPE_LABELS: Record<string, string> = {
+  image_text: '图文',
+  talking_video: '口播视频',
+  visual_video: '非口播视频',
+  unknown: '未知',
+  article: '纯文章',
+  article_with_image: '配图文章'
+}
+export function subtypeLabel(value: string) {
+  return SUBTYPE_LABELS[value] || value
+}
+// 可被用户勾选蒸馏的模态(口播细分在采集后判定)。
+export const DISTILL_SUBTYPES = ['image_text', 'talking_video', 'visual_video'] as const
+export const DISTILL_MIN_SAMPLES = 5
+// 采集拉取范围:image=图文,video=视频。
+export const collectContentTypes = ref<string[]>(['image', 'video'])
+// 蒸馏勾选的模态(空=全选=通用)。
+export const distillSelectedSubtypes = ref<string[]>([])
+
 // 蒸馏模式：A=拆解对标博主（默认），B=诊断我的账号。
 export const xhsDistillMode = ref<'A' | 'B'>('A')
 
@@ -350,6 +370,15 @@ export const pagedNews = computed(() => {
 export const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
 export const editingBlogger = computed(() => bloggers.value.find((item) => item.id === editingBloggerId.value) || null)
 export const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((run) => run.id === selectedCollectionRunId.value) || null)
+// 当前采集批次各模态样本数(来自 summary_json.stats.subtype_counts;旧批次可能为空)。
+export const collectionSubtypeCounts = computed<Record<string, number>>(() => {
+  try {
+    const summary = JSON.parse(selectedCollectionRun.value?.summary_json || '{}')
+    return (summary?.stats?.subtype_counts as Record<string, number>) || {}
+  } catch {
+    return {}
+  }
+})
 export const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
 export const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 export const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
@@ -1205,6 +1234,14 @@ export async function handleDistillBlogger() {
     xhsDistillStep.value = 2
     return
   }
+  // 模态门槛校验:被勾选的模态样本数不足时拦截(空=全选=通用,放行)。
+  const tooFew = distillSelectedSubtypes.value.filter(
+    (s) => (collectionSubtypeCounts.value[s] || 0) < DISTILL_MIN_SAMPLES
+  )
+  if (tooFew.length) {
+    showMessage(`以下模态样本不足 ${DISTILL_MIN_SAMPLES} 条，无法蒸馏：${tooFew.map(subtypeLabel).join('、')}`, true)
+    return
+  }
   await runTaskAction(
     'distill',
     '已提交博主蒸馏任务',
@@ -1212,7 +1249,8 @@ export async function handleDistillBlogger() {
       distillBlogger(selectedBloggerId.value!, {
         collection_run_id: selectedCollectionRunId.value!,
         // 蒸馏只做「拆解对标博主」(模式 A);自我诊断已独立到「诊断我的」。
-        mode: 'A'
+        mode: 'A',
+        subtypes: distillSelectedSubtypes.value
       }),
     async () => {
       await refreshSelectedBlogger()
@@ -1503,7 +1541,8 @@ export async function handleCollectBlogger() {
       collectBlogger(selectedBloggerId.value!, {
         sample_limit: bloggerDistillForm.sample_limit,
         comments_per_post: bloggerDistillForm.comments_per_post,
-        asr_enabled: bloggerDistillForm.asr_enabled
+        asr_enabled: bloggerDistillForm.asr_enabled,
+        content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video']
       }),
     async () => {
       await refreshSelectedBlogger()

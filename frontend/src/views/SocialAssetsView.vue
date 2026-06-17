@@ -40,12 +40,32 @@ import {
   selectedCollectionRunId,
   showAllBloggerRuns,
   showCollectionResults,
+  subtypeLabel,
   visibleBloggerRunCount,
   visibleBloggerRuns
 } from '../composables/useWorkspaceStore'
 
 // 当前蒸馏结果的模式与质量分（解析自 report_json）。
 const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
+
+// 当前 skill 的适用范围(成分)与模态对比(解析自 scope_json / report_json)。
+const selectedSkillScope = computed(() => {
+  try {
+    const scope = JSON.parse(selectedBloggerSkill.value?.scope_json || '["__all__"]')
+    const items = (Array.isArray(scope) ? scope : []).filter((s: string) => s && s !== '__all__')
+    return items.length ? items.map((s: string) => subtypeLabel(s)).join(' + ') : '通用（全部模态）'
+  } catch {
+    return '通用（全部模态）'
+  }
+})
+const selectedRunModalityComparison = computed(() => {
+  try {
+    const report = JSON.parse(selectedBloggerRun.value?.report_json || '{}')
+    return (report?.stats?.modality_comparison as string) || ''
+  } catch {
+    return ''
+  }
+})
 </script>
 
 <template>
@@ -175,7 +195,7 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                 <div v-for="post in bloggerPosts.slice(0, 8)" :key="post.id">
                   <strong>{{ post.title }}</strong>
                   <span>
-                    {{ post.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
+                    {{ subtypeLabel(post.content_subtype) }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
                     <template v-if="post.content_type === 'video'"> / ASR <StatusChip :status="post.asr_status" /></template>
                   </span>
                 </div>
@@ -190,9 +210,11 @@ const selectedRunMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
                   <h3>第 {{ distillRunOrdinal(selectedBloggerRun.id) }} 次蒸馏</h3>
                   <p class="distill-result-meta">
                     <span class="status-chip status-chip--neutral">{{ selectedRunMeta.mode === 'B' ? '诊断我的账号' : '拆解对标博主' }}</span>
+                    <span v-if="selectedBloggerSkill" class="status-chip status-chip--info">适用：{{ selectedSkillScope }}</span>
                     <span v-if="selectedRunMeta.qualityScore !== null" class="status-chip" :class="`status-chip--${qualityTone(selectedRunMeta.qualityGrade)}`">质量自检 {{ selectedRunMeta.qualityScore }} 分 · {{ selectedRunMeta.qualityGrade }}</span>
                     <span v-if="selectedRunMeta.revisions > 0" class="status-chip status-chip--info">已自我修订 {{ selectedRunMeta.revisions }} 次</span>
                   </p>
+                  <p v-if="selectedRunModalityComparison" class="toolbar-subtitle">模态表现：{{ selectedRunModalityComparison }}</p>
                 </div>
                 <div v-if="selectedBloggerRun.status === 'pending_confirmation'" class="actions">
                   <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleConfirmBloggerRun">

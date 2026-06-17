@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis
 from app.blogger_distillation.asr import ASRError, build_asr_provider
+from app.blogger_distillation.modality import candidate_modality, classify_subtype
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import evaluate_post_quality, quality_report
@@ -98,6 +99,7 @@ def run_blogger_collection(
     sample_limit: int = 50,
     comments_per_post: int = 20,
     asr_enabled: bool = False,
+    content_types: list[str] | None = None,
 ) -> CollectionResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -128,10 +130,25 @@ def run_blogger_collection(
         candidates = client.get_user_notes(blogger.homepage_url, sample_limit, blogger.external_id)
         record_task_event(db, tenant_id, task_id, "样本采集", "running", f"已获取笔记候选 {len(candidates)} 条")
 
+        # 拉取范围过滤:候选列表自带 note_type,在抓详情/ASR 之前过滤,省成本。
+        selected_modalities = {m for m in (content_types or ["image", "video"]) if m in ("image", "video")} or {"image", "video"}
+        if selected_modalities != {"image", "video"}:
+            before = len(candidates)
+            candidates = [c for c in candidates if candidate_modality(c.note_type) in selected_modalities]
+            record_task_event(
+                db, tenant_id, task_id, "样本采集", "running",
+                f"按拉取范围({'/'.join(sorted(selected_modalities))})过滤:{before} → {len(candidates)} 条",
+            )
+
         posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates[:sample_limit], comments_per_post)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         if not posts:
             raise TikHubError(f"没有采集到可用的{platform_collection_label(blogger.platform)}样本，请检查主页链接或 TikHub 接口返回")
+        # 打内容模态细分标签(按 content_type + 转写密度启发式)。
+        for post in posts:
+            post.content_subtype = classify_subtype(
+                post.content_type, post.transcript_text, min_transcript_chars=settings.talking_video_min_transcript_chars
+            )
         blogger.sample_count = len(posts)
         for position, post in enumerate(posts, 1):
             db.add(

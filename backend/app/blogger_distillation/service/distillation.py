@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -12,6 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.synthesis import Critic, SynthesisBudget, SynthesisTrace, SensorResult, TaskGuide, humanize_event, run_synthesis
 from app.blogger_distillation import analysis, artifacts
+from app.blogger_distillation.modality import (
+    ALL as SCOPE_ALL,
+    IMAGE_TEXT,
+    TALKING_VIDEO,
+    VISUAL_VIDEO,
+    subtype_label,
+)
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
@@ -65,6 +73,7 @@ def run_blogger_distillation(
     blogger_id: int,
     collection_run_id: int,
     mode: str = "A",
+    subtypes: list[str] | None = None,
 ) -> DistillationResult:
     mode = normalize_mode(mode)
     blogger = db.get(BloggerProfile, blogger_id)
@@ -105,6 +114,25 @@ def run_blogger_distillation(
         )
         if not posts:
             raise ValueError("采集批次没有可用于蒸馏的样本")
+        # 按所选内容模态过滤 + 最低样本门槛;空=全选=通用 skill。
+        valid_subtypes = (IMAGE_TEXT, TALKING_VIDEO, VISUAL_VIDEO)
+        selected = [s for s in (subtypes or []) if s in valid_subtypes]
+        if selected:
+            counts = Counter(post.content_subtype for post in posts)
+            too_few = [s for s in selected if counts.get(s, 0) < settings.distill_min_samples_per_subtype]
+            if too_few:
+                labels = "、".join(subtype_label(s) for s in too_few)
+                raise ValueError(f"以下模态样本不足 {settings.distill_min_samples_per_subtype} 条，无法蒸馏：{labels}")
+            posts = [post for post in posts if post.content_subtype in selected]
+            if not posts:
+                raise ValueError("所选模态在该采集批次没有样本")
+            scope = selected
+            record_task_event(
+                db, tenant_id, task_id, "蒸馏范围", "succeeded",
+                f"按所选模态蒸馏：{('、'.join(subtype_label(s) for s in selected))}，样本 {len(posts)} 条",
+            )
+        else:
+            scope = [SCOPE_ALL]
         record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         stats = analysis.analyze_posts(posts)
@@ -156,7 +184,7 @@ def run_blogger_distillation(
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         usage = TikHubUsage()
         report_html = artifacts.render_report_html(blogger, stats, distillation, usage, mode=mode, quality=quality)
-        skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation, mode=mode)
+        skill_markdown = artifacts.build_skill_markdown(blogger, stats, distillation, mode=mode, scope=scope)
         skill_desc = (
             f"基于你自己的小红书账号 {blogger.display_name} 蒸馏出的创作基因与增长诊断"
             if mode == "B"
@@ -169,6 +197,7 @@ def run_blogger_distillation(
             name=artifacts.slug_skill_name(blogger.display_name, mode),
             description=skill_desc,
             skill_markdown=skill_markdown,
+            scope_json=json.dumps(scope, ensure_ascii=False),
             status="pending_confirmation",
         )
         db.add(skill)
@@ -351,7 +380,7 @@ TikHub 用户信息摘要：
     "body_structures": ["图文正文结构，只能基于 body_text/body_excerpt；视频为主则可空"],
     "video_script_structures": ["视频口播/字幕结构，只能基于 transcript；无转写则空数组"],
     "emotional_rhythm": ["情绪节奏/留人钩子公式"],
-    "language_dna": ["语言 DNA：高频表达、句式节奏、人称策略、口头禅"],
+    "language_dna": ["语言 DNA：高频表达、句式节奏、人称策略、口头禅。若样本同时含图文与口播(见 subtype_counts)，每条须以「书面：」或「口播：」开头分别标注，书面只依据 body_text、口播只依据 transcript，绝不混为一谈"],
     "cta_strategy": ["CTA/互动引导策略，结合 cta_patterns"],
     "cover_text_rules": ["封面文案规律"],
     "hashtag_strategy": ["标签策略，结合 frequent_hashtags"]

@@ -222,9 +222,22 @@ def render_diagnosis(diagnosis: Any) -> str:
     return "".join(blocks) or "<p>暂无</p>"
 
 
-def build_skill_markdown(blogger: BloggerProfile, stats: dict[str, Any], distillation: dict[str, Any], mode: str = "A") -> str:
+def _scope_label(scope: list[str] | None) -> str:
+    from app.blogger_distillation.modality import ALL as SCOPE_ALL, subtype_label
+
+    items = [s for s in (scope or []) if s and s != SCOPE_ALL]
+    if not items:
+        return "通用（图文 + 视频口播）"
+    return " + ".join(subtype_label(s) for s in items)
+
+
+def build_skill_markdown(
+    blogger: BloggerProfile, stats: dict[str, Any], distillation: dict[str, Any], mode: str = "A", scope: list[str] | None = None
+) -> str:
     name = slug_skill_name(blogger.display_name, mode)
     transcript_info = stats.get("transcript_info") or {}
+    scope_label = _scope_label(scope)
+    modality_compare = stats.get("modality_comparison") or ""
     cognitive = distillation.get("cognitive_layer", {})
     strategy = distillation.get("strategy_layer", {})
     content = distillation.get("content_layer", {})
@@ -252,9 +265,11 @@ def build_skill_markdown(blogger: BloggerProfile, stats: dict[str, Any], distill
         "",
         usage_note,
         "",
-        f"适用平台：小红书图文 / 视频口播脚本，也可迁移到公众号短内容选题。样本规模：{stats.get('sample_count', 0)} 条笔记，"
-        f"{stats.get('comment_total', 0)} 条采样评论；视频样本 {transcript_info.get('video_count', 0)} 条，"
-        f"已解析字幕/口播 {transcript_info.get('transcript_count', 0)} 条。",
+        f"**适用范围：{scope_label}**。只把本 Skill 用于其覆盖的内容形态（如「口播视频」Skill 不要用于生成纯图文笔记）。",
+        "",
+        f"样本规模：{stats.get('sample_count', 0)} 条笔记，{stats.get('comment_total', 0)} 条采样评论；"
+        f"视频样本 {transcript_info.get('video_count', 0)} 条，已解析字幕/口播 {transcript_info.get('transcript_count', 0)} 条。"
+        + (f"\n\n模态表现对比：{modality_compare}。" if modality_compare else ""),
         "",
         "## 2. 认知层（怎么想）",
         "",

@@ -68,6 +68,8 @@ class BloggerDistillRequest(BaseModel):
     collection_run_id: int
     # A=拆解对标博主（默认）；B=诊断我的账号。
     mode: str = Field(default="A")
+    # 要蒸馏的内容模态(image_text/talking_video/visual_video);空=全选=通用 skill。
+    subtypes: list[str] = Field(default_factory=list)
 
 
 class CollectEstimate(BaseModel):
@@ -83,6 +85,8 @@ class BloggerCollectRequest(BaseModel):
     sample_limit: int = Field(default=50, ge=5, le=200)
     comments_per_post: int = Field(default=20, ge=0, le=100)
     asr_enabled: bool = False
+    # 拉取范围:image=图文,video=视频;默认全部。仅这两类(口播细分在采集后判定)。
+    content_types: list[str] = Field(default_factory=lambda: ["image", "video"])
 
 
 class BloggerPostRead(BaseModel):
@@ -95,6 +99,7 @@ class BloggerPostRead(BaseModel):
     title: str
     body_text: str
     content_type: str
+    content_subtype: str
     hashtags_json: str
     cover_url: str
     media_urls_json: str
@@ -169,6 +174,7 @@ class BloggerSkillRead(BaseModel):
     name: str
     description: str
     skill_markdown: str
+    scope_json: str
     status: str
     created_at: datetime
     updated_at: datetime

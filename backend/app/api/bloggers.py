@@ -186,6 +186,7 @@ def collect_blogger_endpoint(
         payload.sample_limit,
         payload.comments_per_post,
         payload.asr_enabled,
+        payload.content_types,
     )
     return task
 
@@ -277,6 +278,7 @@ def distill_blogger_endpoint(
         blogger.id,
         payload.collection_run_id,
         payload.mode,
+        payload.subtypes,
     )
     return task
 

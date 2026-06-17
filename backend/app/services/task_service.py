@@ -145,6 +145,7 @@ def run_blogger_collection_task(
     sample_limit: int = 50,
     comments_per_post: int = 20,
     asr_enabled: bool = False,
+    content_types: list[str] | None = None,
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在采集小红书样本")
@@ -157,6 +158,7 @@ def run_blogger_collection_task(
             sample_limit=sample_limit,
             comments_per_post=comments_per_post,
             asr_enabled=asr_enabled,
+            content_types=content_types,
         )
         mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
         logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)
@@ -176,6 +178,7 @@ def run_blogger_distillation_task(
     blogger_id: int,
     collection_run_id: int,
     mode: str = "A",
+    subtypes: list[str] | None = None,
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在基于已采集样本蒸馏 Skill")
@@ -187,6 +190,7 @@ def run_blogger_distillation_task(
             blogger_id=blogger_id,
             collection_run_id=collection_run_id,
             mode=mode,
+            subtypes=subtypes,
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，等待确认：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)

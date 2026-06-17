@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     blogger_auto_tag_enabled: bool = True
     blogger_tag_model: str = ""  # 留空=用 distill_text_model 或默认文本模型
     blogger_tag_max: int = 6
+    # 内容模态细分:视频转写字数 >= 此阈值判为「口播视频」,否则「非口播视频」。
+    talking_video_min_transcript_chars: int = 200
+    # 蒸馏时每个被选模态的最低样本数,不足则拒绝(避免样本太少蒸出垃圾)。
+    distill_min_samples_per_subtype: int = 5
     # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80

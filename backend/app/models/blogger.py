@@ -60,6 +60,9 @@ class BloggerPost(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     body_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_type: Mapped[str] = mapped_column(String(30), nullable=False, default="image")
+    # 内容模态细分(可扩展枚举):image_text/talking_video/visual_video/unknown;
+    # 预留 article/article_with_image 给公众号。采集时按 content_type + 转写密度启发式打标。
+    content_subtype: Mapped[str] = mapped_column(String(30), nullable=False, default="unknown", server_default="unknown", index=True)
     hashtags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     cover_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     media_urls_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
@@ -165,6 +168,8 @@ class BloggerSkill(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     skill_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    # 该 skill 的内容模态成分(JSON 数组):如 ["image_text","talking_video"];["__all__"]=通用。
+    scope_json: Mapped[str] = mapped_column(Text, nullable=False, default='["__all__"]', server_default='["__all__"]')
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
