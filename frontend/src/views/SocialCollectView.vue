@@ -9,7 +9,10 @@ import {
   bloggerDistillForm,
   collectContentTypes,
   collectFetchAll,
+  collectLatestMessage,
   collectOrder,
+  collectProgress,
+  collectTimeline,
   currentSocialPlatformName,
   currentSocialTab,
   form,
@@ -19,8 +22,10 @@ import {
   handleCollectBlogger,
   handleCollectByUrls,
   isSocialPlatform,
+  lastCollectSummary,
   openCreateBloggerModal,
   pendingAction,
+  subtypeLabel,
   selectBlogger,
   selectCollectionRun,
   selectedBlogger,
@@ -136,6 +141,21 @@ function toggleContentType(value: string) {
                   {{ pendingAction === 'collect' ? '采集中…' : '定向采集' }}
                 </button>
               </details>
+
+              <div v-if="pendingAction === 'collect' || collectTimeline.length" class="collect-live">
+                <div v-if="collectProgress.total" class="collect-progress">
+                  <div class="collect-progress__head"><span>正在采集</span><strong>{{ collectProgress.current }}/{{ collectProgress.total }}</strong></div>
+                  <div class="collect-progress__bar"><i :style="{ width: collectProgress.pct + '%' }"></i></div>
+                  <p v-if="collectLatestMessage" class="form-hint">{{ collectLatestMessage }}</p>
+                </div>
+                <ol class="collect-timeline">
+                  <li v-for="(event, index) in collectTimeline" :key="index" :class="`is-${event.status}`">
+                    <span class="collect-timeline__step">{{ event.step_name }}</span>
+                    <StatusChip :status="event.status" />
+                    <span class="collect-timeline__msg">{{ event.message }}</span>
+                  </li>
+                </ol>
+              </div>
             </section>
 
             <section v-if="xhsCollectStep === 4" class="creation-stage-card active">
@@ -146,6 +166,19 @@ function toggleContentType(value: string) {
               <div v-if="selectedBlogger" class="stage-result-grid">
                 <article class="stage-metric"><span>当前博主</span><strong>{{ selectedBlogger.display_name }}</strong></article>
                 <article class="stage-metric"><span>采集批次</span><strong>{{ bloggerCollectionRuns.length }}</strong></article>
+              </div>
+              <div v-if="lastCollectSummary" class="collect-summary">
+                <div class="collect-summary__row">
+                  <strong>本批 {{ lastCollectSummary.postCount }} 条</strong>
+                  <span v-if="lastCollectSummary.newCount !== null">新增 {{ lastCollectSummary.newCount }}</span>
+                  <span v-if="lastCollectSummary.refreshedCount !== null">刷新 {{ lastCollectSummary.refreshedCount }}</span>
+                  <span v-if="lastCollectSummary.delistedCount">已下架 {{ lastCollectSummary.delistedCount }}</span>
+                  <span>爆款 {{ lastCollectSummary.hotCount }}</span>
+                  <span>评论 {{ lastCollectSummary.commentCount }}</span>
+                </div>
+                <div v-if="Object.keys(lastCollectSummary.subtypeCounts).length" class="tag-chips">
+                  <span v-for="(count, key) in lastCollectSummary.subtypeCounts" :key="key" class="tag-chip tag-chip--auto">{{ subtypeLabel(key) }} {{ count }}</span>
+                </div>
               </div>
               <div v-if="selectedBlogger" class="run-list collection-list">
                 <div class="run-list-header"><strong>采集历史</strong><span>{{ bloggerCollectionRuns.length }} 次</span></div>

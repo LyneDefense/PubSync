@@ -385,6 +385,50 @@ export const collectionSubtypeCounts = computed<Record<string, number>>(() => {
     return {}
   }
 })
+
+// 采集实时面板:逐条抓取的高频事件折叠成进度条,只把里程碑事件列进时间线。
+const COLLECT_SPAM_STEPS = new Set(['笔记详情', '样本入库', '视频 ASR', '视频字幕', '评论采集'])
+export const collectTimeline = computed(() =>
+  taskEventsAction.value === 'collect' ? taskEvents.value.filter((event) => !COLLECT_SPAM_STEPS.has(event.step_name)) : []
+)
+export const collectProgress = computed(() => {
+  if (taskEventsAction.value !== 'collect') return { current: 0, total: 0, pct: 0 }
+  for (let index = taskEvents.value.length - 1; index >= 0; index -= 1) {
+    const payload = parseEventPayload(taskEvents.value[index])
+    const current = Number(payload?.current)
+    const total = Number(payload?.total)
+    if (current && total) {
+      return { current, total, pct: Math.round((current / total) * 100) }
+    }
+  }
+  return { current: 0, total: 0, pct: 0 }
+})
+export const collectLatestMessage = computed(() => {
+  if (taskEventsAction.value !== 'collect') return ''
+  const event = taskEvents.value[taskEvents.value.length - 1]
+  return event ? event.message : ''
+})
+// 采集完成后的「本批摘要」(读最新一条采集批次的 summary_json)。
+export const lastCollectSummary = computed(() => {
+  const run = bloggerCollectionRuns.value[0]
+  if (!run || run.status !== 'succeeded') return null
+  try {
+    const summary = JSON.parse(run.summary_json || '{}')
+    const meta = summary.collect_meta || {}
+    return {
+      runId: run.id,
+      postCount: run.post_count,
+      newCount: typeof meta.new_count === 'number' ? meta.new_count : null,
+      refreshedCount: typeof meta.refreshed_count === 'number' ? meta.refreshed_count : null,
+      delistedCount: meta.delisted_count || 0,
+      hotCount: run.hot_post_count,
+      commentCount: run.comment_count,
+      subtypeCounts: (summary?.stats?.subtype_counts as Record<string, number>) || {}
+    }
+  } catch {
+    return null
+  }
+})
 export const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
 export const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
 export const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)

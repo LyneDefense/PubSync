@@ -3133,3 +3133,89 @@ dd {
   width: 100%;
   margin: var(--space-2xs) 0;
 }
+
+/* 采集实时面板:进度条 + 里程碑时间线(跟蒸馏一个量级,不刷屏)。 */
+.collect-live {
+  margin-top: var(--space-sm);
+  border: var(--rule-hair);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-sm);
+}
+.collect-progress__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+.collect-progress__head strong {
+  color: var(--color-ink);
+}
+.collect-progress__bar {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2, #f1f5f9);
+  overflow: hidden;
+  margin: 6px 0;
+}
+.collect-progress__bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.4s ease;
+}
+.collect-timeline {
+  list-style: none;
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.collect-timeline li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  padding: 4px 0;
+  border-bottom: var(--rule-hair);
+}
+.collect-timeline li:last-child {
+  border-bottom: none;
+}
+.collect-timeline__step {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.collect-timeline__msg {
+  color: var(--color-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collect-timeline li.is-failed .collect-timeline__msg {
+  color: var(--color-danger, #b91c1c);
+}
+
+/* 采集完成「本批摘要」卡片。 */
+.collect-summary {
+  margin-top: var(--space-sm);
+  border: var(--rule-hair);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-sm);
+  background: var(--color-accent-soft);
+}
+.collect-summary__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+.collect-summary__row strong {
+  color: var(--color-accent-ink);
+  font-size: var(--text-base, 1rem);
+}
