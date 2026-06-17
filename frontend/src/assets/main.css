@@ -1503,6 +1503,14 @@ p {
   min-width: 220px;
 }
 
+/* 头部操作是次级动作:做成紧凑按钮(与顶栏胶囊/控件一致),不要用表单输入那么大的尺寸。 */
+.asset-actions button {
+  min-height: 32px;
+  padding: 0 var(--space-xs);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 .asset-two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
