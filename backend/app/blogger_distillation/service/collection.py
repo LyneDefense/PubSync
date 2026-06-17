@@ -39,19 +39,9 @@ from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
 from app.config import Settings
 from app.models import BloggerCollectionPost, BloggerCollectionRun, BloggerPost, BloggerProfile
 from app.models.common import utc_now
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 logger = logging.getLogger(__name__)
-
-
-def candidate_pool_depth(settings: Settings, sample_limit: int, fetch_all: bool) -> int:
-    """高赞优先要在更大的候选池里挑;深度系统决定:clamp(N×倍数, 下限, 上限)。"""
-    cap = max(1, settings.candidate_pool_cap)
-    if fetch_all:
-        return cap
-    floor = max(1, settings.candidate_pool_floor)
-    over = max(1, settings.candidate_pool_oversample)
-    return max(floor, min(cap, sample_limit * over))
 
 
 def select_targets(
@@ -155,47 +145,60 @@ def run_blogger_collection(
         client = build_collection_client(collection_settings, blogger.platform)
         client.get_user_info(blogger.homepage_url, blogger.external_id)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        depth = candidate_pool_depth(settings, sample_limit, fetch_all)
-        notes_result = client.get_user_notes(blogger.homepage_url, depth, blogger.external_id)
-        all_candidates = notes_result.candidates
-        record_task_event(
-            db, tenant_id, task_id, "样本采集", "running",
-            f"已获取笔记候选 {len(all_candidates)} 条" + ("（已翻到列表底部）" if notes_result.reached_end else ""),
-        )
-
-        # 拉取范围过滤:候选列表自带 note_type,在抓详情/ASR 之前过滤,省成本。
-        selected_modalities = {m for m in (content_types or ["image", "video"]) if m in ("image", "video")} or {"image", "video"}
-        candidates = [c for c in all_candidates if candidate_modality(c.note_type) in selected_modalities]
-
-        # 选材:排序 + 取数 → 目标集。
-        targets = select_targets(candidates, order, fetch_all, sample_limit)
-        if not targets:
-            raise TikHubError(f"没有符合条件的{platform_collection_label(blogger.platform)}候选，请检查主页链接、拉取范围或 TikHub 返回")
-
-        # 增量 diff:目标集 vs 笔记池(库内该博主已有 external_id)。
+        # 先把笔记池(库内该博主已有 external_id)读出来,翻页时据此判断"新/旧"。
         existing = {
             post.external_id: post
             for post in db.scalars(
                 select(BloggerPost).where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger.id)
             )
         }
-        to_fetch: list[XhsPostCandidate] = []  # 新笔记 + 需补 ASR 的老视频
-        refresh_only: list[tuple[XhsPostCandidate, BloggerPost]] = []
-        new_count = 0
+        selected_modalities = {m for m in (content_types or ["image", "video"]) if m in ("image", "video")} or {"image", "video"}
+
+        # 动态翻页:最新优先翻到"没采过的够 N 条"就停;高赞优先/全部翻到底(或安全上限)再排序。
+        def _new_in_range(cands: list[XhsPostCandidate]) -> int:
+            return sum(
+                1 for c in cands
+                if c.external_id not in existing and candidate_modality(c.note_type) in selected_modalities
+            )
+
+        def _should_stop(cands: list[XhsPostCandidate]) -> bool:
+            if fetch_all or order != "latest":
+                return False  # 高赞/全部:必须看全才能排序,不早停
+            return _new_in_range(cands) >= sample_limit  # 最新:够 N 条没采过的就停
+
+        notes_result = client.get_user_notes(
+            blogger.homepage_url, settings.candidate_pool_cap, blogger.external_id, should_stop=_should_stop
+        )
+        all_candidates = notes_result.candidates
+        record_task_event(
+            db, tenant_id, task_id, "样本采集", "running",
+            f"已获取笔记候选 {len(all_candidates)} 条" + ("（已翻到列表底部）" if notes_result.reached_end else ""),
+        )
+
+        # 拉取范围过滤(图文/视频)。
+        candidates = [c for c in all_candidates if candidate_modality(c.note_type) in selected_modalities]
+        if not candidates:
+            raise TikHubError(f"没有符合条件的{platform_collection_label(blogger.platform)}候选，请检查主页链接、拉取范围或 TikHub 返回")
+
+        # 增量:从"没采过的"里按排序取最多 N 条当新增;已采过的(在候选里)顺带刷新。
+        new_candidates = [c for c in candidates if c.external_id not in existing]
+        existing_candidates = [(c, existing[c.external_id]) for c in candidates if c.external_id in existing]
+        new_targets = select_targets(new_candidates, order, fetch_all, sample_limit)
+
+        to_fetch: list[XhsPostCandidate] = list(new_targets)  # 新笔记
+        new_count = len(new_targets)
         backfill_count = 0
-        for candidate in targets:
-            post = existing.get(candidate.external_id)
-            if post is None:
-                to_fetch.append(candidate)
-                new_count += 1
-            elif candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed"):
+        refresh_only: list[tuple[XhsPostCandidate, BloggerPost]] = []
+        for candidate, post in existing_candidates:
+            if candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed"):
                 to_fetch.append(candidate)  # 补转写:视频 URL 易过期,需重抓该条详情
                 backfill_count += 1
             else:
                 refresh_only.append((candidate, post))
         record_task_event(
             db, tenant_id, task_id, "增量分流", "succeeded",
-            f"目标 {len(targets)} 条：新增 {new_count} · 补转写 {backfill_count} · 轻量刷新 {len(refresh_only)}",
+            f"候选 {len(candidates)} 条：本次新增 {new_count} · 补转写 {backfill_count} · 刷新已有 {len(refresh_only)}"
+            + (f"（候选里没采过的只剩 {len(new_candidates)} 条，不足目标 {sample_limit}）" if not fetch_all and len(new_candidates) < sample_limit else ""),
         )
 
         # 抓详情(仅新笔记 + 补 ASR);老笔记不重抓,只用列表数据刷新。
@@ -235,18 +238,31 @@ def run_blogger_collection(
             if delisted_count:
                 record_task_event(db, tenant_id, task_id, "下架对账", "succeeded", f"对账完成：{delisted_count} 篇笔记已下架")
 
-        # 本批成员 = 目标集对应的 post(新 + 老),按目标顺序。
+        # 本批成员 = 本次覆盖到的 post(新增 + 刷新/补转写的已有),先新后旧。
         fetched_map = {post.external_id: post for post in fetched}
+        member_candidates = list(new_targets) + [candidate for candidate, _ in existing_candidates]
         member_posts: list[BloggerPost] = []
-        for candidate in targets:
+        seen_member_ids: set[int] = set()
+        for candidate in member_candidates:
             post = fetched_map.get(candidate.external_id) or existing.get(candidate.external_id)
-            if post is not None:
+            if post is not None and post.id not in seen_member_ids:
                 member_posts.append(post)
+                seen_member_ids.add(post.id)
         if not member_posts:
             raise TikHubError(f"没有采集到可用的{platform_collection_label(blogger.platform)}样本，请检查主页链接或 TikHub 接口返回")
 
         posts = member_posts
-        blogger.sample_count = len(posts)
+        # 笔记池总量(该博主在架笔记数),作为博主层面的"已采集"展示。
+        blogger.sample_count = int(
+            db.scalar(
+                select(func.count(BloggerPost.id)).where(
+                    BloggerPost.tenant_id == tenant_id,
+                    BloggerPost.blogger_id == blogger.id,
+                    BloggerPost.status != "delisted",
+                )
+            )
+            or len(posts)
+        )
         for position, post in enumerate(posts, 1):
             db.add(
                 BloggerCollectionPost(

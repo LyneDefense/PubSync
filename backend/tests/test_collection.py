@@ -1,14 +1,9 @@
 import pytest
 
-from app.blogger_distillation.service.collection import candidate_pool_depth, select_targets
+from app.blogger_distillation.service.collection import select_targets
 from app.blogger_distillation.tikhub_client import XhsPostCandidate
 from app.blogger_distillation.tikhub_client.base import TikHubError
 from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
-from app.config import Settings
-
-
-def _settings() -> Settings:
-    return Settings(auth_secret="unit-test-secret")
 
 
 def _cand(ext: str, likes: int) -> XhsPostCandidate:
@@ -16,14 +11,6 @@ def _cand(ext: str, likes: int) -> XhsPostCandidate:
         external_id=ext, xsec_token="t", note_type="image", like_count=likes,
         favorite_count=0, comment_count=0, share_count=0, raw={},
     )
-
-
-def test_candidate_pool_depth_clamps():
-    s = _settings()
-    assert candidate_pool_depth(s, 10, False) == 100   # floor
-    assert candidate_pool_depth(s, 50, False) == 250   # 50*5
-    assert candidate_pool_depth(s, 80, False) == 300   # cap (400→300)
-    assert candidate_pool_depth(s, 50, True) == 300    # fetch_all → cap
 
 
 def test_select_targets_top_liked():

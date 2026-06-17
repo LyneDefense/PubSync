@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, EndpointRouter
@@ -35,13 +36,19 @@ class TikHubDouyinClient(TikHubBaseClient):
             self.user_id = info["id"]
         return payload
 
-    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> UserNotesResult:
+    def get_user_notes(
+        self,
+        homepage_url: str,
+        limit: int,
+        external_id: str | None = None,
+        should_stop: Callable[[list[XhsPostCandidate]], bool] | None = None,
+    ) -> UserNotesResult:
         self.user_id = self.user_id or self.resolve_user_id(homepage_url, external_id)
         candidates: list[XhsPostCandidate] = []
         reached_end = False
         seen_ids: set[str] = set()
         cursor = "0"
-        for page in range(10):
+        for page in range(40):
             payload = self.router.call("user_videos", {"user_id": self.user_id, "cursor": cursor, "count": min(20, max(limit, 1))})
             page_data = extract_douyin_video_page(payload)
             logger.debug(
@@ -71,6 +78,8 @@ class TikHubDouyinClient(TikHubBaseClient):
                 )
                 if len(candidates) >= limit:
                     return UserNotesResult(candidates=candidates, reached_end=False)
+            if should_stop and should_stop(candidates):
+                return UserNotesResult(candidates=candidates, reached_end=False)
             next_cursor = page_data["next_cursor"]
             if not page_data["has_more"]:
                 reached_end = True

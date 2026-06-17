@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from app.blogger_distillation.endpoint_router import EndpointRouter
@@ -42,7 +43,13 @@ class TikHubXhsClient(TikHubBaseClient):
         self.user_id = self.user_id or find_user_id(payload)
         return payload
 
-    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> UserNotesResult:
+    def get_user_notes(
+        self,
+        homepage_url: str,
+        limit: int,
+        external_id: str | None = None,
+        should_stop: Callable[[list[XhsPostCandidate]], bool] | None = None,
+    ) -> UserNotesResult:
         link = parse_xhs_profile_link(homepage_url)
         self.user_id = self.user_id or (external_id or "").strip() or link["user_id"]
         self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
@@ -50,7 +57,7 @@ class TikHubXhsClient(TikHubBaseClient):
         reached_end = False
         cursor = ""
         seen_ids: set[str] = set()
-        for page in range(20):
+        for page in range(80):
             try:
                 page_data = self.fetch_user_notes_page(link, cursor, min(20, max(limit, 1)))
             except TikHubError:
@@ -92,6 +99,9 @@ class TikHubXhsClient(TikHubBaseClient):
                 )
                 if len(candidates) >= limit:
                     return UserNotesResult(candidates=candidates, reached_end=False)
+            if should_stop and should_stop(candidates):
+                # 最新优先:已凑够"没采过的" N 条,提前停(不是翻到底,reached_end=False)。
+                return UserNotesResult(candidates=candidates, reached_end=False)
             next_cursor = page_data["next_cursor"]
             # 兜底:has_more 为真但没解析到游标时,用最后一条 note_id 当游标(小红书常见做法),
             # 否则会卡在第 1 页(~20 条)永远翻不动。重复/同游标会在下面 break,不会死循环。
