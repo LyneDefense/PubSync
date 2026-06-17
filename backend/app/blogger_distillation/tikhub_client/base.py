@@ -77,6 +77,14 @@ class XhsPostCandidate:
     raw: dict[str, Any]
 
 
+@dataclass
+class UserNotesResult:
+    """主页笔记候选池 + 是否翻到列表尽头(reached_end=True 才能做下架对账)。"""
+
+    candidates: list[XhsPostCandidate]
+    reached_end: bool = False
+
+
 def summarize_payload(data: Any, limit: int = 300) -> str:
     """Render a TikHub response for an error message, truncated to avoid dumping
     huge (and potentially sensitive) payloads into logs and task events."""

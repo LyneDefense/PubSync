@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from app.blogger_distillation.endpoint_router import EndpointRouter
-from app.blogger_distillation.tikhub_client.base import TikHubBaseClient, TikHubError, XhsPostCandidate
+from app.blogger_distillation.tikhub_client.base import TikHubBaseClient, TikHubError, UserNotesResult, XhsPostCandidate
 from app.config import Settings
 from app.blogger_distillation.tikhub_client.parsers import (
     detect_note_type,
@@ -42,11 +42,12 @@ class TikHubXhsClient(TikHubBaseClient):
         self.user_id = self.user_id or find_user_id(payload)
         return payload
 
-    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> list[XhsPostCandidate]:
+    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> UserNotesResult:
         link = parse_xhs_profile_link(homepage_url)
         self.user_id = self.user_id or (external_id or "").strip() or link["user_id"]
         self.profile_xsec_token = self.profile_xsec_token or link["xsec_token"]
         candidates: list[XhsPostCandidate] = []
+        reached_end = False
         cursor = ""
         seen_ids: set[str] = set()
         for page in range(20):
@@ -90,14 +91,15 @@ class TikHubXhsClient(TikHubBaseClient):
                     )
                 )
                 if len(candidates) >= limit:
-                    return candidates
+                    return UserNotesResult(candidates=candidates, reached_end=False)
             next_cursor = page_data["next_cursor"]
-            if not page_data["has_more"] and not next_cursor:
+            if not page_data["has_more"]:
+                reached_end = True
                 break
             if not next_cursor or next_cursor == cursor:
                 break
             cursor = next_cursor
-        return candidates[:limit]
+        return UserNotesResult(candidates=candidates[:limit], reached_end=reached_end)
 
     def fetch_user_notes_page(self, link: dict[str, str], cursor: str, num: int) -> dict[str, Any]:
         errors: list[str] = []

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
+
+import httpx
 
 from sqlalchemy.orm import Session
 
@@ -32,10 +35,33 @@ from app.blogger_distillation.tikhub_client import (
     TikHubXhsClient,
     XhsPostCandidate,
 )
+from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
 from app.config import Settings
 from app.models import BloggerCollectionPost, BloggerCollectionRun, BloggerPost, BloggerProfile
+from app.models.common import utc_now
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
+
+
+def candidate_pool_depth(settings: Settings, sample_limit: int, fetch_all: bool) -> int:
+    """高赞优先要在更大的候选池里挑;深度系统决定:clamp(N×倍数, 下限, 上限)。"""
+    cap = max(1, settings.candidate_pool_cap)
+    if fetch_all:
+        return cap
+    floor = max(1, settings.candidate_pool_floor)
+    over = max(1, settings.candidate_pool_oversample)
+    return max(floor, min(cap, sample_limit * over))
+
+
+def select_targets(
+    candidates: list[XhsPostCandidate], order: str, fetch_all: bool, sample_limit: int
+) -> list[XhsPostCandidate]:
+    """按排序策略选出目标集。top_liked=列表赞数降序;latest=保持主页顺序(≈最新在前)。"""
+    pool = list(candidates)
+    if order == "top_liked":
+        pool.sort(key=lambda c: c.like_count or 0, reverse=True)
+    return pool if fetch_all else pool[:sample_limit]
 
 
 @dataclass
@@ -100,6 +126,8 @@ def run_blogger_collection(
     comments_per_post: int = 20,
     asr_enabled: bool = False,
     content_types: list[str] | None = None,
+    order: str = "top_liked",
+    fetch_all: bool = False,
 ) -> CollectionResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -127,28 +155,97 @@ def run_blogger_collection(
         client = build_collection_client(collection_settings, blogger.platform)
         client.get_user_info(blogger.homepage_url, blogger.external_id)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        candidates = client.get_user_notes(blogger.homepage_url, sample_limit, blogger.external_id)
-        record_task_event(db, tenant_id, task_id, "样本采集", "running", f"已获取笔记候选 {len(candidates)} 条")
+        depth = candidate_pool_depth(settings, sample_limit, fetch_all)
+        notes_result = client.get_user_notes(blogger.homepage_url, depth, blogger.external_id)
+        all_candidates = notes_result.candidates
+        record_task_event(
+            db, tenant_id, task_id, "样本采集", "running",
+            f"已获取笔记候选 {len(all_candidates)} 条" + ("（已翻到列表底部）" if notes_result.reached_end else ""),
+        )
 
         # 拉取范围过滤:候选列表自带 note_type,在抓详情/ASR 之前过滤,省成本。
         selected_modalities = {m for m in (content_types or ["image", "video"]) if m in ("image", "video")} or {"image", "video"}
-        if selected_modalities != {"image", "video"}:
-            before = len(candidates)
-            candidates = [c for c in candidates if candidate_modality(c.note_type) in selected_modalities]
-            record_task_event(
-                db, tenant_id, task_id, "样本采集", "running",
-                f"按拉取范围({'/'.join(sorted(selected_modalities))})过滤:{before} → {len(candidates)} 条",
-            )
+        candidates = [c for c in all_candidates if candidate_modality(c.note_type) in selected_modalities]
 
-        posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates[:sample_limit], comments_per_post)
+        # 选材:排序 + 取数 → 目标集。
+        targets = select_targets(candidates, order, fetch_all, sample_limit)
+        if not targets:
+            raise TikHubError(f"没有符合条件的{platform_collection_label(blogger.platform)}候选，请检查主页链接、拉取范围或 TikHub 返回")
+
+        # 增量 diff:目标集 vs 笔记池(库内该博主已有 external_id)。
+        existing = {
+            post.external_id: post
+            for post in db.scalars(
+                select(BloggerPost).where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger.id)
+            )
+        }
+        to_fetch: list[XhsPostCandidate] = []  # 新笔记 + 需补 ASR 的老视频
+        refresh_only: list[tuple[XhsPostCandidate, BloggerPost]] = []
+        new_count = 0
+        backfill_count = 0
+        for candidate in targets:
+            post = existing.get(candidate.external_id)
+            if post is None:
+                to_fetch.append(candidate)
+                new_count += 1
+            elif candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed"):
+                to_fetch.append(candidate)  # 补转写:视频 URL 易过期,需重抓该条详情
+                backfill_count += 1
+            else:
+                refresh_only.append((candidate, post))
+        record_task_event(
+            db, tenant_id, task_id, "增量分流", "succeeded",
+            f"目标 {len(targets)} 条：新增 {new_count} · 补转写 {backfill_count} · 轻量刷新 {len(refresh_only)}",
+        )
+
+        # 抓详情(仅新笔记 + 补 ASR);老笔记不重抓,只用列表数据刷新。
+        fetched: list[BloggerPost] = []
+        if to_fetch:
+            fetched = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, to_fetch, comments_per_post)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        if not posts:
-            raise TikHubError(f"没有采集到可用的{platform_collection_label(blogger.platform)}样本，请检查主页链接或 TikHub 接口返回")
-        # 打内容模态细分标签(按 content_type + 转写密度启发式)。
-        for post in posts:
+
+        now = utc_now()
+        for post in fetched:
             post.content_subtype = classify_subtype(
                 post.content_type, post.transcript_text, min_transcript_chars=settings.talking_video_min_transcript_chars
             )
+            post.last_seen_at = now
+            post.status = "active"
+        # 老笔记轻量刷新:用列表赞藏数更新 + last_seen,不抓详情。
+        for candidate, post in refresh_only:
+            if candidate.like_count:
+                post.like_count = candidate.like_count
+            if candidate.favorite_count:
+                post.favorite_count = candidate.favorite_count
+            if candidate.comment_count:
+                post.comment_count = candidate.comment_count
+            if candidate.share_count:
+                post.share_count = candidate.share_count
+            post.last_seen_at = now
+            post.status = "active"
+
+        # 下架对账:仅当翻到列表底部(看到完整目录)才标记,部分采集不动,避免误杀。
+        delisted_count = 0
+        if notes_result.reached_end:
+            seen_ids = {c.external_id for c in all_candidates}
+            for ext_id, post in existing.items():
+                if post.status == "active" and ext_id not in seen_ids:
+                    post.status = "delisted"
+                    delisted_count += 1
+            if delisted_count:
+                record_task_event(db, tenant_id, task_id, "下架对账", "succeeded", f"对账完成：{delisted_count} 篇笔记已下架")
+
+        # 本批成员 = 目标集对应的 post(新 + 老),按目标顺序。
+        fetched_map = {post.external_id: post for post in fetched}
+        member_posts: list[BloggerPost] = []
+        for candidate in targets:
+            post = fetched_map.get(candidate.external_id) or existing.get(candidate.external_id)
+            if post is not None:
+                member_posts.append(post)
+        if not member_posts:
+            raise TikHubError(f"没有采集到可用的{platform_collection_label(blogger.platform)}样本，请检查主页链接或 TikHub 接口返回")
+
+        posts = member_posts
         blogger.sample_count = len(posts)
         for position, post in enumerate(posts, 1):
             db.add(
@@ -160,7 +257,10 @@ def run_blogger_collection(
                     position=position,
                 )
             )
-        record_task_event(db, tenant_id, task_id, "样本清洗", "succeeded", f"样本清洗完成：保留 {len(posts)} 条样本")
+        record_task_event(
+            db, tenant_id, task_id, "样本清洗", "succeeded",
+            f"样本清洗完成：本批 {len(posts)} 条（新增 {new_count}、刷新 {len(refresh_only) + backfill_count}）",
+        )
 
         quality = quality_report(posts, sample_limit)
         if quality["warnings"]:
@@ -175,7 +275,23 @@ def run_blogger_collection(
         run.post_count = len(posts)
         run.hot_post_count = len(stats["hot_posts"])
         run.comment_count = stats["comment_total"]
-        run.summary_json = json.dumps({"stats": stats, "quality_report": quality}, ensure_ascii=False, default=str)
+        run.summary_json = json.dumps(
+            {
+                "stats": stats,
+                "quality_report": quality,
+                "collect_meta": {
+                    "order": order,
+                    "fetch_all": fetch_all,
+                    "content_types": sorted(selected_modalities),
+                    "new_count": new_count,
+                    "refreshed_count": len(refresh_only) + backfill_count,
+                    "delisted_count": delisted_count,
+                    "reached_end": notes_result.reached_end,
+                },
+            },
+            ensure_ascii=False,
+            default=str,
+        )
         apply_usage(run, client.usage)
         db.commit()
         db.refresh(run)
@@ -186,6 +302,146 @@ def run_blogger_collection(
             "基础统计",
             "succeeded",
             f"基础统计完成：爆款={len(stats['hot_posts'])}，评论={stats['comment_total']}，标题模式={len(stats['title_patterns'])}",
+            {"collection_run_id": run.id},
+        )
+        return CollectionResult(run=run)
+    except DistillationCancelled as exc:
+        run.status = "cancelled"
+        run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
+        db.commit()
+        raise
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+        if client:
+            apply_usage(run, client.usage)
+        db.commit()
+        raise
+
+
+def _expand_short_link(text: str) -> str:
+    """小红书短链(xhslink.com)跟一次重定向展开成带 token 的完整链接;其它原样返回。"""
+    found = re.search(r"https?://\S+", text or "")
+    url = found.group(0) if found else (text or "")
+    if "xhslink.com" not in url:
+        return text
+    try:
+        resp = httpx.get(url, follow_redirects=True, timeout=10.0)
+        return str(resp.url)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("短链展开失败:%s，错误=%s", url, exc)
+        return text
+
+
+def run_blogger_url_collection(
+    db: Session,
+    settings: Settings,
+    task_id: str,
+    tenant_id: int,
+    blogger_id: int,
+    urls: list[str],
+    comments_per_post: int = 20,
+    asr_enabled: bool = False,
+) -> CollectionResult:
+    """兜底:按粘贴的笔记链接定向采集,补进该博主笔记池(目前仅小红书)。"""
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("博主不存在或不属于当前工作空间")
+    if blogger.platform != "xhs":
+        raise ValueError("目前仅支持小红书笔记链接定向采集")
+
+    collection_settings = settings.model_copy(update={"asr_enabled": asr_enabled})
+    run = BloggerCollectionRun(
+        tenant_id=tenant_id,
+        blogger_id=blogger.id,
+        task_id=task_id,
+        status="running",
+        sample_limit=len(urls),
+        comments_per_post=comments_per_post,
+        asr_enabled=asr_enabled,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    client: TikHubXhsClient | TikHubDouyinClient | None = None
+    try:
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        record_task_event(db, tenant_id, task_id, "定向采集", "running", f"开始按 {len(urls)} 条链接定向采集")
+        ensure_collection_provider_available(blogger)
+        client = build_collection_client(collection_settings, blogger.platform)
+
+        candidates: list[XhsPostCandidate] = []
+        seen: set[str] = set()
+        for raw in urls:
+            try:
+                parsed = parse_xhs_note_link(_expand_short_link(raw))
+            except TikHubError as exc:
+                record_task_event(db, tenant_id, task_id, "链接解析", "failed", f"跳过无法解析的链接：{raw[:80]} — {exc}")
+                continue
+            if parsed["note_id"] in seen:
+                continue
+            seen.add(parsed["note_id"])
+            candidates.append(
+                XhsPostCandidate(
+                    external_id=parsed["note_id"],
+                    xsec_token=parsed["xsec_token"],
+                    note_type="",
+                    like_count=0,
+                    favorite_count=0,
+                    comment_count=0,
+                    share_count=0,
+                    raw={},
+                )
+            )
+        if not candidates:
+            raise TikHubError("没有可解析的笔记链接,请确认粘贴的是小红书笔记「分享链接」(需带 xsec_token)")
+
+        posts = collect_posts(db, tenant_id, task_id, blogger, client, collection_settings, candidates, comments_per_post)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        if not posts:
+            raise TikHubError("链接对应的笔记都未能采集成功(可能已删除、不可见或链接缺 token)")
+
+        now = utc_now()
+        for post in posts:
+            post.content_subtype = classify_subtype(
+                post.content_type, post.transcript_text, min_transcript_chars=settings.talking_video_min_transcript_chars
+            )
+            post.last_seen_at = now
+            post.status = "active"
+        blogger.sample_count = len(posts)
+        for position, post in enumerate(posts, 1):
+            db.add(
+                BloggerCollectionPost(
+                    tenant_id=tenant_id,
+                    blogger_id=blogger.id,
+                    collection_run_id=run.id,
+                    post_id=post.id,
+                    position=position,
+                )
+            )
+
+        quality = quality_report(posts, len(posts))
+        stats = analysis.analyze_posts(posts)
+        stats["quality_report"] = quality
+        _apply_auto_tags(db, settings, tenant_id, task_id, blogger, posts, stats)
+        run.status = "succeeded"
+        run.post_count = len(posts)
+        run.hot_post_count = len(stats["hot_posts"])
+        run.comment_count = stats["comment_total"]
+        run.summary_json = json.dumps(
+            {"stats": stats, "quality_report": quality, "collect_meta": {"source": "url", "url_count": len(urls), "collected": len(posts)}},
+            ensure_ascii=False,
+            default=str,
+        )
+        apply_usage(run, client.usage)
+        db.commit()
+        db.refresh(run)
+        record_task_event(
+            db, tenant_id, task_id, "定向采集", "succeeded",
+            f"定向采集完成：{len(urls)} 条链接 → 成功 {len(posts)} 条",
             {"collection_run_id": run.id},
         )
         return CollectionResult(run=run)

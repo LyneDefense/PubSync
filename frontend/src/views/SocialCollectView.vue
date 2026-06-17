@@ -8,6 +8,8 @@ import {
   bloggerCollectionRuns,
   bloggerDistillForm,
   collectContentTypes,
+  collectFetchAll,
+  collectOrder,
   currentSocialPlatformName,
   currentSocialTab,
   form,
@@ -15,6 +17,7 @@ import {
   goNextXhsCollectStep,
   goPreviousXhsCollectStep,
   handleCollectBlogger,
+  handleCollectByUrls,
   isSocialPlatform,
   openCreateBloggerModal,
   pendingAction,
@@ -26,6 +29,7 @@ import {
   setCurrentSocialTab,
   taskButtonStyle,
   taskProgress,
+  urlCollectInput,
   xhsCollectStep,
   xhsCollectStepLabels
 } from '../composables/useWorkspaceStore'
@@ -90,6 +94,20 @@ function toggleContentType(value: string) {
                   </label>
                 </div>
               </div>
+              <div class="subtype-picker">
+                <p class="form-hint">选材排序：</p>
+                <div class="seg-group">
+                  <button type="button" class="seg-option" :class="{ active: collectOrder === 'top_liked' }" @click="collectOrder = 'top_liked'">高赞优先</button>
+                  <button type="button" class="seg-option" :class="{ active: collectOrder === 'latest' }" @click="collectOrder = 'latest'">最新优先</button>
+                </div>
+              </div>
+              <div class="subtype-picker">
+                <p class="form-hint">采集数量：</p>
+                <div class="seg-group">
+                  <button type="button" class="seg-option" :class="{ active: !collectFetchAll }" @click="collectFetchAll = false">{{ bloggerDistillForm.sample_limit }} 条</button>
+                  <button type="button" class="seg-option" :class="{ active: collectFetchAll }" @click="collectFetchAll = true">全部</button>
+                </div>
+              </div>
               <label class="asr-callout">
                 <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
                 <span><strong>启用视频字幕/ASR 分析</strong><small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。</small></span>
@@ -105,7 +123,19 @@ function toggleContentType(value: string) {
                 </button>
               </div>
               <p v-if="!selectedBloggerId" class="form-hint">还没选择博主——请回到第 1 步「选择博主」选择或创建一个博主。</p>
-              <p class="form-hint">采集耗时取决于样本数量、评论数量和视频 ASR 开关。</p>
+              <p class="form-hint">采集耗时取决于样本数量、评论数量和视频 ASR 开关。重复采集只补新笔记、刷新老笔记，不会重复扣费。</p>
+              <details class="url-collect">
+                <summary>采不到想要的笔记？粘贴链接定向采集</summary>
+                <p class="form-hint">打开小红书 → 进入该笔记 →「分享」→「复制链接」→ 粘到下面（一行一个）；链接需带 <code>xsec_token</code>（复制分享链接即可），短链会自动展开。逐条结果见下方进度。</p>
+                <textarea
+                  v-model="urlCollectInput"
+                  rows="4"
+                  placeholder="https://www.xiaohongshu.com/explore/xxxx?xsec_token=...&#10;一行一个，最多 20 条"
+                ></textarea>
+                <button type="button" :disabled="!selectedBloggerId || Boolean(pendingAction)" @click="handleCollectByUrls">
+                  {{ pendingAction === 'collect' ? '采集中…' : '定向采集' }}
+                </button>
+              </details>
             </section>
 
             <section v-if="xhsCollectStep === 4" class="creation-stage-card active">

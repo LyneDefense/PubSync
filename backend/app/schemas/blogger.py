@@ -87,6 +87,17 @@ class BloggerCollectRequest(BaseModel):
     asr_enabled: bool = False
     # 拉取范围:image=图文,video=视频;默认全部。仅这两类(口播细分在采集后判定)。
     content_types: list[str] = Field(default_factory=lambda: ["image", "video"])
+    # 选材排序:top_liked=高赞优先(默认),latest=最新优先。
+    order: str = Field(default="top_liked", pattern="^(top_liked|latest)$")
+    # 数量:False=取 sample_limit 条,True=全部到系统上限。
+    fetch_all: bool = False
+
+
+class BloggerUrlCollectRequest(BaseModel):
+    # 粘贴的笔记链接(一行一个);兜底定向采集。
+    urls: list[str] = Field(min_length=1, max_length=20)
+    comments_per_post: int = Field(default=20, ge=0, le=100)
+    asr_enabled: bool = False
 
 
 class BloggerPostRead(BaseModel):
@@ -113,6 +124,7 @@ class BloggerPostRead(BaseModel):
     share_count: int
     score: float
     comments_json: str
+    status: str
     created_at: datetime
     updated_at: datetime
 

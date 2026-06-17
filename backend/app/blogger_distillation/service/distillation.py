@@ -108,7 +108,12 @@ def run_blogger_distillation(
         posts = list(
             db.scalars(
                 select(BloggerPost)
-                .where(BloggerPost.id.in_(post_ids), BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger.id)
+                .where(
+                    BloggerPost.id.in_(post_ids),
+                    BloggerPost.tenant_id == tenant_id,
+                    BloggerPost.blogger_id == blogger.id,
+                    BloggerPost.status != "delisted",
+                )
                 .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
             )
         )

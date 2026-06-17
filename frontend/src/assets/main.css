@@ -3078,3 +3078,58 @@ dd {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* 选材排序/数量:单选分段控件,沿用胶囊风格。 */
+.seg-group {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.seg-option {
+  min-height: 32px;
+  padding: 0 14px;
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.seg-option + .seg-option {
+  border-left: 1px solid var(--color-rule-strong);
+}
+.seg-option.active {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 已下架:中性小标签,跟在标题后。 */
+.tag-chip--delisted {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2, #f1f5f9);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+/* 兜底:粘贴链接定向采集,作为次级折叠入口。 */
+.url-collect {
+  margin-top: var(--space-sm);
+  border: var(--rule-hair);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-2xs) var(--space-sm);
+}
+.url-collect > summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-accent-ink);
+}
+.url-collect textarea {
+  width: 100%;
+  margin: var(--space-2xs) 0;
+}

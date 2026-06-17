@@ -15,6 +15,7 @@ from app.blogger_distillation.service import (
     record_task_event,
     run_blogger_collection,
     run_blogger_distillation,
+    run_blogger_url_collection,
 )
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
@@ -146,6 +147,8 @@ def run_blogger_collection_task(
     comments_per_post: int = 20,
     asr_enabled: bool = False,
     content_types: list[str] | None = None,
+    order: str = "top_liked",
+    fetch_all: bool = False,
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在采集小红书样本")
@@ -159,6 +162,8 @@ def run_blogger_collection_task(
             comments_per_post=comments_per_post,
             asr_enabled=asr_enabled,
             content_types=content_types,
+            order=order,
+            fetch_all=fetch_all,
         )
         mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
         logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)
@@ -167,6 +172,38 @@ def run_blogger_collection_task(
         task_id,
         label="博主样本采集",
         fail_message="博主样本采集失败",
+        work=work,
+        expected=(ValueError, TikHubError),
+        cancellable=True,
+    )
+
+
+def run_blogger_url_collection_task(
+    task_id: str,
+    blogger_id: int,
+    urls: list[str],
+    comments_per_post: int = 20,
+    asr_enabled: bool = False,
+) -> None:
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, "正在按链接定向采集")
+        result = run_blogger_url_collection(
+            db=db,
+            settings=get_settings(),
+            task_id=task_id,
+            tenant_id=task.tenant_id,
+            blogger_id=blogger_id,
+            urls=urls,
+            comments_per_post=comments_per_post,
+            asr_enabled=asr_enabled,
+        )
+        mark_task_succeeded(db, task, f"定向采集完成，采集 {result.run.post_count} 条")
+        logger.info("任务成功：任务ID=%s，类型=博主定向采集，采集批次ID=%s", task_id, result.run.id)
+
+    execute_task(
+        task_id,
+        label="博主定向采集",
+        fail_message="博主定向采集失败",
         work=work,
         expected=(ValueError, TikHubError),
         cancellable=True,

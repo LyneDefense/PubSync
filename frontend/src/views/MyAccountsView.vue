@@ -85,7 +85,7 @@ watch(
         <div v-if="(accountPosts[selectedId] || []).length" class="post-list">
           <article v-for="post in accountPosts[selectedId]" :key="post.id" class="post-row">
             <div>
-              <strong>{{ post.title || '(无标题)' }}</strong>
+              <strong>{{ post.title || '(无标题)' }}<span v-if="post.status === 'delisted'" class="tag-chip tag-chip--delisted">已下架</span></strong>
               <small>赞{{ post.like_count }} · 藏{{ post.favorite_count }} · 评{{ post.comment_count }}<template v-if="post.published_at"> · {{ formatDate(post.published_at) }}</template></small>
             </div>
             <StatusChip v-if="post.asr_status && post.asr_status !== 'not_required'" :status="post.asr_status" />

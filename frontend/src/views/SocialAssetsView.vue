@@ -193,7 +193,7 @@ const selectedRunModalityComparison = computed(() => {
               </div>
               <div v-if="bloggerPosts.length" class="sample-list asset-samples">
                 <div v-for="post in bloggerPosts.slice(0, 8)" :key="post.id">
-                  <strong>{{ post.title }}</strong>
+                  <strong>{{ post.title }}<span v-if="post.status === 'delisted'" class="tag-chip tag-chip--delisted">已下架</span></strong>
                   <span>
                     {{ subtypeLabel(post.content_subtype) }} · 收藏 {{ post.favorite_count }} / 点赞 {{ post.like_count }} / {{ bloggerCommentLabel(post) }}
                     <template v-if="post.content_type === 'video'"> / ASR <StatusChip :status="post.asr_status" /></template>

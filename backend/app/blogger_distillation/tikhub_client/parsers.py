@@ -80,6 +80,22 @@ def parse_xhs_profile_link(homepage_url: str) -> dict[str, str]:
     }
 
 
+def parse_xhs_note_link(url: str) -> dict[str, str]:
+    """从小红书笔记分享链接解析 note_id + xsec_token(链接可能裹在分享文案里)。
+
+    支持 /explore/{id} 与 /discovery/item/{id};短链(xhslink.com)需调用方先展开为完整链接。
+    """
+    text = (url or "").strip()
+    found = re.search(r"https?://[^\s，。;；）)]+", text)
+    raw = (found.group(0) if found else text).rstrip("。.,，；;")
+    parsed = urlparse(raw)
+    match = re.search(r"/(?:explore|discovery/item)/([0-9a-zA-Z]+)", parsed.path)
+    if not match:
+        raise TikHubError("无法从链接解析笔记 ID，请粘贴小红书笔记的「分享链接」")
+    token = (parse_qs(parsed.query).get("xsec_token") or [""])[0]
+    return {"note_id": match.group(1), "xsec_token": token}
+
+
 def parse_douyin_profile_link(homepage_url: str) -> str:
     raw = homepage_url.strip().rstrip("。.,，；;")
     parsed = urlparse(raw)

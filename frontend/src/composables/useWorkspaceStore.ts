@@ -28,6 +28,7 @@ import {
   clearAuthToken,
   clearTenantId,
   collectBlogger,
+  collectBloggerByUrls,
   listAccountAuditRuns,
   startAccountAuditTask,
   startSelfDiagnoseTask,
@@ -244,6 +245,11 @@ export const DISTILL_SUBTYPES = ['image_text', 'talking_video', 'visual_video'] 
 export const DISTILL_MIN_SAMPLES = 5
 // 采集拉取范围:image=图文,video=视频。
 export const collectContentTypes = ref<string[]>(['image', 'video'])
+// 采集选材:排序(高赞/最新)+ 数量(false=N 条,true=全部到上限)。
+export const collectOrder = ref<'top_liked' | 'latest'>('top_liked')
+export const collectFetchAll = ref(false)
+// 兜底:粘贴链接定向采集的输入(一行一个)。
+export const urlCollectInput = ref('')
 // 蒸馏勾选的模态(空=全选=通用)。
 export const distillSelectedSubtypes = ref<string[]>([])
 
@@ -1542,13 +1548,51 @@ export async function handleCollectBlogger() {
         sample_limit: bloggerDistillForm.sample_limit,
         comments_per_post: bloggerDistillForm.comments_per_post,
         asr_enabled: bloggerDistillForm.asr_enabled,
-        content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video']
+        content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video'],
+        order: collectOrder.value,
+        fetch_all: collectFetchAll.value
       }),
     async () => {
       await refreshSelectedBlogger()
       xhsCollectStep.value = 4
     },
     '样本采集仍在后台执行，请稍后刷新页面查看采集批次'
+  )
+}
+
+export async function handleCollectByUrls() {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    xhsCollectStep.value = 1
+    return
+  }
+  const urls = urlCollectInput.value
+    .split(/[\n\r]+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (!urls.length) {
+    showMessage('请粘贴至少一条笔记链接', true)
+    return
+  }
+  if (urls.length > 20) {
+    showMessage('一次最多 20 条链接', true)
+    return
+  }
+  await runTaskAction(
+    'collect',
+    '已提交定向采集任务',
+    () =>
+      collectBloggerByUrls(selectedBloggerId.value!, {
+        urls,
+        comments_per_post: bloggerDistillForm.comments_per_post,
+        asr_enabled: bloggerDistillForm.asr_enabled
+      }),
+    async () => {
+      urlCollectInput.value = ''
+      await refreshSelectedBlogger()
+      xhsCollectStep.value = 4
+    },
+    '定向采集仍在后台执行，请稍后刷新页面查看采集批次'
   )
 }
 

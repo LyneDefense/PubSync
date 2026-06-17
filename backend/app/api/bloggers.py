@@ -27,6 +27,7 @@ from app.models import (
 from app.queue import submit_background
 from app.schemas import (
     BloggerCollectRequest,
+    BloggerUrlCollectRequest,
     BloggerCollectionRunRead,
     BloggerDistillationRunRead,
     BloggerDistillRequest,
@@ -44,6 +45,7 @@ from app.services.task_service import (
     create_operation_task,
     run_blogger_collection_task,
     run_blogger_distillation_task,
+    run_blogger_url_collection_task,
 )
 
 router = APIRouter()
@@ -187,6 +189,34 @@ def collect_blogger_endpoint(
         payload.comments_per_post,
         payload.asr_enabled,
         payload.content_types,
+        payload.order,
+        payload.fetch_all,
+    )
+    return task
+
+
+@router.post("/bloggers/{blogger_id}/collect-by-urls", response_model=OperationTaskRead)
+def collect_blogger_by_urls_endpoint(
+    blogger_id: int,
+    payload: BloggerUrlCollectRequest,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    if blogger.platform != "xhs":
+        raise HTTPException(status_code=400, detail="目前仅支持小红书笔记链接定向采集")
+    task = create_operation_task(db, "blogger_collection", tenant_id=tenant.id)
+    submit_background(
+        background_tasks,
+        run_blogger_url_collection_task,
+        task.id,
+        blogger.id,
+        payload.urls,
+        payload.comments_per_post,
+        payload.asr_enabled,
     )
     return task
 

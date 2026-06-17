@@ -21,6 +21,7 @@ from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
 from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead, SelfDiagnoseCreate
 from app.schemas.blogger import (
     BloggerCollectRequest,
+    BloggerUrlCollectRequest,
     BloggerCollectionRunRead,
     BloggerDistillationRunRead,
     BloggerDistillRequest,
@@ -111,6 +112,7 @@ __all__ = [
     "BloggerSearchResultRead",
     "BloggerDistillRequest",
     "BloggerCollectRequest",
+    "BloggerUrlCollectRequest",
     "CollectEstimate",
     "BloggerPostRead",
     "BloggerCollectionRunRead",

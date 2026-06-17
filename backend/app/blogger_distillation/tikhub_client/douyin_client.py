@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, EndpointRouter
-from app.blogger_distillation.tikhub_client.base import TikHubBaseClient, TikHubError, XhsPostCandidate
+from app.blogger_distillation.tikhub_client.base import TikHubBaseClient, TikHubError, UserNotesResult, XhsPostCandidate
 from app.config import Settings
 from app.blogger_distillation.tikhub_client.parsers import (
     extract_douyin_comments,
@@ -35,9 +35,10 @@ class TikHubDouyinClient(TikHubBaseClient):
             self.user_id = info["id"]
         return payload
 
-    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> list[XhsPostCandidate]:
+    def get_user_notes(self, homepage_url: str, limit: int, external_id: str | None = None) -> UserNotesResult:
         self.user_id = self.user_id or self.resolve_user_id(homepage_url, external_id)
         candidates: list[XhsPostCandidate] = []
+        reached_end = False
         seen_ids: set[str] = set()
         cursor = "0"
         for page in range(10):
@@ -69,12 +70,15 @@ class TikHubDouyinClient(TikHubBaseClient):
                     )
                 )
                 if len(candidates) >= limit:
-                    return candidates
+                    return UserNotesResult(candidates=candidates, reached_end=False)
             next_cursor = page_data["next_cursor"]
-            if not page_data["has_more"] or not next_cursor or next_cursor == cursor:
+            if not page_data["has_more"]:
+                reached_end = True
+                break
+            if not next_cursor or next_cursor == cursor:
                 break
             cursor = next_cursor
-        return candidates[:limit]
+        return UserNotesResult(candidates=candidates[:limit], reached_end=reached_end)
 
     def get_image_note_detail(self, candidate: XhsPostCandidate) -> dict[str, Any]:
         payload = self.router.call("video_detail", {"video_id": candidate.external_id})

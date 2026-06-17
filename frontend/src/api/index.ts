@@ -9,6 +9,7 @@ import type {
   Article,
   ArticleUpdate,
   BloggerCollectRequest,
+  BloggerUrlCollectRequest,
   BloggerCollectionRun,
   BloggerDistillationRun,
   BloggerDistillRequest,
@@ -334,6 +335,13 @@ export function listBloggerPosts(id: number) {
 
 export function collectBlogger(id: number, payload: BloggerCollectRequest) {
   return request<OperationTask>(`/bloggers/${id}/collect`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function collectBloggerByUrls(id: number, payload: BloggerUrlCollectRequest) {
+  return request<OperationTask>(`/bloggers/${id}/collect-by-urls`, {
     method: 'POST',
     body: JSON.stringify(payload)
   })

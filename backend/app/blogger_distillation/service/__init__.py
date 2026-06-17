@@ -10,6 +10,7 @@ from app.blogger_distillation.service.collection import (
     collect_posts,
     platform_collection_label,
     run_blogger_collection,
+    run_blogger_url_collection,
 )
 from app.blogger_distillation.service.crud import (
     archive_active_skills,
@@ -52,6 +53,7 @@ __all__ = [
     "set_blogger_favorite",
     "delete_blogger",
     "run_blogger_collection",
+    "run_blogger_url_collection",
     "build_collection_client",
     "collect_posts",
     "platform_collection_label",

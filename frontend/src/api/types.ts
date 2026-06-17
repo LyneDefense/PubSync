@@ -387,6 +387,14 @@ export interface BloggerCollectRequest {
   comments_per_post: number
   asr_enabled: boolean
   content_types?: string[]
+  order?: 'top_liked' | 'latest'
+  fetch_all?: boolean
+}
+
+export interface BloggerUrlCollectRequest {
+  urls: string[]
+  comments_per_post?: number
+  asr_enabled?: boolean
 }
 
 export interface CollectEstimate {
@@ -423,6 +431,7 @@ export interface BloggerPost {
   share_count: number
   score: number
   comments_json: string
+  status: string
   created_at: string
   updated_at: string
 }

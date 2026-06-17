@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     talking_video_min_transcript_chars: int = 200
     # 蒸馏时每个被选模态的最低样本数,不足则拒绝(避免样本太少蒸出垃圾)。
     distill_min_samples_per_subtype: int = 5
+    # 高赞优先的候选池深度 = clamp(采样数 × 倍数, 下限, 上限);系统决定,用户端不暴露。
+    candidate_pool_oversample: int = 5
+    candidate_pool_floor: int = 100
+    candidate_pool_cap: int = 300
     # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80
