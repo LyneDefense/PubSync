@@ -101,6 +101,7 @@ def update_blogger(
     follower_count: int | None = None,
     niche: str | None = None,
     description: str | None = None,
+    tags: list[str] | None = None,
 ) -> BloggerProfile:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -146,6 +147,10 @@ def update_blogger(
         blogger.niche = niche.strip()
     if description is not None:
         blogger.description = description
+    if tags is not None:
+        from app.blogger_distillation.service.tagging import set_manual_tags
+
+        blogger.tags_json = set_manual_tags(blogger.tags_json, tags)
     db.commit()
     db.refresh(blogger)
     return blogger

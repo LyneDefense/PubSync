@@ -4,9 +4,9 @@
 import StatusChip from '../components/StatusChip.vue'
 import {
   article,
+  benchmarkAccounts,
   bloggerCollectionRuns,
   bloggerDistillForm,
-  bloggers,
   currentSocialPlatformName,
   currentSocialTab,
   form,
@@ -57,13 +57,13 @@ import {
                 <div><span>01 选择博主</span><h3>选择要采集的博主</h3></div>
                 <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
               </div>
-              <div v-if="bloggers.length" class="blogger-list compact">
-                <button v-for="blogger in bloggers" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
+              <div v-if="benchmarkAccounts.length" class="blogger-list compact">
+                <button v-for="blogger in benchmarkAccounts" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
                   <strong>{{ blogger.display_name }}</strong>
                   <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
                 </button>
               </div>
-              <p v-else class="empty-region">还没有博主档案。点击“创建博主”添加小红书主页。</p>
+              <p v-else class="empty-region">还没有对标博主档案。点击“创建博主”添加对标主页。</p>
             </section>
 
             <section v-if="xhsCollectStep === 2" class="creation-stage-card active">

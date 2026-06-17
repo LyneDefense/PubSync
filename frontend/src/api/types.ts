@@ -317,6 +317,11 @@ export interface OperationTaskEvent {
   created_at: string
 }
 
+export interface BloggerTag {
+  name: string
+  source: string
+}
+
 export interface BloggerProfile {
   id: number
   tenant_id: number
@@ -329,6 +334,7 @@ export interface BloggerProfile {
   follower_count: number
   niche: string
   description: string
+  tags: BloggerTag[]
   is_favorite: boolean
   sample_count: number
   last_distilled_at: string | null
@@ -356,6 +362,7 @@ export interface BloggerProfileUpdate {
   follower_count?: number
   niche?: string
   description?: string
+  tags?: string[]
 }
 
 export interface BloggerSearchResult {

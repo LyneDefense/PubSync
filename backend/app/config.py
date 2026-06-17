@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # 博主蒸馏单独的文本模型（留空=用上面的 *_text_model）。蒸馏对推理要求更高，
     # 可在此指向更强的模型（如更高档的 OpenAI/MiniMax 模型）以提升蒸馏质量。
     distill_text_model: str = ""
+    # 采集后自动给博主打内容标签（LLM 语义提炼）。每次采集多一次 LLM 调用，可在此关闭以省成本。
+    blogger_auto_tag_enabled: bool = True
+    blogger_tag_model: str = ""  # 留空=用 distill_text_model 或默认文本模型
+    blogger_tag_max: int = 6
     # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 社媒·我的账号:登记我的小红书/抖音账号,采集并缓存其内容,内容列表 + 手动刷新。
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   accountPosts,
@@ -16,6 +16,7 @@ import {
 } from '../composables/useWorkspaceStore'
 
 const selectedId = ref<number | null>(null)
+const selectedAccount = computed(() => myAccounts.value.find((acc) => acc.id === selectedId.value) || null)
 
 function pick(id: number) {
   selectedId.value = id
@@ -72,6 +73,14 @@ watch(
           >
             {{ pendingAction === 'collect' ? '采集中…' : '刷新(重新采集)' }}
           </button>
+        </div>
+        <div v-if="selectedAccount?.tags?.length" class="tag-chips">
+          <span
+            v-for="tag in selectedAccount.tags"
+            :key="tag.name"
+            class="tag-chip"
+            :class="tag.source === 'manual' ? 'tag-chip--manual' : 'tag-chip--auto'"
+          >{{ tag.name }}</span>
         </div>
         <div v-if="(accountPosts[selectedId] || []).length" class="post-list">
           <article v-for="post in accountPosts[selectedId]" :key="post.id" class="post-row">

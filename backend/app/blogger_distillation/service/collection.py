@@ -52,6 +52,43 @@ def platform_collection_label(platform: str) -> str:
     return "抖音作品" if platform == "douyin" else "小红书笔记"
 
 
+def _apply_auto_tags(
+    db: Session,
+    settings: Settings,
+    tenant_id: int,
+    task_id: str,
+    blogger: BloggerProfile,
+    posts: list[BloggerPost],
+    stats: dict,
+) -> None:
+    """采集完成后用 LLM 给博主打内容标签。失败只记事件、绝不让采集失败。"""
+    if not settings.blogger_auto_tag_enabled:
+        return
+    try:
+        from app.blogger_distillation.service.tagging import generate_auto_tags, merge_tags
+
+        record_task_event(db, tenant_id, task_id, "内容标签", "running", "正在提炼内容标签")
+        model = (settings.blogger_tag_model or settings.distill_text_model or "").strip() or None
+        limit = max(1, settings.blogger_tag_max)
+        new_auto = generate_auto_tags(settings, blogger, posts, stats, model=model, limit=limit)
+        blogger.tags_json = merge_tags(blogger.tags_json, new_auto, limit=limit)
+        record_task_event(
+            db,
+            tenant_id,
+            task_id,
+            "内容标签",
+            "succeeded",
+            f"已生成内容标签:{('、'.join(new_auto)) or '(无)'}",
+            {"tags": new_auto},
+        )
+    except Exception as exc:  # noqa: BLE001 — 打标签是增强项,不能影响采集主流程
+        logger.warning("自动打标签失败,跳过:blogger_id=%s,error=%s", blogger.id, exc)
+        try:
+            record_task_event(db, tenant_id, task_id, "内容标签", "running", f"内容标签生成失败,已跳过:{exc}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def run_blogger_collection(
     db: Session,
     settings: Settings,
@@ -116,6 +153,7 @@ def run_blogger_collection(
 
         stats = analysis.analyze_posts(posts)
         stats["quality_report"] = quality
+        _apply_auto_tags(db, settings, tenant_id, task_id, blogger, posts, stats)
         run.status = "succeeded"
         run.post_count = len(posts)
         run.hot_post_count = len(stats["hot_posts"])

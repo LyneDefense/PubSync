@@ -284,6 +284,11 @@ onUnmounted(() => {
             领域/赛道
             <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
           </label>
+          <label v-if="editingBlogger">
+            手动标签
+            <input v-model="bloggerForm.tags" type="text" placeholder="逗号分隔，如：职场干货，副业，效率工具" />
+            <small class="field-hint">手动标签会一直保留；采集时系统会自动追加内容标签（每次重算）。</small>
+          </label>
           <label>
             备注
             <textarea v-model="bloggerForm.description" rows="3"></textarea>

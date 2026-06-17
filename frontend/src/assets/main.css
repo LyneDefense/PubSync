@@ -3015,3 +3015,38 @@ dd {
     padding: var(--space-sm);
   }
 }
+
+/* 内容标签 chip:auto=系统提炼(浅色),manual=手动(强调,带边框)。 */
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-top: var(--space-2xs);
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+.tag-chip--auto {
+  background: var(--color-surface-2, #f1f5f9);
+  color: var(--color-ink-2);
+}
+.tag-chip--manual {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  border: 1px solid color-mix(in oklab, var(--color-accent), transparent 60%);
+  font-weight: 600;
+}
+
+/* 表单字段下的灰色提示文案。 */
+.field-hint {
+  display: block;
+  margin-top: var(--space-2xs);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}

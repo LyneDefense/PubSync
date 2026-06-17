@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -25,6 +26,9 @@ class BloggerProfile(Base):
     follower_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     niche: Mapped[str] = mapped_column(String(160), nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 内容标签:JSON 数组,元素 {"name": str, "source": "auto"|"manual"}。
+    # auto=采集时 LLM 提炼(每次重算替换),manual=用户手填(永久保留)。
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     is_favorite: Mapped[bool] = mapped_column(default=False)
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_distilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -32,6 +36,15 @@ class BloggerProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[Tenant] = relationship()
+
+    @property
+    def tags(self) -> list[dict[str, str]]:
+        """解析 tags_json 为 [{"name", "source"}],供序列化使用。"""
+        try:
+            data = json.loads(self.tags_json or "[]")
+        except (json.JSONDecodeError, TypeError):
+            return []
+        return [t for t in data if isinstance(t, dict) and t.get("name")]
 
 
 class BloggerPost(Base):

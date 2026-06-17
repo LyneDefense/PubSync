@@ -217,7 +217,8 @@ export const bloggerForm = reactive({
   avatar_url: '',
   follower_count: 0,
   niche: '',
-  description: ''
+  description: '',
+  tags: '' // 手动标签:逗号分隔。仅编辑时透传,自动标签不在此。
 })
 
 export const bloggerDistillForm = reactive({
@@ -1060,6 +1061,7 @@ export function resetBloggerForm() {
   bloggerForm.follower_count = 0
   bloggerForm.niche = ''
   bloggerForm.description = ''
+  bloggerForm.tags = ''
 }
 
 export function closeBloggerModal() {
@@ -1086,6 +1088,11 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
   bloggerForm.follower_count = blogger.follower_count
   bloggerForm.niche = blogger.niche
   bloggerForm.description = blogger.description
+  // 只把手动标签放进可编辑输入框;自动标签只读展示、不在此编辑。
+  bloggerForm.tags = (blogger.tags || [])
+    .filter((tag) => tag.source === 'manual')
+    .map((tag) => tag.name)
+    .join('，')
   resetBloggerSearch()
   showBloggerModal.value = true
 }
@@ -1131,8 +1138,12 @@ export async function handleCreateBlogger() {
       description: bloggerForm.description
     }
     const isEditing = Boolean(editingBloggerId.value)
+    const manualTags = bloggerForm.tags
+      .split(/[，,、\n]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
     const blogger = isEditing
-      ? await updateBlogger(editingBloggerId.value!, payload)
+      ? await updateBlogger(editingBloggerId.value!, { ...payload, tags: manualTags })
       : await createBlogger({
           platform: currentSocialPlatform.value,
           account_type: bloggerModalAccountType.value,
@@ -1742,6 +1753,44 @@ export function removeContentGroup(index: number) {
 
 export function changeNewsPage(delta: number) {
   newsPage.value = Math.min(newsTotalPages.value, Math.max(1, newsPage.value + delta))
+}
+
+// 友好时间:今天 14:30 / 昨天 14:30 / 6月16日 14:30(跨年补年份)。比裸日期更直观。
+export function friendlyTime(value: string) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const now = new Date()
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (sameDay(d, now)) return `今天 ${hm}`
+  if (sameDay(d, yesterday)) return `昨天 ${hm}`
+  const yearPrefix = d.getFullYear() === now.getFullYear() ? '' : `${d.getFullYear()}年`
+  return `${yearPrefix}${d.getMonth() + 1}月${d.getDate()}日 ${hm}`
+}
+
+// 「第 N 次」序号:按 created_at 升序(同刻按 id)给每条 run 排名,N=1 最早。
+function buildOrdinalMap(runs: { id: number; created_at: string }[]) {
+  const sorted = [...runs].sort((a, b) => {
+    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    return diff !== 0 ? diff : a.id - b.id
+  })
+  const map = new Map<number, number>()
+  sorted.forEach((run, index) => map.set(run.id, index + 1))
+  return map
+}
+
+export const collectionRunOrdinals = computed(() => buildOrdinalMap(bloggerCollectionRuns.value))
+export const distillRunOrdinals = computed(() => buildOrdinalMap(bloggerRuns.value))
+
+export function collectionRunOrdinal(id: number | null | undefined): number | null {
+  return id == null ? null : collectionRunOrdinals.value.get(id) ?? null
+}
+
+export function distillRunOrdinal(id: number | null | undefined): number | null {
+  return id == null ? null : distillRunOrdinals.value.get(id) ?? null
 }
 
 export function formatScheduleTime(hour: number, minute: number) {

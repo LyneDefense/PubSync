@@ -23,6 +23,8 @@ class BloggerProfileUpdate(BaseModel):
     follower_count: int | None = Field(default=None, ge=0)
     niche: str | None = Field(default=None, max_length=160)
     description: str | None = None
+    # 手动标签(逗号/列表)。传则替换全部 manual 标签,自动标签保留。
+    tags: list[str] | None = Field(default=None, max_length=20)
 
 
 class BloggerFavoriteUpdate(BaseModel):
@@ -41,6 +43,7 @@ class BloggerProfileRead(BaseModel):
     follower_count: int
     niche: str
     description: str
+    tags: list[dict] = []
     is_favorite: bool
     sample_count: int
     last_distilled_at: datetime | None
