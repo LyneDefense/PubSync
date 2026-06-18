@@ -190,7 +190,8 @@ function toggleContentType(value: string) {
             </section>
             <div class="creator-nav">
               <button v-if="xhsCollectStep > 1" type="button" @click="goPreviousXhsCollectStep">← 上一步</button>
-              <button v-if="xhsCollectStep < 4" type="button" class="creator-nav__next primary" @click="goNextXhsCollectStep">下一步 →</button>
+              <!-- 第3步「执行采集」的前进动作就是「开始采集」(成功后自动跳第4步),不再额外给「下一步」以免与采集按钮冲突。 -->
+              <button v-if="xhsCollectStep < 3" type="button" class="creator-nav__next primary" @click="goNextXhsCollectStep">下一步 →</button>
             </div>
           </div>
         </div>

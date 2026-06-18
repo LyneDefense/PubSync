@@ -184,10 +184,34 @@ export const showTaskEventDetails = ref(false)
 export const isAuthenticated = ref(Boolean(getAuthToken()))
 export const isLoggingIn = ref(false)
 export const loginMessage = ref('')
-export const activeMainTab = ref<MainTab>('wechat')
-export const activeWechatTab = ref<WeChatTab>('brief')
-export const activeXhsTab = ref<XhsTab>('collect')
-export const activeDouyinTab = ref<DouyinTab>('collect')
+
+// 视图持久化:刷新后停留在当前平台/页签(原来每次刷新都回退到「公众号·每日早报」)。
+const VIEW_STATE_KEY = 'pubsync_view_state'
+function readViewState(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(VIEW_STATE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+const savedView = readViewState()
+
+export const activeMainTab = ref<MainTab>((savedView.mainTab as MainTab) || 'wechat')
+export const activeWechatTab = ref<WeChatTab>((savedView.wechatTab as WeChatTab) || 'brief')
+export const activeXhsTab = ref<XhsTab>((savedView.xhsTab as XhsTab) || 'collect')
+export const activeDouyinTab = ref<DouyinTab>((savedView.douyinTab as DouyinTab) || 'collect')
+
+// 任一视图状态变化即写回 localStorage。admin 是独立入口,不持久化为主平台。
+watch([activeMainTab, activeWechatTab, activeXhsTab, activeDouyinTab], ([mainTab, wechatTab, xhsTab, douyinTab]) => {
+  if (mainTab === 'admin') return
+  try {
+    window.localStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ mainTab, wechatTab, xhsTab, douyinTab }))
+  } catch {
+    /* localStorage 不可用时静默忽略,不影响功能 */
+  }
+})
 export const xhsCollectStep = ref(1)
 export const xhsDistillStep = ref(1)
 export const wechatBriefStep = ref(1)
@@ -852,6 +876,67 @@ export function eventPayloadSummary(event: OperationTaskEvent) {
   return entries.join(' · ')
 }
 
+// 进行中任务持久化:后台任务(RQ/Redis)本身持久,但前端轮询循环和 pendingAction 是内存态,
+// 刷新即丢 → 任务从界面消失、还能重复发起。这里把 runningTaskId 落 localStorage,刷新后重挂轮询。
+const RUNNING_TASK_KEY = 'pubsync_running_task'
+type PersistedTask = { id: string; name: TaskActionName; mainTab: MainTab }
+const TERMINAL_TASK_STATUS: string[] = ['succeeded', 'cancelled', 'failed']
+
+function persistRunningTask(name: TaskActionName, id: string) {
+  try {
+    window.localStorage.setItem(RUNNING_TASK_KEY, JSON.stringify({ id, name, mainTab: activeMainTab.value }))
+  } catch {
+    /* localStorage 不可用时静默忽略 */
+  }
+}
+function clearPersistedTask() {
+  try {
+    window.localStorage.removeItem(RUNNING_TASK_KEY)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+// 轮询后台任务直至结束:succeeded/cancelled 调 onSuccess,failed 抛错,超时抛 timeoutMessage。
+async function pollTaskUntilDone(
+  taskId: string,
+  name: TaskActionName,
+  onSuccess: () => Promise<void>,
+  timeoutMessage: string
+) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await wait(5000)
+    const [latestTask, latestEvents] = await Promise.all([getTask(taskId), getTaskEvents(taskId)])
+    taskEvents.value = latestEvents
+    showMessage(latestTask.message)
+
+    if (latestTask.status === 'succeeded') {
+      stopFakeProgress(name, true)
+      await onSuccess()
+      await wait(350)
+      showMessage('操作完成')
+      return
+    }
+
+    if (latestTask.status === 'cancel_requested') {
+      showMessage(latestTask.message)
+    }
+
+    if (latestTask.status === 'cancelled') {
+      stopFakeProgress(name, false)
+      await onSuccess()
+      showMessage(latestTask.message || '任务已停止')
+      return
+    }
+
+    if (latestTask.status === 'failed') {
+      throw new Error(latestTask.error_message || latestTask.message || '任务失败')
+    }
+  }
+
+  throw new Error(timeoutMessage)
+}
+
 export async function runTaskAction(
   name: TaskActionName,
   label: string,
@@ -868,46 +953,63 @@ export async function runTaskAction(
   try {
     const task = await startTask()
     runningTaskId.value = task.id
+    persistRunningTask(name, task.id)
     showMessage(task.message)
     taskEvents.value = await getTaskEvents(task.id)
-
-    for (let attempt = 0; attempt < 180; attempt += 1) {
-      await wait(5000)
-      const [latestTask, latestEvents] = await Promise.all([getTask(task.id), getTaskEvents(task.id)])
-      taskEvents.value = latestEvents
-      showMessage(latestTask.message)
-
-      if (latestTask.status === 'succeeded') {
-        stopFakeProgress(name, true)
-        await onSuccess()
-        await wait(350)
-        showMessage('操作完成')
-        return
-      }
-
-      if (latestTask.status === 'cancel_requested') {
-        showMessage(latestTask.message)
-      }
-
-      if (latestTask.status === 'cancelled') {
-        stopFakeProgress(name, false)
-        await onSuccess()
-        showMessage(latestTask.message || '任务已停止')
-        return
-      }
-
-      if (latestTask.status === 'failed') {
-        throw new Error(latestTask.error_message || latestTask.message || '任务失败')
-      }
-    }
-
-    throw new Error(timeoutMessage)
+    await pollTaskUntilDone(task.id, name, onSuccess, timeoutMessage)
   } catch (error) {
     stopFakeProgress(name, false)
     showMessage(error instanceof Error ? error.message : '操作失败', true)
   } finally {
     pendingAction.value = null
     runningTaskId.value = null
+    clearPersistedTask()
+    window.setTimeout(() => resetFakeProgress(name), 300)
+  }
+}
+
+// 刷新后恢复:若 localStorage 记录了进行中任务,重新挂上轮询并恢复运行态(pendingAction 一并恢复,
+// 从而禁用采集/蒸馏按钮、避免重复发起)。任务已结束或不存在则清掉记录。
+export async function resumeRunningTaskIfAny() {
+  let persisted: PersistedTask | null = null
+  try {
+    const raw = window.localStorage.getItem(RUNNING_TASK_KEY)
+    persisted = raw ? (JSON.parse(raw) as PersistedTask) : null
+  } catch {
+    persisted = null
+  }
+  if (!persisted || !persisted.id || !persisted.name) return
+
+  const { id, name, mainTab } = persisted
+  let task: OperationTask
+  try {
+    task = await getTask(id)
+  } catch {
+    clearPersistedTask() // 任务已不存在(可能被清理),清掉记录即可
+    return
+  }
+  if (TERMINAL_TASK_STATUS.includes(task.status)) {
+    clearPersistedTask()
+    return
+  }
+
+  pendingAction.value = name
+  taskEventsAction.value = name
+  taskEventsMainTab.value = (mainTab as MainTab) || activeMainTab.value
+  showTaskEventDetails.value = false
+  startFakeProgress(name)
+  runningTaskId.value = id
+  showMessage('检测到后台仍有任务在执行，正在恢复进度…')
+  try {
+    taskEvents.value = await getTaskEvents(id)
+    await pollTaskUntilDone(id, name, async () => { await loadAll() }, '任务仍在后台执行，请稍后刷新页面查看结果')
+  } catch (error) {
+    stopFakeProgress(name, false)
+    showMessage(error instanceof Error ? error.message : '任务执行失败', true)
+  } finally {
+    pendingAction.value = null
+    runningTaskId.value = null
+    clearPersistedTask()
     window.setTimeout(() => resetFakeProgress(name), 300)
   }
 }

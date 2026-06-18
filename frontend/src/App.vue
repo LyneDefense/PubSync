@@ -52,6 +52,7 @@ import {
   isLoggingIn,
   isSocialPlatform,
   loadAll,
+  resumeRunningTaskIfAny,
   loadTenantOptions,
   loginMessage,
   message,
@@ -73,6 +74,7 @@ onMounted(() => {
   if (isAuthenticated.value) {
     loadTenantOptions()
       .then(loadAll)
+      .then(() => { resumeRunningTaskIfAny() }) // 刷新后重挂进行中任务(fire-and-forget,不阻塞挂载链)
       .catch((error) => {
         clearAuthToken()
         clearTenantId()
