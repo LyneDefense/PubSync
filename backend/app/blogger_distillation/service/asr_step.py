@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
 from app.blogger_distillation.service.extract import (
-    extract_subtitle_url,
+    extract_subtitle_urls,
     extract_video_url,
     fetch_subtitle_text,
     is_mostly_chinese,
@@ -42,12 +42,19 @@ def handle_video_asr(
         raw_payload = json.loads(normalized.get("raw_json") or "{}")
     except json.JSONDecodeError:
         raw_payload = {}
-    subtitle_url = extract_subtitle_url(candidate.raw) or extract_subtitle_url(raw_payload)
-    if subtitle_url:
-        try:
-            subtitle_text = fetch_subtitle_text(subtitle_url)
-            # 小红书会挂多语言字幕轨,可能抓到"自动翻译的英文字幕"。只认中文字幕,非中文丢弃改走 ASR(16k_zh 出中文)。
-            if subtitle_text and is_mostly_chinese(subtitle_text):
+    # 小红书常挂中/英多条字幕轨。逐条取,优先用「中文」那条;只有英文(自动翻译)则丢弃改走 ASR。
+    subtitle_urls = extract_subtitle_urls(candidate.raw) or extract_subtitle_urls(raw_payload)
+    if subtitle_urls:
+        non_chinese_seen = False
+        for subtitle_url in subtitle_urls:
+            try:
+                subtitle_text = fetch_subtitle_text(subtitle_url)
+            except Exception as exc:
+                record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", f"字幕解析失败，换下一条/ASR：note_id={candidate.external_id}，原因={exc}")
+                continue
+            if not subtitle_text:
+                continue
+            if is_mostly_chinese(subtitle_text):
                 normalized["transcript_text"] = subtitle_text
                 normalized["asr_status"] = "subtitle"
                 normalized["asr_error"] = ""
@@ -57,16 +64,15 @@ def handle_video_asr(
                     task_id,
                     "视频字幕",
                     "succeeded",
-                    f"已使用视频字幕，跳过 ASR：note_id={candidate.external_id}，字数={len(subtitle_text)}",
+                    f"已使用中文字幕，跳过 ASR：note_id={candidate.external_id}，字数={len(subtitle_text)}",
                 )
                 return
-            if subtitle_text:
-                record_task_event(
-                    db, tenant_id, task_id, "视频字幕", "succeeded",
-                    f"字幕非中文（疑似自动翻译），改走 ASR：note_id={candidate.external_id}",
-                )
-        except Exception as exc:
-            record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", f"字幕解析失败，继续尝试 ASR：note_id={candidate.external_id}，原因={exc}")
+            non_chinese_seen = True
+        if non_chinese_seen:
+            record_task_event(
+                db, tenant_id, task_id, "视频字幕", "succeeded",
+                f"只找到非中文字幕（疑似自动翻译），改走 ASR：note_id={candidate.external_id}",
+            )
     stream_info = pick_video_stream(candidate.raw) or pick_video_stream(raw_payload)
     candidate_video_url = extract_video_url(candidate.raw)
     candidate_urls = [stream_info["url"] if stream_info else "", candidate_video_url, *media_urls]

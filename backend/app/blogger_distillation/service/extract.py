@@ -419,8 +419,10 @@ def collect_video_url_candidates(raw: dict[str, Any]) -> list[str]:
     return sorted(candidates, key=video_url_score, reverse=True)
 
 
-def extract_subtitle_url(raw: dict[str, Any]) -> str:
+def extract_subtitle_urls(raw: dict[str, Any]) -> list[str]:
+    """收集所有字幕轨 URL(小红书常挂中/英多条),去重保序。由调用方逐个取、挑中文那条。"""
     candidates: list[str] = []
+    seen: set[str] = set()
 
     def visit(value: Any, path: tuple[str, ...]) -> None:
         if isinstance(value, dict):
@@ -436,10 +438,18 @@ def extract_subtitle_url(raw: dict[str, Any]) -> str:
         path_text = ".".join(path).lower()
         lowered = value.lower()
         if is_subtitle_path(path_text) or any(marker in lowered for marker in (".srt", ".vtt", "subtitle", "caption")):
-            candidates.append(value)
+            url = to_https(value)
+            if url not in seen:
+                seen.add(url)
+                candidates.append(url)
 
     visit(raw, ())
-    return candidates[0] if candidates else ""
+    return candidates
+
+
+def extract_subtitle_url(raw: dict[str, Any]) -> str:
+    urls = extract_subtitle_urls(raw)
+    return urls[0] if urls else ""
 
 
 def fetch_subtitle_text(subtitle_url: str) -> str:
