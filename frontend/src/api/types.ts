@@ -378,9 +378,23 @@ export interface BloggerSearchResult {
 }
 
 export interface BloggerDistillRequest {
-  collection_run_id: number
+  // auto=自动蒸馏(高赞 top-N);custom=自定义(选快照 或 手选 N 篇)
+  source: 'auto' | 'custom'
+  post_ids?: number[]
+  snapshot_id?: number | null
+  snapshot_name?: string
   mode?: string
-  subtypes?: string[]
+}
+
+export interface BloggerSnapshot {
+  id: number
+  tenant_id: number
+  blogger_id: number
+  name: string
+  post_ids: number[]
+  post_count: number
+  created_at: string
+  updated_at: string | null
 }
 
 export interface BloggerCollectRequest {

@@ -50,6 +50,10 @@ import {
   listBloggerPosts,
   listBloggerCollectionRuns,
   listBloggerRuns,
+  listBloggerSnapshots,
+  createBloggerSnapshot,
+  renameBloggerSnapshot,
+  deleteBloggerSnapshot,
   listBloggerSkills,
   listBloggers,
   listTenants,
@@ -78,6 +82,7 @@ import type {
   BloggerProfile,
   BloggerSearchResult,
   BloggerSkill,
+  BloggerSnapshot,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -128,6 +133,10 @@ export const bloggers = ref<BloggerProfile[]>([])
 export const bloggerPosts = ref<BloggerPost[]>([])
 export const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 export const bloggerRuns = ref<BloggerDistillationRun[]>([])
+// 阶段B:博主笔记池命名快照 + 自定义蒸馏勾选集 + 单篇详情抽屉。
+export const bloggerSnapshots = ref<BloggerSnapshot[]>([])
+export const selectedPostIds = ref<number[]>([])
+export const activeNotePostId = ref<number | null>(null)
 export const accountAuditRuns = ref<AccountAuditRun[]>([])
 export const selectedAuditRunId = ref<number | null>(null)
 export const selfDiagnoseRuns = ref<AccountAuditRun[]>([])
@@ -243,7 +252,11 @@ export function subtypeLabel(value: string) {
 }
 // 可被用户勾选蒸馏的模态(口播细分在采集后判定)。
 export const DISTILL_SUBTYPES = ['image_text', 'talking_video', 'visual_video'] as const
-export const DISTILL_MIN_SAMPLES = 5
+// 阶段B:自定义蒸馏的样本下限(硬:<8 拦截)与软建议(≥15 越多越准)。
+export const DISTILL_MIN_SAMPLES = 8
+export const DISTILL_RECOMMEND_SAMPLES = 15
+// 笔记池按内容模态分组展示的顺序。
+export const NOTE_GROUP_ORDER = ['image_text', 'talking_video', 'visual_video', 'unknown'] as const
 // 采集拉取范围:image=图文,video=视频。
 export const collectContentTypes = ref<string[]>(['image', 'video'])
 // 采集选材:排序(高赞/最新)+ 数量(false=N 条,true=全部到上限)。
@@ -444,6 +457,90 @@ export const visibleBloggerRuns = computed(() =>
   resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
 )
 export const visibleBloggerRunCount = computed(() => visibleBloggerRuns.value.length)
+
+// ── 阶段B:笔记池(按模态分组)/ 勾选 / 单篇详情抽屉 ──────────────────────────
+// 仅展示未下架的笔记参与分组与选材;下架的单独提示但不进蒸馏。
+export const activeNotePool = computed(() => bloggerPosts.value.filter((p) => p.status !== 'delisted'))
+export const delistedNoteCount = computed(() => bloggerPosts.value.filter((p) => p.status === 'delisted').length)
+
+export interface NoteGroup {
+  subtype: string
+  label: string
+  posts: BloggerPost[]
+}
+export const bloggerNoteGroups = computed<NoteGroup[]>(() => {
+  const buckets = new Map<string, BloggerPost[]>()
+  for (const post of activeNotePool.value) {
+    const key = post.content_subtype || 'unknown'
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key)!.push(post)
+  }
+  const order = NOTE_GROUP_ORDER as readonly string[]
+  const keys = [...buckets.keys()].sort((a, b) => {
+    const ia = order.indexOf(a)
+    const ib = order.indexOf(b)
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  })
+  return keys.map((subtype) => ({ subtype, label: subtypeLabel(subtype), posts: buckets.get(subtype)! }))
+})
+
+export const selectedPostCount = computed(() => selectedPostIds.value.length)
+export function isPostSelected(id: number) {
+  return selectedPostIds.value.includes(id)
+}
+export function togglePostSelection(id: number) {
+  const idx = selectedPostIds.value.indexOf(id)
+  if (idx >= 0) selectedPostIds.value.splice(idx, 1)
+  else selectedPostIds.value.push(id)
+}
+export function clearPostSelection() {
+  selectedPostIds.value = []
+}
+export function selectGroupPosts(subtype: string) {
+  const group = bloggerNoteGroups.value.find((g) => g.subtype === subtype)
+  if (!group) return
+  const ids = new Set(selectedPostIds.value)
+  for (const post of group.posts) ids.add(post.id)
+  selectedPostIds.value = [...ids]
+}
+
+export const activeNotePost = computed(() => bloggerPosts.value.find((p) => p.id === activeNotePostId.value) || null)
+export function openNote(id: number) {
+  activeNotePostId.value = id
+}
+export function closeNote() {
+  activeNotePostId.value = null
+}
+// 抽屉用:话题标签、TOP3 热评、正文/口播稿摘要。
+export function noteHashtags(post: BloggerPost | null): string[] {
+  if (!post) return []
+  return parseJsonArray(post.hashtags_json)
+}
+export interface NoteComment {
+  content: string
+  like_count: number
+}
+export function noteTopComments(post: BloggerPost | null): NoteComment[] {
+  if (!post?.comments_json) return []
+  try {
+    const raw = JSON.parse(post.comments_json)
+    const list = Array.isArray(raw) ? raw : []
+    return list
+      .map((c: Record<string, unknown>) => ({
+        content: String(c.content || c.text || ''),
+        like_count: Number(c.like_count || 0)
+      }))
+      .filter((c: NoteComment) => c.content)
+      .sort((a: NoteComment, b: NoteComment) => b.like_count - a.like_count)
+      .slice(0, 3)
+  } catch {
+    return []
+  }
+}
+export function noteBodyText(post: BloggerPost | null): string {
+  if (!post) return ''
+  return (post.transcript_text || post.body_text || '').trim()
+}
 export const xhsPackageImageUrls = computed(() => parseJsonArray(selectedXhsPackage.value?.image_urls_json))
 export const xhsPackageImagePlan = computed(() => parseJsonArray(selectedXhsPackage.value?.image_plan_json))
 export const xhsPackageHashtags = computed(() => parseJsonArray(selectedXhsPackage.value?.hashtags_json))
@@ -1092,30 +1189,33 @@ export async function refreshSelectedBlogger() {
     bloggerPosts.value = []
     bloggerCollectionRuns.value = []
     bloggerRuns.value = []
+    bloggerSnapshots.value = []
+    selectedPostIds.value = []
+    activeNotePostId.value = null
     selectedCollectionRunId.value = null
     selectedBloggerRunId.value = null
     resultCollectionFilterId.value = null
     return
   }
-  const [collections, runs, skills] = await Promise.all([
+  // 阶段B:博主资产以「笔记池」为中心,一次性拉全量笔记 + 快照 + 蒸馏记录(不再按采集批次取样本)。
+  // 采集批次仍拉取(数据采集页要用),但博主资产页不再展示「采集历史」。
+  const [posts, snapshots, collections, runs, skills] = await Promise.all([
+    listBloggerPosts(selectedBloggerId.value),
+    listBloggerSnapshots(selectedBloggerId.value),
     listBloggerCollectionRuns(selectedBloggerId.value),
     listBloggerRuns(selectedBloggerId.value),
     listBloggerSkills(currentSocialPlatform.value)
   ])
+  bloggerPosts.value = posts
+  bloggerSnapshots.value = snapshots
   bloggerCollectionRuns.value = collections
   bloggerRuns.value = runs
   bloggerSkills.value = skills
-  if (selectedCollectionRunId.value && !collections.some((run) => run.id === selectedCollectionRunId.value)) {
-    selectedCollectionRunId.value = null
-    selectedBloggerRunId.value = null
-  }
-  if (resultCollectionFilterId.value && !collections.some((run) => run.id === resultCollectionFilterId.value)) {
-    resultCollectionFilterId.value = null
-  }
-  if (selectedCollectionRunId.value) {
-    bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, selectedCollectionRunId.value)
-  } else {
-    bloggerPosts.value = []
+  // 选中集只保留仍在池中的笔记(下架/被删的剔除)。
+  const poolIds = new Set(posts.map((p) => p.id))
+  selectedPostIds.value = selectedPostIds.value.filter((id) => poolIds.has(id))
+  if (activeNotePostId.value && !poolIds.has(activeNotePostId.value)) {
+    activeNotePostId.value = null
   }
   if (selectedBloggerRunId.value && !runs.some((run) => run.id === selectedBloggerRunId.value)) {
     selectedBloggerRunId.value = null
@@ -1283,42 +1383,121 @@ export async function handleDeleteBlogger(blogger: BloggerProfile) {
   })
 }
 
-export async function handleDistillBlogger() {
+// 蒸馏完成后选中最新一次蒸馏记录(后端按 created_at 倒序返回,取首个)。
+function selectNewestBloggerRun() {
+  selectedBloggerRunId.value = bloggerRuns.value[0]?.id ?? null
+}
+
+// 自动蒸馏:一键,系统取高赞 top-N(服务端算),不建快照。
+export async function handleAutoDistill() {
   if (!selectedBloggerId.value) {
     showMessage('请先选择博主', true)
     return
   }
-  if (!selectedCollectionRunId.value) {
-    showMessage('请先选择一个已完成的采集批次', true)
-    setCurrentSocialTab('distill')
-    xhsDistillStep.value = 2
-    return
-  }
-  // 模态门槛校验:被勾选的模态样本数不足时拦截(空=全选=通用,放行)。
-  const tooFew = distillSelectedSubtypes.value.filter(
-    (s) => (collectionSubtypeCounts.value[s] || 0) < DISTILL_MIN_SAMPLES
-  )
-  if (tooFew.length) {
-    showMessage(`以下模态样本不足 ${DISTILL_MIN_SAMPLES} 条，无法蒸馏：${tooFew.map(subtypeLabel).join('、')}`, true)
+  if (activeNotePool.value.length < DISTILL_MIN_SAMPLES) {
+    showMessage(`笔记池不足 ${DISTILL_MIN_SAMPLES} 篇，先去「数据采集」多采一些再蒸馏`, true)
     return
   }
   await runTaskAction(
     'distill',
-    '已提交博主蒸馏任务',
-    () =>
-      distillBlogger(selectedBloggerId.value!, {
-        collection_run_id: selectedCollectionRunId.value!,
-        // 蒸馏只做「拆解对标博主」(模式 A);自我诊断已独立到「诊断我的」。
-        mode: 'A',
-        subtypes: distillSelectedSubtypes.value
-      }),
+    '已提交自动蒸馏任务（高赞 top-N）',
+    () => distillBlogger(selectedBloggerId.value!, { source: 'auto', mode: 'A' }),
     async () => {
       await refreshSelectedBlogger()
-      selectLatestRunForCollection(selectedCollectionRunId.value)
-      xhsDistillStep.value = 4
+      selectNewestBloggerRun()
     },
     '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
   )
+}
+
+// 自定义蒸馏:用当前勾选的 N 篇(手选会自动存一个快照)。
+export async function handleCustomDistill(snapshotName?: string) {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    return
+  }
+  if (selectedPostIds.value.length < DISTILL_MIN_SAMPLES) {
+    showMessage(`自定义蒸馏至少需勾选 ${DISTILL_MIN_SAMPLES} 篇（建议 ≥${DISTILL_RECOMMEND_SAMPLES} 篇，越多越准）`, true)
+    return
+  }
+  const postIds = [...selectedPostIds.value]
+  await runTaskAction(
+    'distill',
+    '已提交自定义蒸馏任务',
+    () =>
+      distillBlogger(selectedBloggerId.value!, {
+        source: 'custom',
+        post_ids: postIds,
+        snapshot_name: (snapshotName || '').trim() || undefined,
+        mode: 'A'
+      }),
+    async () => {
+      await refreshSelectedBlogger()
+      selectNewestBloggerRun()
+    },
+    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
+  )
+}
+
+// 自定义蒸馏:复用一个已有快照。
+export async function handleDistillFromSnapshot(snapshotId: number) {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    return
+  }
+  await runTaskAction(
+    'distill',
+    '已提交自定义蒸馏任务（来自快照）',
+    () => distillBlogger(selectedBloggerId.value!, { source: 'custom', snapshot_id: snapshotId, mode: 'A' }),
+    async () => {
+      await refreshSelectedBlogger()
+      selectNewestBloggerRun()
+    },
+    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
+  )
+}
+
+// 把当前勾选保存为命名快照(可复用/回看)。
+export async function handleSaveSnapshot(name?: string) {
+  if (!selectedBloggerId.value) return
+  if (!selectedPostIds.value.length) {
+    showMessage('请先勾选要存入快照的笔记', true)
+    return
+  }
+  await runAction('snapshot-save', '正在保存快照', async () => {
+    await createBloggerSnapshot(selectedBloggerId.value!, {
+      name: (name || '').trim() || undefined,
+      post_ids: [...selectedPostIds.value]
+    })
+    await refreshSelectedBlogger()
+    showMessage('已保存快照')
+  })
+}
+
+export async function handleRenameSnapshot(snapshotId: number, name: string) {
+  if (!selectedBloggerId.value || !name.trim()) return
+  await runAction('snapshot-rename', '正在重命名快照', async () => {
+    await renameBloggerSnapshot(selectedBloggerId.value!, snapshotId, name.trim())
+    await refreshSelectedBlogger()
+    showMessage('已重命名快照')
+  })
+}
+
+export async function handleDeleteSnapshot(snapshotId: number) {
+  if (!selectedBloggerId.value) return
+  await runAction('snapshot-delete', '正在删除快照', async () => {
+    await deleteBloggerSnapshot(selectedBloggerId.value!, snapshotId)
+    await refreshSelectedBlogger()
+    showMessage('已删除快照')
+  })
+}
+
+// 把某快照的笔记载入当前勾选集(便于在此基础上微调后再存/蒸馏)。
+export function loadSnapshotIntoSelection(snapshotId: number) {
+  const snapshot = bloggerSnapshots.value.find((s) => s.id === snapshotId)
+  if (!snapshot) return
+  const poolIds = new Set(activeNotePool.value.map((p) => p.id))
+  selectedPostIds.value = snapshot.post_ids.filter((id) => poolIds.has(id))
 }
 
 // 从蒸馏 run 的 report_json 里解析模式与质量分，供前端清晰展示（不改后端 schema）。

@@ -18,6 +18,7 @@ import type {
   BloggerProfileCreate,
   BloggerProfileUpdate,
   BloggerSearchResult,
+  BloggerSnapshot,
   CollectEstimate,
   BloggerSkill,
   ConfigView,
@@ -373,6 +374,28 @@ export function distillBlogger(id: number, payload: BloggerDistillRequest) {
 
 export function listBloggerRuns(id: number) {
   return request<BloggerDistillationRun[]>(`/bloggers/${id}/distillation-runs`)
+}
+
+export function listBloggerSnapshots(id: number) {
+  return request<BloggerSnapshot[]>(`/bloggers/${id}/snapshots`)
+}
+
+export function createBloggerSnapshot(id: number, payload: { name?: string; post_ids: number[] }) {
+  return request<BloggerSnapshot>(`/bloggers/${id}/snapshots`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function renameBloggerSnapshot(bloggerId: number, snapshotId: number, name: string) {
+  return request<BloggerSnapshot>(`/bloggers/${bloggerId}/snapshots/${snapshotId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name })
+  })
+}
+
+export function deleteBloggerSnapshot(bloggerId: number, snapshotId: number) {
+  return request<void>(`/bloggers/${bloggerId}/snapshots/${snapshotId}`, { method: 'DELETE' })
 }
 
 export function confirmBloggerRun(bloggerId: number, runId: number) {
