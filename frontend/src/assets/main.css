@@ -386,7 +386,9 @@ button.task-button.running span {
   }
 
   .app-body {
-    grid-template-columns: 1fr;
+    /* minmax(0,1fr) 而非裸 1fr:裸 1fr 轨道会被最宽子元素的 min-content 撑大(撑到 446px),
+       导致内容整体超出视口被裁切。minmax(0,…) 把轨道封顶到容器宽度,内容改为换行/收缩。 */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .side-nav {
@@ -2900,6 +2902,25 @@ dd {
 }
 
 @media (max-width: 640px) {
+  /* 顶栏在手机上竖排:标题独占一行(否则定宽控件会把标题列压成 0、文字逐字竖排),
+     控件换行排到标题下方。须放在 980 块之后,否则被 980 的两列规则覆盖。 */
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2xs);
+    padding: var(--space-2xs) var(--space-sm);
+  }
+
+  .topbar-title {
+    grid-column: 1;
+    font-size: var(--text-lg);
+  }
+
+  .topbar-controls {
+    grid-column: 1;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .workspace {
     padding: var(--space-sm);
   }
