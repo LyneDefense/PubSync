@@ -234,16 +234,24 @@ def run_blogger_collection(
             post.last_seen_at = now
             post.status = "active"
 
-        # 下架对账:仅当翻到列表底部(看到完整目录)才标记,部分采集不动,避免误杀。
+        # 下架对账:仅当翻到列表底部(看到完整目录)才动。小红书翻页返回不稳定(同一博主两次"翻到底"
+        # 拿到的集合可能不同),故需「连续 N 次完整爬取都缺失」才下架,单次缺失只累计、不下架,避免误杀。
         delisted_count = 0
         if notes_result.reached_end:
             seen_ids = {c.external_id for c in all_candidates}
+            threshold = max(1, settings.delist_after_consecutive_misses)
             for ext_id, post in existing.items():
-                if post.status == "active" and ext_id not in seen_ids:
-                    post.status = "delisted"
-                    delisted_count += 1
+                if post.status != "active":
+                    continue
+                if ext_id in seen_ids:
+                    post.missed_crawl_count = 0
+                else:
+                    post.missed_crawl_count = (post.missed_crawl_count or 0) + 1
+                    if post.missed_crawl_count >= threshold:
+                        post.status = "delisted"
+                        delisted_count += 1
             if delisted_count:
-                record_task_event(db, tenant_id, task_id, "下架对账", "succeeded", f"对账完成：{delisted_count} 篇笔记已下架")
+                record_task_event(db, tenant_id, task_id, "下架对账", "succeeded", f"对账完成：{delisted_count} 篇连续 {threshold} 次未出现，标记下架")
 
         # 本批成员 = 本次覆盖到的 post(新增 + 刷新/补转写的已有),先新后旧。
         fetched_map = {post.external_id: post for post in fetched}
@@ -565,6 +573,10 @@ def collect_posts(
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
         normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
+        # 在入库前定模态:转写此刻已确定,保证每条存库的 content_subtype 与其转写一致(防中途中断留下脏 unknown)。
+        normalized["content_subtype"] = classify_subtype(
+            normalized["content_type"], normalized.get("transcript_text", ""), min_transcript_chars=settings.talking_video_min_transcript_chars
+        )
         post_quality = evaluate_post_quality(normalized)
         if post_quality.level == "failed":
             logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))

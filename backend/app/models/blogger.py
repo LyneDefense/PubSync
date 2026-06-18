@@ -83,6 +83,8 @@ class BloggerPost(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active", index=True)
     # 最近一次出现在主页列表里的时间;下架对账用。
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 下架对账:连续多少次「完整爬取」里没出现。达到阈值才标 delisted(防翻页不稳导致误杀)。
+    missed_crawl_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

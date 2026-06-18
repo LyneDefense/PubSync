@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     # 候选翻页:动态翻页的安全上限(最多翻这么多条候选,防超大号无限翻);只翻列表不抓详情,成本低。
     # 最新优先:翻到"没采过的够 N 条"就停;高赞优先:翻到底或到此上限再排序。系统决定,用户端不暴露。
     candidate_pool_cap: int = 600
+    # 下架对账:某笔记连续这么多次「完整爬取」都没出现才标下架(小红书翻页返回不稳,单次缺失不算)。
+    delist_after_consecutive_misses: int = 2
     # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80
