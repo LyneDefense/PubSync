@@ -35,7 +35,7 @@ from app.blogger_distillation.tikhub_client import (
     TikHubXhsClient,
     XhsPostCandidate,
 )
-from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
+from app.blogger_distillation.tikhub_client.parsers import detect_note_type, parse_xhs_note_link
 from app.blogger_distillation.search import extract_user_profile
 from app.config import Settings
 from app.models import BloggerCollectionPost, BloggerCollectionRun, BloggerPost, BloggerProfile
@@ -215,10 +215,8 @@ def run_blogger_collection(
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
 
         now = utc_now()
+        # content_subtype 已在 collect_posts 入库前定好,这里只更新生命周期字段。
         for post in fetched:
-            post.content_subtype = classify_subtype(
-                post.content_type, post.transcript_text, min_transcript_chars=settings.talking_video_min_transcript_chars
-            )
             post.last_seen_at = now
             post.status = "active"
         # 老笔记轻量刷新:用列表赞藏数更新 + last_seen,不抓详情。
@@ -458,10 +456,8 @@ def run_blogger_url_collection(
             raise TikHubError("链接对应的笔记都未能采集成功(可能已删除、不可见或链接缺 token)")
 
         now = utc_now()
+        # content_subtype 已在 collect_posts 入库前定好,这里只更新生命周期字段。
         for post in posts:
-            post.content_subtype = classify_subtype(
-                post.content_type, post.transcript_text, min_transcript_chars=settings.talking_video_min_transcript_chars
-            )
             post.last_seen_at = now
             post.status = "active"
         blogger.sample_count = len(posts)
@@ -554,7 +550,9 @@ def collect_posts(
             logger.warning("图文详情采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "笔记详情", "failed", f"详情采集失败：note_id={candidate.external_id}，错误={exc}")
             continue
-        if candidate.note_type == "video" and not extract_video_url(detail_payload):
+        # candidate.note_type 可能为空(URL 定向采集),此时从详情体里判定;视频则确保拿到直链。
+        effective_type = candidate.note_type or detect_note_type(detail_payload)
+        if effective_type == "video" and not extract_video_url(detail_payload):
             detail_payload = supplement_video_detail_with_url(client, candidate, detail_payload)
         normalized = normalize_post(candidate, detail_payload)
         if not normalized["title"] and not normalized["body_text"]:
@@ -562,7 +560,7 @@ def collect_posts(
             continue
         if normalized["content_type"] == "video":
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
-            handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider)
+            handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider, blogger)
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
         comments = []
         try:

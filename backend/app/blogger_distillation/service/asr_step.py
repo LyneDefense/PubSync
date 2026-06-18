@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
@@ -17,6 +18,31 @@ from app.blogger_distillation.service.extract import (
     strip_asr_timestamps,
 )
 from app.blogger_distillation.tikhub_client import XhsPostCandidate
+from app.models import BloggerPost, BloggerProfile
+
+
+def _reuse_existing_transcript(
+    db: Session, tenant_id: int, blogger: BloggerProfile, normalized: dict[str, Any]
+) -> bool:
+    """note_id 会随端点漂移,同一篇笔记可能被当成「新笔记」重抓 → 又跑一次昂贵的 ASR。
+    入库前按稳定 note_key(biz_id)反查:若已存在同篇且已有有效转写,直接复用,跳过 ASR。"""
+    note_key = (normalized.get("note_key") or "").strip()
+    if not note_key:
+        return False
+    existing = db.scalar(
+        select(BloggerPost).where(
+            BloggerPost.tenant_id == tenant_id,
+            BloggerPost.blogger_id == blogger.id,
+            BloggerPost.note_key == note_key,
+            BloggerPost.asr_status.in_(("succeeded", "subtitle")),
+        )
+    )
+    if existing and (existing.transcript_text or "").strip():
+        normalized["transcript_text"] = existing.transcript_text
+        normalized["asr_status"] = existing.asr_status
+        normalized["asr_error"] = ""
+        return True
+    return False
 
 
 def handle_video_asr(
@@ -26,7 +52,15 @@ def handle_video_asr(
     candidate: XhsPostCandidate,
     normalized: dict[str, Any],
     asr_provider: Any,
+    blogger: BloggerProfile,
 ) -> None:
+    # 优先复用历史转写(应对 note_id 漂移导致的重复采集),省下重复 ASR 成本。
+    if _reuse_existing_transcript(db, tenant_id, blogger, normalized):
+        record_task_event(
+            db, tenant_id, task_id, "视频 ASR", "succeeded",
+            f"命中已转写记录(note_key),复用历史转写跳过 ASR：note_id={candidate.external_id}",
+        )
+        return
     if asr_provider is None:
         normalized["asr_status"] = "skipped"
         normalized["asr_error"] = "ASR 未开启或初始化失败"
