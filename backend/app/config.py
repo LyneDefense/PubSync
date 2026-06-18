@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     candidate_pool_cap: int = 600
     # 下架对账:某笔记连续这么多次「完整爬取」都没出现才标下架(小红书翻页返回不稳,单次缺失不算)。
     delist_after_consecutive_misses: int = 2
+    # 自动下架对账总开关。默认关:小红书 note_id 随端点漂移,可靠下架需逐条抓详情拿 biz_id,代价大且误杀风险高;
+    # 真删笔记很少,宁可全留也不误杀。需要时再人工/专门流程处理。
+    blogger_auto_delist_enabled: bool = False
     # 合成循环（蒸馏）：质量不达标时自我修订的最大次数、达标阈值、是否启用推理型评审。
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80

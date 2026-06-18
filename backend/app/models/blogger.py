@@ -85,6 +85,9 @@ class BloggerPost(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 下架对账:连续多少次「完整爬取」里没出现。达到阈值才标 delisted(防翻页不稳导致误杀)。
     missed_crawl_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # 稳定规范键:小红书 biz_id / 抖音 aweme_id。external_id(note_id) 会随端点漂移,note_key 跨次稳定,
+    # 用作权威去重键(upsert 按它覆盖),空则回退 external_id。
+    note_key: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

@@ -26,6 +26,18 @@ from app.models import BloggerPost, BloggerProfile
 logger = logging.getLogger(__name__)
 
 
+def extract_note_key(raw: dict[str, Any], detail_payload: dict[str, Any], fallback: str) -> str:
+    """稳定规范键:小红书 biz_id、抖音 aweme_id。note_id 会随端点漂移,这个跨次稳定;取不到则回退 note_id。"""
+    for source in (raw, detail_payload):
+        if not isinstance(source, dict):
+            continue
+        for key in ("biz_id", "bizId", "aweme_id", "awemeId"):
+            value = recursive_find(source, key)
+            if isinstance(value, (str, int)) and str(value).strip():
+                return str(value).strip()
+    return fallback
+
+
 def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) -> dict[str, Any]:
     payload = unwrap_payload(detail_payload)
     raw = normalize_detail_payload(payload, detail_payload)
@@ -48,6 +60,7 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     score = like_count * 0.35 + favorite_count * 0.45 + comment_count * 0.2 + share_count * 0.05
     return {
         "external_id": candidate.external_id,
+        "note_key": extract_note_key(raw, detail_payload, candidate.external_id),
         "url": url,
         "title": title[:500] or "未命名笔记",
         "body_text": body,
@@ -162,13 +175,25 @@ def normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def upsert_post(db: Session, tenant_id: int, blogger: BloggerProfile, data: dict[str, Any]) -> BloggerPost:
-    post = db.scalar(
-        select(BloggerPost).where(
-            BloggerPost.tenant_id == tenant_id,
-            BloggerPost.blogger_id == blogger.id,
-            BloggerPost.external_id == data["external_id"],
+    # 权威去重按 note_key(biz_id,跨端点稳定);取不到再回退 external_id(note_id)。
+    note_key = (data.get("note_key") or "").strip()
+    post = None
+    if note_key:
+        post = db.scalar(
+            select(BloggerPost).where(
+                BloggerPost.tenant_id == tenant_id,
+                BloggerPost.blogger_id == blogger.id,
+                BloggerPost.note_key == note_key,
+            )
         )
-    )
+    if not post:
+        post = db.scalar(
+            select(BloggerPost).where(
+                BloggerPost.tenant_id == tenant_id,
+                BloggerPost.blogger_id == blogger.id,
+                BloggerPost.external_id == data["external_id"],
+            )
+        )
     if not post:
         post = BloggerPost(tenant_id=tenant_id, blogger_id=blogger.id, platform=blogger.platform, **data)
         db.add(post)

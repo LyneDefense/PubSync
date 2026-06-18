@@ -237,7 +237,7 @@ def run_blogger_collection(
         # 下架对账:仅当翻到列表底部(看到完整目录)才动。小红书翻页返回不稳定(同一博主两次"翻到底"
         # 拿到的集合可能不同),故需「连续 N 次完整爬取都缺失」才下架,单次缺失只累计、不下架,避免误杀。
         delisted_count = 0
-        if notes_result.reached_end:
+        if notes_result.reached_end and settings.blogger_auto_delist_enabled:
             seen_ids = {c.external_id for c in all_candidates}
             threshold = max(1, settings.delist_after_consecutive_misses)
             for ext_id, post in existing.items():

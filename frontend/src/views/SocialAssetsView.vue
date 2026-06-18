@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // 社媒·博主资产(阶段B)：博主信息 + 笔记池(只读、按类型、点开抽屉) + 快照(新建/详情/改名/重选/删除)。蒸馏在独立「蒸馏」页。
 import { computed, ref } from 'vue'
-import StatusChip from '../components/StatusChip.vue'
 import { bloggerCommentLabel } from '../utils/format'
 import {
   activeNotePost,
@@ -52,6 +51,21 @@ const pickerName = ref('')
 const detailOpen = ref(false)
 const detailSnapshotId = ref<number | null>(null)
 const detailName = ref('')
+
+// 视频转写状态的友好文案(避免把"转写失败"误读成"抓取失败")。
+function transcriptLabel(post: { asr_status: string }): string {
+  switch (post.asr_status) {
+    case 'subtitle': return '字幕稿'
+    case 'succeeded': return '已转写'
+    case 'pending': return '待转写'
+    default: return '无转写'
+  }
+}
+function transcriptTone(post: { asr_status: string }): string {
+  if (post.asr_status === 'subtitle' || post.asr_status === 'succeeded') return 'ok'
+  if (post.asr_status === 'pending') return 'wait'
+  return 'none'
+}
 
 const enoughSelected = computed(() => selectedPostCount.value >= DISTILL_MIN_SAMPLES)
 const detailSnapshot = computed(() => bloggerSnapshots.value.find((s) => s.id === detailSnapshotId.value) || null)
@@ -207,7 +221,7 @@ async function deleteDetailSnapshot() {
               </div>
               <div class="asset-run-list">
                 <button v-for="post in group.posts" :key="post.id" type="button" @click="openNote(post.id)">
-                  <span class="asset-run-row"><strong>{{ post.title }}</strong><StatusChip v-if="post.content_type === 'video'" :status="post.asr_status" /></span>
+                  <span class="asset-run-row"><strong>{{ post.title }}</strong><span v-if="post.content_type === 'video'" class="asr-tag" :class="`asr-tag--${transcriptTone(post)}`">{{ transcriptLabel(post) }}</span></span>
                   <span class="asset-run-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}</span>
                 </button>
               </div>
@@ -344,6 +358,10 @@ async function deleteDetailSnapshot() {
 .note-groups { display: flex; flex-direction: column; gap: 18px; }
 .note-group-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .note-group-head span { color: var(--color-ink-soft); font-weight: 400; }
+.asr-tag { flex: 0 0 auto; font-size: 11px; padding: 1px 7px; border-radius: 999px; font-weight: 500; }
+.asr-tag--ok { background: var(--color-accent-soft); color: var(--color-accent); }
+.asr-tag--wait { background: #f1f1f1; color: #888; }
+.asr-tag--none { background: #f1f1f1; color: #aaa; }
 
 /* 弹框通用 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 1100; display: flex; align-items: center; justify-content: center; }
