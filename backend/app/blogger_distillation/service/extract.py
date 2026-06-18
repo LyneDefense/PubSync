@@ -494,6 +494,24 @@ def normalize_transcript_text(text: str) -> str:
     return cleaned.strip()
 
 
+def is_mostly_chinese(text: str, *, threshold: float = 0.2) -> bool:
+    """转写是否以中文为主。小红书会挂自动翻译的英文字幕,用它过滤掉非中文字幕。
+
+    阈值按「中文字符 / 中英文字符总数」算,中文视频正常 >0.5;纯英文字幕≈0。
+    """
+    sample = (text or "")[:2000]
+    han = sum(1 for ch in sample if "一" <= ch <= "鿿")
+    latin = sum(1 for ch in sample if ch.isascii() and ch.isalpha())
+    if han + latin == 0:
+        return False
+    return han / (han + latin) >= threshold
+
+
+def strip_asr_timestamps(text: str) -> str:
+    """清掉腾讯 ASR 文本里的 [0:0.000,1:0.220] 这类时间戳标记。"""
+    return re.sub(r"\[\d+:\d+\.\d+,\d+:\d+\.\d+\]\s*", "", text or "").strip()
+
+
 def is_non_video_media_url(lowered_url: str) -> bool:
     image_markers = (".jpg", ".jpeg", ".png", ".webp", ".gif", "imageview", "image")
     subtitle_markers = (".srt", ".vtt", "subtitle", "caption", "subrip", "danmaku")

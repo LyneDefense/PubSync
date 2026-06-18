@@ -1,8 +1,24 @@
 from app.blogger_distillation.service.extract import (
     extract_video_url,
+    is_mostly_chinese,
     pick_video_stream,
+    strip_asr_timestamps,
     to_https,
 )
+
+
+def test_is_mostly_chinese():
+    assert is_mostly_chinese("如果你也对现在的工作不满意，想辞职") is True
+    assert is_mostly_chinese("If I had understood these truths in my twenties") is False
+    assert is_mostly_chinese("") is False
+    # 中英混排但中文为主仍算中文
+    assert is_mostly_chinese("我在菲律宾 CPI 语言学校学了两周") is True
+
+
+def test_strip_asr_timestamps():
+    raw = "[0:0.000,1:0.220] 这是一个反人性的习惯[1:0.220,2:1.500] 帮助我逆袭"
+    assert strip_asr_timestamps(raw) == "这是一个反人性的习惯帮助我逆袭"
+    assert strip_asr_timestamps("没有时间戳的文本") == "没有时间戳的文本"
 
 
 def _raw_with_streams():

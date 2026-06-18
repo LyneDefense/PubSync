@@ -10,9 +10,11 @@ from app.blogger_distillation.service.extract import (
     extract_subtitle_url,
     extract_video_url,
     fetch_subtitle_text,
+    is_mostly_chinese,
     is_video_url_candidate,
     pick_video_stream,
     probe_remote_size,
+    strip_asr_timestamps,
 )
 from app.blogger_distillation.tikhub_client import XhsPostCandidate
 
@@ -44,7 +46,8 @@ def handle_video_asr(
     if subtitle_url:
         try:
             subtitle_text = fetch_subtitle_text(subtitle_url)
-            if subtitle_text:
+            # 小红书会挂多语言字幕轨,可能抓到"自动翻译的英文字幕"。只认中文字幕,非中文丢弃改走 ASR(16k_zh 出中文)。
+            if subtitle_text and is_mostly_chinese(subtitle_text):
                 normalized["transcript_text"] = subtitle_text
                 normalized["asr_status"] = "subtitle"
                 normalized["asr_error"] = ""
@@ -57,6 +60,11 @@ def handle_video_asr(
                     f"已使用视频字幕，跳过 ASR：note_id={candidate.external_id}，字数={len(subtitle_text)}",
                 )
                 return
+            if subtitle_text:
+                record_task_event(
+                    db, tenant_id, task_id, "视频字幕", "succeeded",
+                    f"字幕非中文（疑似自动翻译），改走 ASR：note_id={candidate.external_id}",
+                )
         except Exception as exc:
             record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", f"字幕解析失败，继续尝试 ASR：note_id={candidate.external_id}，原因={exc}")
     stream_info = pick_video_stream(candidate.raw) or pick_video_stream(raw_payload)
@@ -85,7 +93,7 @@ def handle_video_asr(
             f"检测到视频笔记且无字幕，视频大小 {size_label}，开始转写：note_id={candidate.external_id}",
         )
         result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id, on_progress=on_progress)
-        normalized["transcript_text"] = result.text
+        normalized["transcript_text"] = strip_asr_timestamps(result.text)
         normalized["asr_status"] = "succeeded"
         normalized["asr_error"] = ""
         record_task_event(
