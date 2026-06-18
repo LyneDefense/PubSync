@@ -430,7 +430,18 @@ def extract_interaction_counts(value: dict[str, Any]) -> dict[str, int]:
         ),
         "comment_count": first_count(
             sources,
-            ["comment_count", "comment_count_str", "commentCount", "commentCountStr", "comments", "comment_num", "commentNum", "note_comment_count"],
+            [
+                "comments_count",  # 小红书 detail 用的就是这个键(复数),之前漏了导致评论数恒为 0
+                "comments_count_str",
+                "comment_count",
+                "comment_count_str",
+                "commentCount",
+                "commentCountStr",
+                "comments",
+                "comment_num",
+                "commentNum",
+                "note_comment_count",
+            ],
         ),
         "share_count": first_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares", "shareNum"]),
     }
