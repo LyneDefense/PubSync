@@ -366,7 +366,8 @@ async function deleteDetailSnapshot() {
 .picker-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: var(--rule-hair); border-radius: var(--radius-sm); cursor: pointer; }
 .picker-row + .picker-row { margin-top: 4px; }
 .picker-row.selected { border-color: var(--color-accent); background: var(--color-accent-soft); }
-.picker-row > input[type='checkbox'] { flex: 0 0 auto; margin: 0; }
+/* 全局 input{width:100%} 会把复选框撑满整行,这里强制收回原生尺寸,否则标题/数据被挤成竖排。 */
+.picker-row > input[type='checkbox'] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--color-accent); }
 .picker-row-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .picker-row-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-row-meta { font-size: 12px; color: var(--color-ink-soft); }
