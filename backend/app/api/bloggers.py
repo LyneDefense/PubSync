@@ -9,6 +9,7 @@ from app.blogger_distillation.service import (
     confirm_blogger_distillation,
     create_blogger,
     delete_blogger,
+    refresh_blogger_profile,
     set_blogger_favorite,
     update_blogger,
 )
@@ -122,6 +123,20 @@ def update_blogger_endpoint(
         return update_blogger(db, tenant.id, blogger_id, **updates)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/bloggers/{blogger_id}/refresh-profile", response_model=BloggerProfileRead)
+def refresh_blogger_profile_endpoint(
+    blogger_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> BloggerProfile:
+    try:
+        return refresh_blogger_profile(db, settings, tenant.id, blogger_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TikHubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.patch("/bloggers/{blogger_id}/favorite", response_model=BloggerProfileRead)

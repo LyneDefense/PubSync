@@ -41,6 +41,7 @@ class BloggerProfileRead(BaseModel):
     homepage_url: str
     avatar_url: str
     follower_count: int
+    note_total: int | None = None
     niche: str
     description: str
     tags: list[dict] = []

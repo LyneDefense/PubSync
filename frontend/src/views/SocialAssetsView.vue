@@ -21,8 +21,10 @@ import {
   handleAbandonBloggerRun,
   handleConfirmBloggerRun,
   handleDeleteBlogger,
+  handleRefreshBlogger,
   handleToggleBloggerFavorite,
   isSocialPlatform,
+  openCreateBloggerModal,
   openEditBloggerModal,
   pendingAction,
   qualityTone,
@@ -75,6 +77,7 @@ const selectedRunModalityComparison = computed(() => {
             <h2>{{ currentSocialPlatformName }}博主资产</h2>
             <p class="toolbar-subtitle">集中查看博主信息、采集历史、蒸馏历史、报告和 Skill。</p>
           </div>
+          <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
         </div>
 
         <div class="xhs-assets-browser">
@@ -93,7 +96,7 @@ const selectedRunModalityComparison = computed(() => {
               <strong>{{ blogger.display_name }}</strong>
               <span>{{ blogger.is_favorite ? '已标记 · ' : '' }}{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }}</span>
             </button>
-            <p v-if="!benchmarkAccounts.length" class="empty-region">还没有对标博主。请先到“数据采集”创建博主。</p>
+            <p v-if="!benchmarkAccounts.length" class="empty-region">还没有对标博主。点右上角「创建博主」添加。</p>
           </aside>
 
           <div v-if="selectedBlogger" class="asset-detail">
@@ -101,6 +104,11 @@ const selectedRunModalityComparison = computed(() => {
               <div>
                 <span>{{ selectedBlogger.is_favorite ? '已标记博主' : '博主资产' }}</span>
                 <h3>{{ selectedBlogger.display_name }}</h3>
+                <p class="asset-meta-line">
+                  粉丝 {{ selectedBlogger.follower_count.toLocaleString() }}
+                  · 笔记总数 {{ selectedBlogger.note_total ?? '—' }}
+                  · 已采集 {{ selectedBlogger.sample_count }} 条
+                </p>
                 <p>{{ selectedBlogger.description || selectedBlogger.niche || '暂无备注' }}</p>
                 <div v-if="selectedBlogger.tags?.length" class="tag-chips">
                   <span
@@ -116,6 +124,9 @@ const selectedRunModalityComparison = computed(() => {
                   {{ selectedBlogger.is_favorite ? '取消标记' : '标记博主' }}
                 </button>
                 <button type="button" @click="openEditBloggerModal(selectedBlogger)">编辑信息</button>
+                <button type="button" :disabled="Boolean(pendingAction)" @click="handleRefreshBlogger(selectedBlogger)">
+                  {{ pendingAction === 'blogger-refresh' ? '刷新中…' : '刷新博主' }}
+                </button>
                 <button type="button" class="danger" @click="handleDeleteBlogger(selectedBlogger)">删除博主</button>
               </div>
             </div>

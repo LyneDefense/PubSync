@@ -63,6 +63,7 @@ import {
   startXhsPublishPackageDraftTask,
   updateArticle,
   updateBlogger,
+  refreshBloggerProfile,
   updateBloggerFavorite,
   updateNewsSelection,
   updateWorkspaceConfig
@@ -1246,6 +1247,15 @@ export async function handleToggleBloggerFavorite(blogger: BloggerProfile) {
     await refreshBloggers()
     selectedBloggerId.value = updated.id
     showMessage(updated.is_favorite ? '已标记博主' : '已取消标记')
+  })
+}
+
+export async function handleRefreshBlogger(blogger: BloggerProfile) {
+  await runAction('blogger-refresh', '正在刷新博主资料', async () => {
+    const updated = await refreshBloggerProfile(blogger.id)
+    await refreshBloggers()
+    selectedBloggerId.value = updated.id
+    showMessage('博主资料已刷新')
   })
 }
 

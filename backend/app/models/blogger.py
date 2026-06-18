@@ -24,6 +24,8 @@ class BloggerProfile(Base):
     homepage_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     avatar_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     follower_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 平台侧笔记/作品总数(从 user_info 解析,解析不到为 NULL)。与"已采集 N 条(sample_count)"区分。
+    note_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     niche: Mapped[str] = mapped_column(String(160), nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # 内容标签:JSON 数组,元素 {"name": str, "source": "auto"|"manual"}。

@@ -272,6 +272,31 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
     )
 
 
+def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """从 get_user_info 原始返回里解析可覆盖的博主资料(刷新博主 / 采集时写笔记总数用)。
+
+    拿不到的字段:display_name/avatar 给空串、follower 给 0、note_total 给 None(老实留空,不硬编)。
+    """
+    display_name = first_str(payload, ["nickname"]) or deep_first_str(payload, ["nick_name", "name", "display_name", "displayName"])
+    avatar_url = deep_first_str(payload, ["avatar", "avatar_url", "avatarUrl", "image", "image_url"], list_keys=["url_list", "urlList"])
+    follower_count = deep_first_int(payload, ["follower_count", "fans_count", "fansCount", "followerCount", "followers"])
+    if not follower_count:
+        follower_count = fans_from_text(deep_first_str(payload, ["sub_title", "subTitle", "fans_desc", "fansDesc"]))
+    note_total = deep_first_int(
+        payload,
+        [
+            "notes_count", "note_count", "noteCount", "notes_num", "notesNum",
+            "aweme_count", "awemeCount", "works_count", "worksCount", "video_count", "videoCount", "note_total",
+        ],
+    )
+    return {
+        "display_name": display_name or "",
+        "avatar_url": avatar_url or "",
+        "follower_count": follower_count or 0,
+        "note_total": note_total if note_total else None,
+    }
+
+
 def fans_from_text(text: str) -> int:
     """从 "Fans 160.8k" / "粉丝 16.5万" 这类文案里解析粉丝数。解析不出返回 0。"""
     if not text:

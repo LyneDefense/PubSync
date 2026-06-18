@@ -254,7 +254,7 @@ onUnmounted(() => {
           <p v-else-if="!editingBlogger && bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
           <label>
             博主名称
-            <input v-model="bloggerForm.display_name" type="text" required :readonly="!editingBlogger" />
+            <input v-model="bloggerForm.display_name" type="text" required readonly />
           </label>
           <label>
             {{ currentSocialPlatformName }}主页链接
@@ -262,24 +262,25 @@ onUnmounted(() => {
               v-model="bloggerForm.homepage_url"
               type="url"
               required
-              :readonly="!editingBlogger"
+              readonly
               :placeholder="currentSocialPlatform === 'douyin' ? 'https://www.douyin.com/user/...' : 'https://www.xiaohongshu.com/user/profile/...'"
             />
           </label>
           <div v-if="editingBlogger" class="config-grid">
             <label>
               平台 ID
-              <input v-model="bloggerForm.external_id" type="text" />
+              <input v-model="bloggerForm.external_id" type="text" readonly />
             </label>
             <label>
               头像 URL
-              <input v-model="bloggerForm.avatar_url" type="url" />
+              <input v-model="bloggerForm.avatar_url" type="url" readonly />
             </label>
             <label>
               粉丝数
-              <input v-model.number="bloggerForm.follower_count" type="number" min="0" />
+              <input v-model.number="bloggerForm.follower_count" type="number" readonly />
             </label>
           </div>
+          <p v-if="editingBlogger" class="field-hint">昵称 / 主页 / 平台ID / 头像 / 粉丝数 不可手动修改；如需更新,到「博主资产」点「刷新博主」重新拉取。</p>
           <label>
             领域/赛道
             <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />

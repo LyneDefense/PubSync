@@ -23,7 +23,6 @@ import {
   handleCollectByUrls,
   isSocialPlatform,
   lastCollectSummary,
-  openCreateBloggerModal,
   pendingAction,
   subtypeLabel,
   selectBlogger,
@@ -71,7 +70,7 @@ function toggleContentType(value: string) {
             <section v-if="xhsCollectStep === 1" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div><span>01 选择博主</span><h3>选择要采集的博主</h3></div>
-                <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
+                <button type="button" @click="setCurrentSocialTab('assets')">去博主资产创建</button>
               </div>
               <div v-if="benchmarkAccounts.length" class="blogger-list compact">
                 <button v-for="blogger in benchmarkAccounts" :key="blogger.id" type="button" :class="{ active: selectedBloggerId === blogger.id }" @click="selectBlogger(blogger.id)">
@@ -79,7 +78,7 @@ function toggleContentType(value: string) {
                   <span>{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
                 </button>
               </div>
-              <p v-else class="empty-region">还没有对标博主档案。点击“创建博主”添加对标主页。</p>
+              <p v-else class="empty-region">还没有对标博主档案。请到「博主资产」创建博主后再来采集。</p>
             </section>
 
             <section v-if="xhsCollectStep === 2" class="creation-stage-card active">

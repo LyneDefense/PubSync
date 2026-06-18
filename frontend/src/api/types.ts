@@ -332,6 +332,7 @@ export interface BloggerProfile {
   homepage_url: string
   avatar_url: string
   follower_count: number
+  note_total: number | null
   niche: string
   description: string
   tags: BloggerTag[]

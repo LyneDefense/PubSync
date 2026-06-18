@@ -36,6 +36,7 @@ from app.blogger_distillation.tikhub_client import (
     XhsPostCandidate,
 )
 from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
+from app.blogger_distillation.search import extract_user_profile
 from app.config import Settings
 from app.models import BloggerCollectionPost, BloggerCollectionRun, BloggerPost, BloggerProfile
 from app.models.common import utc_now
@@ -143,7 +144,13 @@ def run_blogger_collection(
         record_task_event(db, tenant_id, task_id, "样本采集", "running", "开始采集数据")
         ensure_collection_provider_available(blogger)
         client = build_collection_client(collection_settings, blogger.platform)
-        client.get_user_info(blogger.homepage_url, blogger.external_id)
+        user_info = client.get_user_info(blogger.homepage_url, blogger.external_id)
+        try:
+            parsed_total = extract_user_profile(blogger.platform, user_info).get("note_total")
+            if parsed_total is not None:
+                blogger.note_total = parsed_total
+        except Exception as exc:  # noqa: BLE001 — 解析笔记总数失败不影响采集
+            logger.warning("解析博主笔记总数失败:blogger_id=%s,error=%s", blogger.id, exc)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         # 先把笔记池(库内该博主已有 external_id)读出来,翻页时据此判断"新/旧"。
         existing = {
@@ -335,6 +342,28 @@ def run_blogger_collection(
             apply_usage(run, client.usage)
         db.commit()
         raise
+
+
+def refresh_blogger_profile(db: Session, settings: Settings, tenant_id: int, blogger_id: int) -> BloggerProfile:
+    """重新拉取博主资料(昵称/头像/粉丝数/笔记总数)并覆盖。供「刷新博主」按钮用,一次 user_info 调用。"""
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("博主不存在或不属于当前工作空间")
+    ensure_collection_provider_available(blogger)
+    client = build_collection_client(settings, blogger.platform)
+    payload = client.get_user_info(blogger.homepage_url, blogger.external_id)
+    profile = extract_user_profile(blogger.platform, payload)
+    if profile["display_name"]:
+        blogger.display_name = profile["display_name"]
+    if profile["avatar_url"]:
+        blogger.avatar_url = profile["avatar_url"]
+    if profile["follower_count"]:
+        blogger.follower_count = profile["follower_count"]
+    if profile["note_total"] is not None:
+        blogger.note_total = profile["note_total"]
+    db.commit()
+    db.refresh(blogger)
+    return blogger
 
 
 def _expand_short_link(text: str) -> str:

@@ -318,6 +318,10 @@ export function updateBlogger(id: number, payload: BloggerProfileUpdate) {
   })
 }
 
+export function refreshBloggerProfile(id: number) {
+  return request<BloggerProfile>(`/bloggers/${id}/refresh-profile`, { method: 'POST' })
+}
+
 export function updateBloggerFavorite(id: number, isFavorite: boolean) {
   return request<BloggerProfile>(`/bloggers/${id}/favorite`, {
     method: 'PATCH',

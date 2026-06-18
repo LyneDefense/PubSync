@@ -9,6 +9,7 @@ from app.blogger_distillation.service.collection import (
     build_collection_client,
     collect_posts,
     platform_collection_label,
+    refresh_blogger_profile,
     run_blogger_collection,
     run_blogger_url_collection,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "delete_blogger",
     "run_blogger_collection",
     "run_blogger_url_collection",
+    "refresh_blogger_profile",
     "build_collection_client",
     "collect_posts",
     "platform_collection_label",
