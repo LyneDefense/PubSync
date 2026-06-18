@@ -277,8 +277,10 @@ def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, An
 
     拿不到的字段:display_name/avatar 给空串、follower 给 0、note_total 给 None(老实留空,不硬编)。
     """
-    display_name = first_str(payload, ["nickname"]) or deep_first_str(payload, ["nick_name", "name", "display_name", "displayName"])
-    avatar_url = deep_first_str(payload, ["avatar", "avatar_url", "avatarUrl", "image", "image_url"], list_keys=["url_list", "urlList"])
+    # 只认 nickname 系列键:小红书 user_info 的 interactions 列表里有 {name:"关注"/"粉丝"...},
+    # 用通用 "name" 会把"关注"当成昵称(已踩坑),所以这里不用 name/display_name。
+    display_name = first_str(payload, ["nickname", "nick_name", "nickName"]) or deep_first_str(payload, ["nickname", "nick_name", "nickName"])
+    avatar_url = deep_first_str(payload, ["avatar", "avatar_url", "avatarUrl", "images", "image", "image_url"], list_keys=["url_list", "urlList"])
     follower_count = deep_first_int(payload, ["follower_count", "fans_count", "fansCount", "followerCount", "followers"])
     if not follower_count:
         follower_count = fans_from_text(deep_first_str(payload, ["sub_title", "subTitle", "fans_desc", "fansDesc"]))
