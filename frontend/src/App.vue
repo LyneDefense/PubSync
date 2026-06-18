@@ -13,6 +13,7 @@ import WechatBriefView from './views/WechatBriefView.vue'
 import WechatAiView from './views/WechatAiView.vue'
 import WechatRecordsView from './views/WechatRecordsView.vue'
 import SocialCollectView from './views/SocialCollectView.vue'
+import SocialDistillView from './views/SocialDistillView.vue'
 import SocialAssetsView from './views/SocialAssetsView.vue'
 import MyAccountsView from './views/MyAccountsView.vue'
 import SocialAuditView from './views/SocialAuditView.vue'
@@ -161,6 +162,7 @@ onUnmounted(() => {
           <p class="side-group">博主蒸馏</p>
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="setCurrentSocialTab('assets')"><NavIcon name="folder" />博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="setCurrentSocialTab('collect')"><NavIcon name="download" />数据采集</button>
+          <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="setCurrentSocialTab('distill')"><NavIcon name="funnel" />蒸馏</button>
           <p class="side-group">账号诊断</p>
           <button type="button" :class="{ active: currentSocialTab === 'my-accounts' }" @click="setCurrentSocialTab('my-accounts')"><NavIcon name="user" />我的账号</button>
           <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="setCurrentSocialTab('audit')"><NavIcon name="target" />对标诊断</button>
@@ -188,6 +190,8 @@ onUnmounted(() => {
       <WechatRecordsView />
 
       <SocialCollectView />
+
+      <SocialDistillView />
 
       <SocialAssetsView />
 

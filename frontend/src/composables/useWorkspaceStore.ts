@@ -485,6 +485,12 @@ export const bloggerNoteGroups = computed<NoteGroup[]>(() => {
 })
 
 export const selectedPostCount = computed(() => selectedPostIds.value.length)
+// 已勾选的笔记对象(保持勾选顺序),供存快照弹框列出。
+export const selectedPosts = computed(() =>
+  selectedPostIds.value
+    .map((id) => bloggerPosts.value.find((p) => p.id === id))
+    .filter((p): p is BloggerPost => Boolean(p))
+)
 export function isPostSelected(id: number) {
   return selectedPostIds.value.includes(id)
 }
@@ -1470,6 +1476,7 @@ export async function handleSaveSnapshot(name?: string) {
       post_ids: [...selectedPostIds.value]
     })
     await refreshSelectedBlogger()
+    selectedPostIds.value = []
     showMessage('已保存快照')
   })
 }
