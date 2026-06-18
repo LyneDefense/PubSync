@@ -28,6 +28,10 @@
   --color-danger: #b4453a;
   --color-focus: #c08a1e;
   --color-shadow: rgba(20, 30, 40, 0.08);
+  /* 表单控件:输入框用纯白底 + 清晰描边(原来用灰底 paper + 极淡发丝线,看着像未做样式的灰条)。 */
+  --color-field: #ffffff;
+  --color-field-border: #c8ced4;
+  --color-placeholder: #9aa2ac;
 
   --space-2xs: 0.5rem;
   --space-xs: 0.75rem;
@@ -49,6 +53,9 @@
   --radius-pill: 999px;
   --rule-hair: 1px solid var(--color-rule);
   --shadow-panel: 0 1px 2px rgba(20, 30, 40, 0.05), 0 6px 18px rgba(20, 30, 40, 0.04);
+  /* 控件统一高度 + 聚焦光环(品牌色描边 + 柔光),全站输入/按钮共用,保证一致质感。 */
+  --control-h: 42px;
+  --ring-accent: 0 0 0 3px color-mix(in oklab, var(--color-accent), transparent 82%);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-short: 160ms;
@@ -83,23 +90,26 @@ select {
 }
 
 button {
-  min-height: 42px;
-  border: var(--rule-hair);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
+  /* 默认 = 次级按钮:白底 + 中性描边 + 600 字重,在白面板上也能清晰读出是个按钮。 */
+  min-height: var(--control-h);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   color: var(--color-ink);
   cursor: pointer;
-  padding: 0 var(--space-sm);
+  padding: 0 var(--space-md);
+  font-weight: 600;
   transition:
     border-color var(--dur-short) var(--ease-out),
     background-color var(--dur-short) var(--ease-out),
     color var(--dur-short) var(--ease-out),
+    box-shadow var(--dur-short) var(--ease-out),
     transform var(--dur-short) var(--ease-out);
   white-space: nowrap;
 }
 
 button:hover {
-  border-color: var(--color-rule-strong);
+  border-color: var(--color-ink-3);
   background: var(--color-paper-3);
 }
 
@@ -154,18 +164,19 @@ button.ghost {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
-  padding: 0 var(--space-sm);
-  border: var(--rule-hair);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
+  min-height: var(--control-h);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   color: var(--color-ink);
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
 }
 
 .link-button:hover {
-  border-color: var(--color-rule-strong);
+  border-color: var(--color-ink-3);
   background: var(--color-paper-3);
 }
 
@@ -587,6 +598,9 @@ button.task-button.running span {
 
 .workspace {
   display: grid;
+  /* 单列轨道封顶到容器宽:否则面板按 min-content 撑大(如设置页 6 个分页),整页溢出。
+     面板内仍可由各自 overflow-x:auto 的子元素(标签条/表格)局部横滚。 */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-md);
   padding: var(--space-lg);
@@ -2683,21 +2697,40 @@ form {
 
 label {
   display: grid;
-  gap: 7px;
-  color: var(--color-ink);
-  font-weight: 700;
+  gap: 6px;
+  color: var(--color-ink-2);
+  font-weight: 600;
+  font-size: var(--text-sm);
 }
 
 input,
 textarea,
 select {
   width: 100%;
-  border: var(--rule-hair);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius-md);
   color: var(--color-ink);
-  background: var(--color-paper);
-  padding: 12px;
+  background: var(--color-field);
+  padding: 10px 12px;
+  font-size: var(--text-md);
   resize: vertical;
+  transition:
+    border-color var(--dur-short) var(--ease-out),
+    box-shadow var(--dur-short) var(--ease-out);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-placeholder);
+}
+
+/* 字段聚焦:品牌色描边 + 柔光环,替代原来仅靠键盘金色轮廓,常态可见、更精致。 */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--ring-accent);
 }
 
 /* 颜色选择器：让原生色块占满，显示成可见的色板而不是一条细线。 */
@@ -2719,7 +2752,15 @@ input[type="color"]::-webkit-color-swatch {
 input:read-only,
 textarea:read-only {
   color: var(--color-ink-3);
-  background: var(--color-paper-2);
+  background: var(--color-paper-3);
+  border-color: var(--color-rule);
+}
+
+/* 只读字段不需要聚焦光环(无法编辑),避免误导。 */
+input:read-only:focus,
+textarea:read-only:focus {
+  border-color: var(--color-rule);
+  box-shadow: none;
 }
 
 .cover {
@@ -2990,12 +3031,16 @@ dd {
     width: 100%;
   }
 
+  /* 多标签(如设置页 6 个分页)在手机上横向滚动,不再撑爆面板宽度。 */
   .tabs {
+    display: flex;
     width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .tabs button {
-    flex: 1 0 auto;
+    flex: 0 0 auto;
   }
 
   .news-card {
