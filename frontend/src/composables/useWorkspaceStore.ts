@@ -705,27 +705,26 @@ export const visibleTaskEvents = computed(() => {
   return taskEventsMainTab.value === activeMainTab.value ? taskEvents.value : []
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
-export const isTaskRunning = computed(
-  () => pendingAction.value === 'fetch' || pendingAction.value === 'generate' || pendingAction.value === 'collect' || pendingAction.value === 'distill'
-)
+// 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose'])
+export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 export const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskEventsMainTab.value === activeMainTab.value
 )
 // 是否有「需要展示进度」的任务在执行(全局顶部进度卡片用)。涵盖所有会跑一会儿的动作。
 export const PROGRESS_ACTIONS = ['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-package-save', 'xhs-topic', 'audit'] as const
 export const isProgressTaskRunning = computed(() => PROGRESS_ACTIONS.includes(pendingAction.value as (typeof PROGRESS_ACTIONS)[number]))
-export const runningTaskName = computed(() => {
-  if (pendingAction.value === 'fetch') {
-    return '新闻抓取'
-  }
-  if (pendingAction.value === 'distill') {
-    return '博主蒸馏'
-  }
-  if (pendingAction.value === 'collect') {
-    return '样本采集'
-  }
-  return '文章生成'
-})
+const TASK_NAME_MAP: Record<string, string> = {
+  fetch: '抓取新闻',
+  generate: '生成文章',
+  collect: '采集笔记',
+  distill: '提炼方法论',
+  'xhs-package': '生成创作内容',
+  'xhs-topic': '生成选题',
+  audit: '对标诊断',
+  'self-diagnose': '诊断我的账号'
+}
+export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
 export const taskSummaryStep = computed(() => {
   if (latestTaskEvent.value) {
@@ -746,6 +745,105 @@ export const taskSummaryStatus = computed(() => {
   return latestTaskEvent.value?.status || 'running'
 })
 export const taskSummaryPayload = computed(() => (latestTaskEvent.value ? eventPayloadSummary(latestTaskEvent.value) : ''))
+
+// ===== 统一实时进度(全站任务通用) =====
+// 步骤名通俗化:内部术语 → 用户能看懂的话。命中映射就替换,否则原样(如「{对标账号}准备」这类动态名)。
+const STEP_LABEL_MAP: Record<string, string> = {
+  样本采集: '准备采集',
+  增量分流: '整理笔记池',
+  笔记详情: '获取笔记内容',
+  样本入库: '保存笔记',
+  样本清洗: '去重校验',
+  样本质量: '质量检查',
+  '视频 ASR': '视频转文字',
+  视频字幕: '读取字幕',
+  评论采集: '抓取评论',
+  内容标签: '提炼标签',
+  基础统计: '统计分析',
+  下架对账: '核对在架',
+  链接解析: '解析链接',
+  定向采集: '定向采集',
+  蒸馏选材: '挑选样本',
+  认知蒸馏: '提炼方法论',
+  思考过程: '思考中',
+  自检: '自我检查',
+  深度评审: '换视角评审',
+  完成: '收尾',
+  'Skill 生成': '生成方法论',
+  配图: '生成配图',
+  平台合规: '平台合规检查',
+  对标对比: '对标对比',
+  发布包生成: '生成创作内容',
+  流程: '总体进度',
+  新闻后处理: '筛选评分新闻',
+  文章素材准备: '整理素材',
+  正文配图: '生成配图',
+  正文生成: '撰写正文',
+  公众号排版: '排版美化',
+  封面生成: '生成封面',
+  公众号草稿: '发送草稿'
+}
+export function humanizeStepName(step: string): string {
+  return STEP_LABEL_MAP[step] || step
+}
+
+// 已用时:任务开始后每秒 +1,结束清零;用于"算不准百分比"的任务展示真实耗时。
+export const taskElapsedSeconds = ref(0)
+let elapsedTimer: number | undefined
+export function startElapsed() {
+  taskElapsedSeconds.value = 0
+  window.clearInterval(elapsedTimer)
+  elapsedTimer = window.setInterval(() => {
+    taskElapsedSeconds.value += 1
+  }, 1000)
+}
+export function stopElapsed() {
+  window.clearInterval(elapsedTimer)
+  elapsedTimer = undefined
+}
+export const taskElapsedLabel = computed(() => {
+  const s = taskElapsedSeconds.value
+  if (s < 60) return `已用 ${s} 秒`
+  return `已用 ${Math.floor(s / 60)} 分 ${s % 60} 秒`
+})
+
+// 时间线时刻:只显示 时:分:秒。
+function formatClock(value: string): string {
+  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value))
+}
+
+// 通用计数进度:从最新事件反向找 current/total(目前采集会发),有就显示真实进度条。
+export const taskCountProgress = computed(() => {
+  for (let index = visibleTaskEvents.value.length - 1; index >= 0; index -= 1) {
+    const payload = parseEventPayload(visibleTaskEvents.value[index])
+    const current = Number(payload?.current)
+    const total = Number(payload?.total)
+    if (current && total) {
+      return { current, total, pct: Math.round((current / total) * 100) }
+    }
+  }
+  return { current: 0, total: 0, pct: 0 }
+})
+
+// 逐条高频事件(采集那几个)折叠进进度条,不进时间线,避免刷屏。
+const TIMELINE_SPAM_STEPS = new Set(['笔记详情', '样本入库', '视频 ASR', '视频字幕', '评论采集'])
+// 统一时间线:通俗步骤名 + 原始文案,最新在上。
+export const liveTimeline = computed(() =>
+  visibleTaskEvents.value
+    .filter((event) => !TIMELINE_SPAM_STEPS.has(event.step_name))
+    .map((event) => ({
+      id: event.id,
+      step: humanizeStepName(event.step_name),
+      message: event.message,
+      status: event.status,
+      time: formatClock(event.created_at)
+    }))
+    .reverse()
+)
+// 顶部当前阶段(最新事件,通俗化);没有事件时回退到任务名。
+export const liveStage = computed(() => (latestTaskEvent.value ? humanizeStepName(latestTaskEvent.value.step_name) : runningTaskName.value))
+export const liveStageMessage = computed(() => latestTaskEvent.value?.message || '正在准备…')
+
 export const articleStateLabel = computed(() => {
   const status = article.value?.status
   return status ? statusText[status] || status : '未生成'
@@ -949,6 +1047,7 @@ export async function runTaskAction(
   taskEventsMainTab.value = activeMainTab.value
   showTaskEventDetails.value = false
   startFakeProgress(name)
+  startElapsed()
   showMessage(label)
   try {
     const task = await startTask()
@@ -964,6 +1063,7 @@ export async function runTaskAction(
     pendingAction.value = null
     runningTaskId.value = null
     clearPersistedTask()
+    stopElapsed()
     window.setTimeout(() => resetFakeProgress(name), 300)
   }
 }
@@ -998,6 +1098,7 @@ export async function resumeRunningTaskIfAny() {
   taskEventsMainTab.value = (mainTab as MainTab) || activeMainTab.value
   showTaskEventDetails.value = false
   startFakeProgress(name)
+  startElapsed()
   runningTaskId.value = id
   showMessage('检测到后台仍有任务在执行，正在恢复进度…')
   try {
@@ -1010,6 +1111,7 @@ export async function resumeRunningTaskIfAny() {
     pendingAction.value = null
     runningTaskId.value = null
     clearPersistedTask()
+    stopElapsed()
     window.setTimeout(() => resetFakeProgress(name), 300)
   }
 }

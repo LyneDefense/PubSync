@@ -8,6 +8,7 @@ import HashtagCloud from './components/HashtagCloud.vue'
 import ImageOutputGrid from './components/ImageOutputGrid.vue'
 import ImagePreviewModal from './components/ImagePreviewModal.vue'
 import LoginView from './components/LoginView.vue'
+import LiveProgress from './components/LiveProgress.vue'
 import NavIcon from './components/NavIcon.vue'
 import WechatBriefView from './views/WechatBriefView.vue'
 import WechatAiView from './views/WechatAiView.vue'
@@ -179,6 +180,8 @@ onUnmounted(() => {
       </aside>
 
       <main class="workspace">
+      <LiveProgress />
+
       <WechatBriefView />
 
       <ComingSoonPanel

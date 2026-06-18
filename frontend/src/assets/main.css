@@ -3291,3 +3291,124 @@ dd {
   max-height: 460px;
   overflow-y: auto;
 }
+
+/* ===== 全站统一实时进度面板(LiveProgress.vue) ===== */
+.live-progress {
+  display: grid;
+  gap: var(--space-sm);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-soft);
+  padding: var(--space-sm) var(--space-md);
+  box-shadow: var(--shadow-panel);
+}
+.live-progress__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.live-progress__spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in oklab, var(--color-accent), transparent 55%);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: live-spin 0.8s linear infinite;
+}
+@keyframes live-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.live-progress__headline {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.live-progress__headline strong {
+  color: var(--color-accent-ink);
+  font-size: var(--text-md);
+}
+.live-progress__headline p {
+  margin: 0;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.live-progress__elapsed {
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-progress__cancel {
+  min-height: 32px;
+}
+.live-progress__count {
+  display: grid;
+  gap: 6px;
+}
+.live-progress__count-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+.live-progress__bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--color-accent), transparent 80%);
+  overflow: hidden;
+}
+.live-progress__bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width var(--dur-base) var(--ease-out);
+}
+.live-progress__timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.live-progress__timeline li {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  gap: var(--space-2xs);
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+.live-progress__timeline li.is-failed {
+  background: color-mix(in oklab, var(--color-danger), transparent 90%);
+}
+.live-progress__step {
+  font-weight: 700;
+  color: var(--color-accent-ink);
+  white-space: nowrap;
+}
+.live-progress__msg {
+  color: var(--color-ink-2);
+  overflow-wrap: anywhere;
+}
+.live-progress__time {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-progress__pending {
+  margin: 0;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}

@@ -9,10 +9,7 @@ import {
   bloggerDistillForm,
   collectContentTypes,
   collectFetchAll,
-  collectLatestMessage,
   collectOrder,
-  collectProgress,
-  collectTimeline,
   currentSocialPlatformName,
   currentSocialTab,
   form,
@@ -140,21 +137,7 @@ function toggleContentType(value: string) {
                   {{ pendingAction === 'collect' ? '采集中…' : '定向采集' }}
                 </button>
               </details>
-
-              <div v-if="pendingAction === 'collect' || collectTimeline.length" class="collect-live">
-                <div v-if="collectProgress.total" class="collect-progress">
-                  <div class="collect-progress__head"><span>正在采集</span><strong>{{ collectProgress.current }}/{{ collectProgress.total }}</strong></div>
-                  <div class="collect-progress__bar"><i :style="{ width: collectProgress.pct + '%' }"></i></div>
-                  <p v-if="collectLatestMessage" class="form-hint">{{ collectLatestMessage }}</p>
-                </div>
-                <ol class="collect-timeline">
-                  <li v-for="(event, index) in collectTimeline" :key="index" :class="`is-${event.status}`">
-                    <span class="collect-timeline__step">{{ event.step_name }}</span>
-                    <StatusChip :status="event.status" />
-                    <span class="collect-timeline__msg">{{ event.message }}</span>
-                  </li>
-                </ol>
-              </div>
+              <!-- 采集实时进度改由全站统一的 <LiveProgress/> 面板(workspace 顶部)展示,这里不再重复。 -->
             </section>
 
             <section v-if="xhsCollectStep === 4" class="creation-stage-card active">
