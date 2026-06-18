@@ -20,8 +20,8 @@ from app.blogger_distillation.service.crud import (
     delete_blogger,
     delete_snapshot,
     list_snapshots,
-    rename_snapshot,
     set_blogger_favorite,
+    update_snapshot,
     update_blogger,
 )
 from app.blogger_distillation.service.distillation import (
@@ -59,7 +59,7 @@ __all__ = [
     "delete_blogger",
     "list_snapshots",
     "create_snapshot",
-    "rename_snapshot",
+    "update_snapshot",
     "delete_snapshot",
     "run_blogger_collection",
     "run_blogger_url_collection",

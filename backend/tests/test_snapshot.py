@@ -8,7 +8,7 @@ from app.blogger_distillation.service.crud import (
     create_snapshot,
     delete_snapshot,
     list_snapshots,
-    rename_snapshot,
+    update_snapshot,
 )
 from app.database import Base
 from app.models import BloggerPost, BloggerProfile, Tenant
@@ -63,13 +63,23 @@ def test_create_snapshot_rejects_foreign_blogger(db):
         create_snapshot(db, 1, 999, "不存在的博主", ids[:2])
 
 
-def test_rename_snapshot(db):
+def test_update_snapshot_rename(db):
     ids = _seed(db)
     snap = create_snapshot(db, 1, 1, "旧名", ids[:2])
-    renamed = rename_snapshot(db, 1, snap.id, "新名")
+    renamed = update_snapshot(db, 1, snap.id, name="新名")
     assert renamed.name == "新名"
     with pytest.raises(ValueError):
-        rename_snapshot(db, 1, snap.id, "   ")
+        update_snapshot(db, 1, snap.id, name="   ")
+
+
+def test_update_snapshot_repick(db):
+    ids = _seed(db)
+    snap = create_snapshot(db, 1, 1, "选材", ids[:2])
+    updated = update_snapshot(db, 1, snap.id, post_ids=ids[:4])
+    assert updated.post_ids == ids[:4]
+    assert updated.name == "选材"  # 只传 post_ids 不动名字
+    with pytest.raises(ValueError):
+        update_snapshot(db, 1, snap.id, post_ids=[])
 
 
 def test_delete_snapshot(db):
@@ -87,6 +97,6 @@ def test_tenant_isolation(db):
     # 别的租户看不到 / 改不了
     assert list_snapshots(db, 2, 1) == []
     with pytest.raises(ValueError):
-        rename_snapshot(db, 2, snap.id, "x")
+        update_snapshot(db, 2, snap.id, name="x")
     with pytest.raises(ValueError):
         delete_snapshot(db, 2, snap.id)

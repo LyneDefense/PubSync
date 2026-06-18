@@ -387,10 +387,14 @@ export function createBloggerSnapshot(id: number, payload: { name?: string; post
   })
 }
 
-export function renameBloggerSnapshot(bloggerId: number, snapshotId: number, name: string) {
+export function updateBloggerSnapshot(
+  bloggerId: number,
+  snapshotId: number,
+  payload: { name?: string; post_ids?: number[] }
+) {
   return request<BloggerSnapshot>(`/bloggers/${bloggerId}/snapshots/${snapshotId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ name })
+    body: JSON.stringify(payload)
   })
 }
 

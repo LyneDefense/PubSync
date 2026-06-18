@@ -84,7 +84,9 @@ class BloggerSnapshotCreate(BaseModel):
 
 
 class BloggerSnapshotUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=160)
+    # 改名 / 重选笔记,二者可单独或一起传。
+    name: str | None = Field(default=None, max_length=160)
+    post_ids: list[int] | None = None
 
 
 class BloggerSnapshotRead(BaseModel):

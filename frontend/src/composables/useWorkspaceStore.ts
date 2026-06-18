@@ -52,7 +52,7 @@ import {
   listBloggerRuns,
   listBloggerSnapshots,
   createBloggerSnapshot,
-  renameBloggerSnapshot,
+  updateBloggerSnapshot,
   deleteBloggerSnapshot,
   listBloggerSkills,
   listBloggers,
@@ -1481,12 +1481,17 @@ export async function handleSaveSnapshot(name?: string) {
   })
 }
 
-export async function handleRenameSnapshot(snapshotId: number, name: string) {
-  if (!selectedBloggerId.value || !name.trim()) return
-  await runAction('snapshot-rename', '正在重命名快照', async () => {
-    await renameBloggerSnapshot(selectedBloggerId.value!, snapshotId, name.trim())
+// 改名 / 重选笔记(name、postIds 可单独或一起传)。
+export async function handleUpdateSnapshot(snapshotId: number, payload: { name?: string; postIds?: number[] }) {
+  if (!selectedBloggerId.value) return
+  const body: { name?: string; post_ids?: number[] } = {}
+  if (payload.name !== undefined) body.name = payload.name.trim()
+  if (payload.postIds !== undefined) body.post_ids = payload.postIds
+  if (body.name === undefined && body.post_ids === undefined) return
+  await runAction('snapshot-update', '正在更新快照', async () => {
+    await updateBloggerSnapshot(selectedBloggerId.value!, snapshotId, body)
     await refreshSelectedBlogger()
-    showMessage('已重命名快照')
+    showMessage('已更新快照')
   })
 }
 

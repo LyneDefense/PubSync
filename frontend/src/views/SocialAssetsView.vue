@@ -1,28 +1,32 @@
 <script setup lang="ts">
-// 社媒·博主资产(阶段B)：博主信息 + 笔记池(按类型分组、单篇抽屉) + 勾选存快照。蒸馏在独立「蒸馏」页。
-import { ref } from 'vue'
+// 社媒·博主资产(阶段B)：博主信息 + 笔记池(只读、按类型、点开抽屉) + 快照(新建/详情/改名/重选/删除)。蒸馏在独立「蒸馏」页。
+import { computed, ref } from 'vue'
 import StatusChip from '../components/StatusChip.vue'
 import { bloggerCommentLabel } from '../utils/format'
 import {
   activeNotePost,
   benchmarkAccounts,
   bloggerNoteGroups,
+  bloggerPosts,
   bloggerSnapshots,
   clearPostSelection,
   closeNote,
   currentSocialPlatformName,
   currentSocialTab,
   delistedNoteCount,
+  DISTILL_MIN_SAMPLES,
+  DISTILL_RECOMMEND_SAMPLES,
   formatDate,
   friendlyTime,
   handleDeleteBlogger,
   handleDeleteSnapshot,
   handleRefreshBlogger,
-  handleRenameSnapshot,
   handleSaveSnapshot,
   handleToggleBloggerFavorite,
+  handleUpdateSnapshot,
   isPostSelected,
   isSocialPlatform,
+  loadSnapshotIntoSelection,
   noteBodyText,
   noteHashtags,
   noteTopComments,
@@ -34,31 +38,76 @@ import {
   selectedBlogger,
   selectedBloggerId,
   selectedPostCount,
-  selectedPosts,
+  selectGroupPosts,
   setCurrentSocialTab,
   subtypeLabel,
   togglePostSelection
 } from '../composables/useWorkspaceStore'
 
-// 存快照弹框：列出已选笔记(可去掉)、命名、保存。
-const snapshotModalOpen = ref(false)
-const snapshotName = ref('')
+// 选取弹框(新建/重选共用)。pickerSnapshotId=null 表示新建。
+const pickerOpen = ref(false)
+const pickerSnapshotId = ref<number | null>(null)
+const pickerName = ref('')
+// 快照详情弹框。
+const detailOpen = ref(false)
+const detailSnapshotId = ref<number | null>(null)
+const detailName = ref('')
 
-function openSnapshotModal() {
-  if (!selectedPostCount.value) return
-  snapshotName.value = ''
-  snapshotModalOpen.value = true
+const enoughSelected = computed(() => selectedPostCount.value >= DISTILL_MIN_SAMPLES)
+const detailSnapshot = computed(() => bloggerSnapshots.value.find((s) => s.id === detailSnapshotId.value) || null)
+const detailSnapshotPosts = computed(() => {
+  const ids = detailSnapshot.value?.post_ids || []
+  return ids.map((id) => bloggerPosts.value.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => Boolean(p))
+})
+
+function openCreatePicker() {
+  clearPostSelection()
+  pickerName.value = ''
+  pickerSnapshotId.value = null
+  pickerOpen.value = true
 }
-async function confirmSaveSnapshot() {
-  await handleSaveSnapshot(snapshotName.value)
-  snapshotModalOpen.value = false
+function closePicker() {
+  pickerOpen.value = false
+  clearPostSelection()
 }
-function onRenameSnapshot(id: number, current: string) {
-  const name = window.prompt('快照新名称', current)
-  if (name && name.trim()) handleRenameSnapshot(id, name)
+async function savePicker() {
+  if (!enoughSelected.value) return
+  if (pickerSnapshotId.value) {
+    await handleUpdateSnapshot(pickerSnapshotId.value, { name: pickerName.value, postIds: [...selectedPostsIds()] })
+  } else {
+    await handleSaveSnapshot(pickerName.value)
+  }
+  pickerOpen.value = false
+  clearPostSelection()
 }
-function onDeleteSnapshot(id: number, name: string) {
-  if (window.confirm(`确定删除快照「${name}」？此操作不可恢复（不影响笔记本身）。`)) handleDeleteSnapshot(id)
+function selectedPostsIds(): number[] {
+  // 直接从勾选集取(store 的 selectedPostIds 通过 isPostSelected 暴露);这里重建一份。
+  return bloggerPosts.value.filter((p) => isPostSelected(p.id)).map((p) => p.id)
+}
+
+function openSnapshotDetail(id: number, name: string) {
+  detailSnapshotId.value = id
+  detailName.value = name
+  detailOpen.value = true
+}
+function editSnapshotNotes() {
+  if (!detailSnapshot.value) return
+  loadSnapshotIntoSelection(detailSnapshot.value.id)
+  pickerName.value = detailSnapshot.value.name
+  pickerSnapshotId.value = detailSnapshot.value.id
+  detailOpen.value = false
+  pickerOpen.value = true
+}
+async function saveDetailName() {
+  if (!detailSnapshotId.value || !detailName.value.trim()) return
+  await handleUpdateSnapshot(detailSnapshotId.value, { name: detailName.value })
+}
+async function deleteDetailSnapshot() {
+  if (!detailSnapshot.value) return
+  if (window.confirm(`确定删除快照「${detailSnapshot.value.name}」？不可恢复（不影响笔记本身）。`)) {
+    await handleDeleteSnapshot(detailSnapshot.value.id)
+    detailOpen.value = false
+  }
 }
 </script>
 
@@ -67,7 +116,7 @@ function onDeleteSnapshot(id: number, name: string) {
     <div class="section-header">
       <div>
         <h2>{{ currentSocialPlatformName }}博主资产</h2>
-        <p class="toolbar-subtitle">查看博主笔记池（按类型分类、点开看单篇），勾选笔记存成快照，去「蒸馏」页提炼 Skill。</p>
+        <p class="toolbar-subtitle">查看博主笔记池（按类型、点开看单篇），把要参考的笔记存成快照，去「蒸馏」页提炼 Skill。</p>
       </div>
       <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
     </div>
@@ -127,26 +176,24 @@ function onDeleteSnapshot(id: number, name: string) {
         <section class="asset-panel">
           <div class="run-list-header">
             <strong>选材快照</strong>
-            <span>{{ bloggerSnapshots.length }} 个</span>
+            <button type="button" class="primary slim" @click="openCreatePicker">+ 新建快照</button>
           </div>
-          <p class="form-hint">在下面笔记池勾选要参考的笔记，点「存为快照」命名保存；之后到「蒸馏」页选快照提炼 Skill。</p>
-          <div v-if="bloggerSnapshots.length" class="snapshot-list">
-            <div v-for="snap in bloggerSnapshots" :key="snap.id" class="snapshot-row">
-              <div class="snapshot-info">
-                <strong>{{ snap.name }}</strong>
-                <span>{{ snap.post_count }} 篇 · {{ friendlyTime(snap.created_at) }}</span>
-              </div>
-              <div class="snapshot-ops">
-                <button type="button" @click="setCurrentSocialTab('distill')">去蒸馏</button>
-                <button type="button" @click="onRenameSnapshot(snap.id, snap.name)">改名</button>
-                <button type="button" class="danger" @click="onDeleteSnapshot(snap.id, snap.name)">删除</button>
-              </div>
-            </div>
+          <p class="form-hint">新建快照会弹出笔记列表勾选（需 ≥{{ DISTILL_MIN_SAMPLES }} 篇，建议 ≥{{ DISTILL_RECOMMEND_SAMPLES }} 篇），命名后保存；之后到「蒸馏」页选快照提炼 Skill。</p>
+          <div v-if="bloggerSnapshots.length" class="asset-run-list">
+            <button
+              v-for="snap in bloggerSnapshots"
+              :key="snap.id"
+              type="button"
+              @click="openSnapshotDetail(snap.id, snap.name)"
+            >
+              <span class="asset-run-row"><strong>{{ snap.name }}</strong></span>
+              <span class="asset-run-meta">{{ snap.post_count }} 篇 · {{ friendlyTime(snap.created_at) }} · 点击查看/编辑</span>
+            </button>
           </div>
-          <p v-else class="empty-region">还没有快照。勾选笔记后点「存为快照」。</p>
+          <p v-else class="empty-region">还没有快照。点「+ 新建快照」勾选笔记保存。</p>
         </section>
 
-        <!-- 笔记池：按类型分组 -->
+        <!-- 笔记池：按类型分组(只读，点开看详情) -->
         <section class="asset-panel">
           <div class="run-list-header">
             <strong>笔记池（按类型）</strong>
@@ -158,20 +205,11 @@ function onDeleteSnapshot(id: number, name: string) {
                 <strong>{{ group.label }}</strong>
                 <span>{{ group.posts.length }} 篇</span>
               </div>
-              <div class="note-list">
-                <label
-                  v-for="post in group.posts"
-                  :key="post.id"
-                  class="note-row"
-                  :class="{ selected: isPostSelected(post.id) }"
-                >
-                  <input type="checkbox" :checked="isPostSelected(post.id)" @change="togglePostSelection(post.id)" />
-                  <span class="note-row-main" @click.prevent="openNote(post.id)">
-                    <span class="note-title">{{ post.title }}</span>
-                    <span class="note-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}<template v-if="post.content_type === 'video'"> · ASR </template></span>
-                  </span>
-                  <StatusChip v-if="post.content_type === 'video'" :status="post.asr_status" />
-                </label>
+              <div class="asset-run-list">
+                <button v-for="post in group.posts" :key="post.id" type="button" @click="openNote(post.id)">
+                  <span class="asset-run-row"><strong>{{ post.title }}</strong><StatusChip v-if="post.content_type === 'video'" :status="post.asr_status" /></span>
+                  <span class="asset-run-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -181,38 +219,77 @@ function onDeleteSnapshot(id: number, name: string) {
       <p v-else class="empty-region">请选择一个博主查看资产。</p>
     </div>
 
-    <!-- 勾选浮条 -->
-    <div v-if="selectedPostCount" class="selection-bar">
-      <span>已勾选 <strong>{{ selectedPostCount }}</strong> 篇</span>
-      <div class="selection-bar-ops">
-        <button type="button" class="primary" @click="openSnapshotModal">存为快照</button>
-        <button type="button" @click="clearPostSelection">清空</button>
-      </div>
-    </div>
-
-    <!-- 存快照弹框 -->
-    <div v-if="snapshotModalOpen" class="modal-overlay" @click.self="snapshotModalOpen = false">
-      <div class="modal-card snapshot-modal">
+    <!-- 选取弹框：新建 / 重选笔记 -->
+    <div v-if="pickerOpen" class="modal-overlay" @click.self="closePicker">
+      <div class="modal-card picker-modal">
         <div class="modal-head">
-          <strong>存为快照</strong>
-          <button type="button" class="modal-close" @click="snapshotModalOpen = false">✕</button>
+          <strong>{{ pickerSnapshotId ? '重新选取笔记' : '新建快照' }}</strong>
+          <button type="button" class="modal-close" @click="closePicker">✕</button>
         </div>
         <div class="modal-body">
           <label class="modal-field">
             <span>快照名称（可留空，自动按时间命名）</span>
-            <input v-model="snapshotName" type="text" maxlength="40" placeholder="如：高赞口播 · 搞钱主题" />
+            <input v-model="pickerName" type="text" maxlength="40" placeholder="如：高赞口播 · 搞钱主题" />
           </label>
-          <p class="form-hint">本次包含 {{ selectedPostCount }} 篇（可在下方去掉不要的）：</p>
-          <ul class="snapshot-pick-list">
-            <li v-for="post in selectedPosts" :key="post.id">
-              <span class="snapshot-pick-title">{{ post.title }}</span>
-              <button type="button" class="snapshot-pick-remove" @click="togglePostSelection(post.id)">移除</button>
-            </li>
-          </ul>
+          <p class="form-hint">
+            勾选要参考的笔记：已选 <strong :class="{ 'hint-warn': !enoughSelected }">{{ selectedPostCount }}</strong> 篇
+            （需 ≥{{ DISTILL_MIN_SAMPLES }}，建议 ≥{{ DISTILL_RECOMMEND_SAMPLES }}）
+          </p>
+          <div class="picker-groups">
+            <div v-for="group in bloggerNoteGroups" :key="group.subtype" class="note-group">
+              <div class="note-group-head">
+                <strong>{{ group.label }}（{{ group.posts.length }}）</strong>
+                <button type="button" class="link-button" @click="selectGroupPosts(group.subtype)">全选本组</button>
+              </div>
+              <label v-for="post in group.posts" :key="post.id" class="picker-row" :class="{ selected: isPostSelected(post.id) }">
+                <input type="checkbox" :checked="isPostSelected(post.id)" @change="togglePostSelection(post.id)" />
+                <span class="picker-row-main">
+                  <span class="picker-row-title">{{ post.title }}</span>
+                  <span class="picker-row-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }}</span>
+                </span>
+              </label>
+            </div>
+            <p v-if="!bloggerNoteGroups.length" class="empty-region">还没有笔记可选。</p>
+          </div>
         </div>
         <div class="modal-foot">
-          <button type="button" @click="snapshotModalOpen = false">取消</button>
-          <button type="button" class="primary" :disabled="!selectedPostCount || Boolean(pendingAction)" @click="confirmSaveSnapshot">保存快照</button>
+          <button type="button" @click="closePicker">取消</button>
+          <button type="button" class="primary" :disabled="!enoughSelected || Boolean(pendingAction)" @click="savePicker">
+            {{ pickerSnapshotId ? '保存修改' : '保存快照' }}（{{ selectedPostCount }} 篇）
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快照详情弹框 -->
+    <div v-if="detailOpen && detailSnapshot" class="modal-overlay" @click.self="detailOpen = false">
+      <div class="modal-card snapshot-detail-modal">
+        <div class="modal-head">
+          <strong>快照详情</strong>
+          <button type="button" class="modal-close" @click="detailOpen = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="modal-field">
+            <span>快照名称</span>
+            <div class="rename-row">
+              <input v-model="detailName" type="text" maxlength="40" />
+              <button type="button" :disabled="!detailName.trim() || Boolean(pendingAction)" @click="saveDetailName">保存名称</button>
+            </div>
+          </label>
+          <p class="form-hint">包含 {{ detailSnapshot.post_count }} 篇笔记：</p>
+          <ul class="snapshot-pick-list">
+            <li v-for="post in detailSnapshotPosts" :key="post.id">
+              <span class="snapshot-pick-title">{{ post.title }}</span>
+              <span class="snapshot-pick-sub">{{ subtypeLabel(post.content_subtype) }}</span>
+            </li>
+            <li v-if="!detailSnapshotPosts.length" class="empty-region">所选笔记已不在当前笔记池（可能已下架）。</li>
+          </ul>
+        </div>
+        <div class="modal-foot snapshot-detail-foot">
+          <button type="button" class="danger" @click="deleteDetailSnapshot">删除快照</button>
+          <span class="foot-spacer"></span>
+          <button type="button" @click="setCurrentSocialTab('distill')">去蒸馏</button>
+          <button type="button" class="primary" @click="editSnapshotNotes">重新选取笔记</button>
         </div>
       </div>
     </div>
@@ -263,101 +340,48 @@ function onDeleteSnapshot(id: number, name: string) {
 </template>
 
 <style scoped>
-/* 快照列表 */
-.snapshot-list { display: flex; flex-direction: column; gap: 6px; }
-.snapshot-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  border: var(--rule-hair);
-  border-radius: var(--radius-sm);
-  background: var(--color-paper-2);
-}
-.snapshot-info { display: flex; flex-direction: column; min-width: 0; }
-.snapshot-info span { font-size: 12px; color: var(--color-ink-soft); }
-.snapshot-ops { display: flex; gap: 6px; flex-shrink: 0; }
-.snapshot-ops button { font-size: 12px; padding: 4px 10px; }
-
-/* 笔记池分组 */
+.run-list-header .slim { min-height: 30px; padding: 0 12px; font-size: 13px; }
 .note-groups { display: flex; flex-direction: column; gap: 18px; }
-.note-group-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.note-group-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .note-group-head span { color: var(--color-ink-soft); font-weight: 400; }
-.note-list { display: flex; flex-direction: column; gap: 6px; }
-.note-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: var(--rule-hair);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.note-row.selected { border-color: var(--color-accent); background: var(--color-accent-soft); }
-.note-row > input[type='checkbox'] { flex: 0 0 auto; margin: 0; }
-.note-row-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.note-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.note-meta { font-size: 12px; color: var(--color-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.note-row > .status-chip { flex: 0 0 auto; }
 
-/* 勾选浮条 */
-.selection-bar {
-  position: sticky;
-  bottom: 16px;
-  margin-top: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
-  border: var(--rule-hair);
-  border-radius: var(--radius-md);
-  background: var(--color-paper);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-}
-.selection-bar-ops { display: flex; gap: 8px; }
-
-/* 通用弹框 */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.modal-card {
-  width: min(520px, 92vw);
-  max-height: 86vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-paper);
-  border-radius: var(--radius-md);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-}
-.modal-head, .modal-foot {
-  display: flex;
-  align-items: center;
-  padding: 14px 18px;
-}
+/* 弹框通用 */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 1100; display: flex; align-items: center; justify-content: center; }
+.modal-card { width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column; background: var(--color-paper); border-radius: var(--radius-md); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25); }
+.modal-head, .modal-foot { display: flex; align-items: center; padding: 14px 18px; gap: 8px; }
 .modal-head { justify-content: space-between; border-bottom: var(--rule-hair); }
-.modal-foot { justify-content: flex-end; gap: 8px; border-top: var(--rule-hair); }
-.modal-close { background: none; border: none; font-size: 18px; cursor: pointer; }
+.modal-foot { justify-content: flex-end; border-top: var(--rule-hair); }
+.snapshot-detail-foot { justify-content: flex-start; }
+.foot-spacer { flex: 1 1 auto; }
+.modal-close { min-height: 0; background: none; border: none; font-size: 18px; cursor: pointer; padding: 0 4px; }
 .modal-body { padding: 16px 18px; overflow-y: auto; }
 .modal-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.modal-field span { font-size: 13px; }
+.modal-field > span { font-size: 13px; }
+.rename-row { display: flex; gap: 8px; }
+.rename-row input { flex: 1 1 auto; min-width: 0; }
+.hint-warn { color: #d9822b; }
+
+/* 选取弹框 */
+.picker-groups { display: flex; flex-direction: column; gap: 14px; }
+.picker-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: var(--rule-hair); border-radius: var(--radius-sm); cursor: pointer; }
+.picker-row + .picker-row { margin-top: 4px; }
+.picker-row.selected { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.picker-row > input[type='checkbox'] { flex: 0 0 auto; margin: 0; }
+.picker-row-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.picker-row-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-row-meta { font-size: 12px; color: var(--color-ink-soft); }
+
+/* 快照详情笔记清单 */
 .snapshot-pick-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
 .snapshot-pick-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: var(--rule-hair); border-radius: var(--radius-sm); }
 .snapshot-pick-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.snapshot-pick-remove { flex: 0 0 auto; font-size: 12px; padding: 2px 8px; }
+.snapshot-pick-sub { flex: 0 0 auto; font-size: 12px; color: var(--color-ink-soft); }
 
 /* 右侧抽屉 */
 .note-drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 1000; display: flex; justify-content: flex-end; }
 .note-drawer { width: min(460px, 92vw); height: 100%; background: var(--color-paper); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; }
 .note-drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: var(--rule-hair); }
-.note-drawer-close { background: none; border: none; font-size: 18px; cursor: pointer; }
+.note-drawer-close { min-height: 0; background: none; border: none; font-size: 18px; cursor: pointer; padding: 0 4px; }
 .note-drawer-body { padding: 18px; overflow-y: auto; }
 .note-drawer-cover { width: 100%; max-height: 240px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 12px; }
 .note-drawer-meta { font-size: 12px; color: var(--color-ink-soft); margin: 4px 0; }

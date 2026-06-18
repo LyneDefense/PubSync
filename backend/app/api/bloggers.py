@@ -13,9 +13,9 @@ from app.blogger_distillation.service import (
     delete_snapshot,
     list_snapshots,
     refresh_blogger_profile,
-    rename_snapshot,
     set_blogger_favorite,
     update_blogger,
+    update_snapshot,
 )
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import get_db
@@ -390,6 +390,29 @@ def distill_blogger_endpoint(
     return task
 
 
+def _valid_blogger_post_ids(db: Session, tenant_id: int, blogger_id: int, post_ids: list[int]) -> list[int]:
+    """只保留属于该博主且未下架的笔记 id,保持入参顺序。"""
+    valid = set(
+        db.scalars(
+            select(BloggerPost.id).where(
+                BloggerPost.tenant_id == tenant_id,
+                BloggerPost.blogger_id == blogger_id,
+                BloggerPost.status != "delisted",
+                BloggerPost.id.in_(post_ids),
+            )
+        )
+    )
+    return [pid for pid in post_ids if pid in valid]
+
+
+def _require_min_snapshot_samples(post_ids: list[int]) -> None:
+    if len(post_ids) < settings.distill_min_samples:
+        raise HTTPException(
+            status_code=400,
+            detail=f"快照至少需要 {settings.distill_min_samples} 篇有效笔记（建议 ≥{settings.distill_recommend_samples} 篇）",
+        )
+
+
 @router.get("/bloggers/{blogger_id}/snapshots", response_model=list[BloggerSnapshotRead])
 def list_snapshots_endpoint(
     blogger_id: int,
@@ -412,18 +435,8 @@ def create_snapshot_endpoint(
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Blogger not found")
-    # 只保留属于该博主且未下架的笔记。
-    valid_ids = set(
-        db.scalars(
-            select(BloggerPost.id).where(
-                BloggerPost.tenant_id == tenant.id,
-                BloggerPost.blogger_id == blogger_id,
-                BloggerPost.status != "delisted",
-                BloggerPost.id.in_(payload.post_ids),
-            )
-        )
-    )
-    post_ids = [pid for pid in payload.post_ids if pid in valid_ids]
+    post_ids = _valid_blogger_post_ids(db, tenant.id, blogger_id, payload.post_ids)
+    _require_min_snapshot_samples(post_ids)
     name = payload.name.strip() or f"自定义选材 · {len(post_ids)} 篇"
     try:
         return create_snapshot(db, tenant.id, blogger_id, name, post_ids)
@@ -432,20 +445,24 @@ def create_snapshot_endpoint(
 
 
 @router.patch("/bloggers/{blogger_id}/snapshots/{snapshot_id}", response_model=BloggerSnapshotRead)
-def rename_snapshot_endpoint(
+def update_snapshot_endpoint(
     blogger_id: int,
     snapshot_id: int,
     payload: BloggerSnapshotUpdate,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> BloggerSnapshot:
+    existing = db.get(BloggerSnapshot, snapshot_id)
+    if not existing or existing.tenant_id != tenant.id or existing.blogger_id != blogger_id:
+        raise HTTPException(status_code=404, detail="快照不存在或不属于该博主")
+    post_ids: list[int] | None = None
+    if payload.post_ids is not None:
+        post_ids = _valid_blogger_post_ids(db, tenant.id, blogger_id, payload.post_ids)
+        _require_min_snapshot_samples(post_ids)
     try:
-        snapshot = rename_snapshot(db, tenant.id, snapshot_id, payload.name)
+        return update_snapshot(db, tenant.id, snapshot_id, name=payload.name, post_ids=post_ids)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if snapshot.blogger_id != blogger_id:
-        raise HTTPException(status_code=404, detail="快照不属于该博主")
-    return snapshot
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/bloggers/{blogger_id}/snapshots/{snapshot_id}", status_code=204)

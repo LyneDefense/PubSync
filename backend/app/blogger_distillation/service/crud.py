@@ -51,14 +51,28 @@ def create_snapshot(db: Session, tenant_id: int, blogger_id: int, name: str, pos
     return snapshot
 
 
-def rename_snapshot(db: Session, tenant_id: int, snapshot_id: int, name: str) -> BloggerSnapshot:
+def update_snapshot(
+    db: Session,
+    tenant_id: int,
+    snapshot_id: int,
+    *,
+    name: str | None = None,
+    post_ids: list[int] | None = None,
+) -> BloggerSnapshot:
+    """改名 / 重选笔记。name、post_ids 可单独或一起传(None 表示不动该字段)。"""
     snapshot = db.get(BloggerSnapshot, snapshot_id)
     if not snapshot or snapshot.tenant_id != tenant_id:
         raise ValueError("快照不存在或不属于当前工作空间")
-    clean = (name or "").strip()
-    if not clean:
-        raise ValueError("快照名称不能为空")
-    snapshot.name = clean
+    if name is not None:
+        clean = name.strip()
+        if not clean:
+            raise ValueError("快照名称不能为空")
+        snapshot.name = clean
+    if post_ids is not None:
+        clean_ids = [int(x) for x in post_ids]
+        if not clean_ids:
+            raise ValueError("快照至少要包含一篇笔记")
+        snapshot.post_ids_json = json.dumps(clean_ids, ensure_ascii=False)
     db.commit()
     db.refresh(snapshot)
     return snapshot
