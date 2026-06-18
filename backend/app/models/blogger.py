@@ -143,6 +143,9 @@ class BloggerDistillationRun(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
     collection_run_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_collection_runs.id"), nullable=True, index=True)
+    # 蒸馏选材来源:自定义蒸馏指向快照(自动蒸馏为 NULL);selection_json 记录本次实际蒸的 post_ids 与来源 auto/custom。
+    snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("blogger_snapshots.id"), nullable=True, index=True)
+    selection_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}", server_default="{}")
     task_id: Mapped[str | None] = mapped_column(ForeignKey("operation_tasks.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -183,3 +186,33 @@ class BloggerSkill(Base):
     blogger: Mapped[BloggerProfile] = relationship()
     run: Mapped[BloggerDistillationRun] = relationship()
     tenant: Mapped[Tenant] = relationship()
+
+
+class BloggerSnapshot(Base):
+    """蒸馏选材快照:用户自定义蒸馏时勾选的一组笔记,命名留存,可复用/回看。"""
+
+    __tablename__ = "blogger_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    # 选中的 BloggerPost id 列表(JSON 数组)。
+    post_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    blogger: Mapped[BloggerProfile] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+    @property
+    def post_ids(self) -> list[int]:
+        try:
+            data = json.loads(self.post_ids_json or "[]")
+        except (json.JSONDecodeError, TypeError):
+            return []
+        return [int(x) for x in data if isinstance(x, (int, str)) and str(x).isdigit()]
+
+    @property
+    def post_count(self) -> int:
+        return len(self.post_ids)

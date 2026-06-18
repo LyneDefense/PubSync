@@ -16,7 +16,11 @@ from app.blogger_distillation.service.collection import (
 from app.blogger_distillation.service.crud import (
     archive_active_skills,
     create_blogger,
+    create_snapshot,
     delete_blogger,
+    delete_snapshot,
+    list_snapshots,
+    rename_snapshot,
     set_blogger_favorite,
     update_blogger,
 )
@@ -53,6 +57,10 @@ __all__ = [
     "update_blogger",
     "set_blogger_favorite",
     "delete_blogger",
+    "list_snapshots",
+    "create_snapshot",
+    "rename_snapshot",
+    "delete_snapshot",
     "run_blogger_collection",
     "run_blogger_url_collection",
     "refresh_blogger_profile",

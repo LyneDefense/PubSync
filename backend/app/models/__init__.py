@@ -13,6 +13,7 @@ from app.models.blogger import (
     BloggerPost,
     BloggerProfile,
     BloggerSkill,
+    BloggerSnapshot,
 )
 from app.models.common import utc_now
 from app.models.cost_event import CostEvent
@@ -58,6 +59,7 @@ __all__ = [
     "BloggerCollectionPost",
     "BloggerDistillationRun",
     "BloggerSkill",
+    "BloggerSnapshot",
     "XhsPublishPackage",
     "AccountAuditRun",
 ]

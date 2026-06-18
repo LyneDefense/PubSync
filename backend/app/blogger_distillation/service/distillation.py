@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -15,10 +14,6 @@ from app.synthesis import Critic, SynthesisBudget, SynthesisTrace, SensorResult,
 from app.blogger_distillation import analysis, artifacts
 from app.blogger_distillation.modality import (
     ALL as SCOPE_ALL,
-    IMAGE_TEXT,
-    TALKING_VIDEO,
-    VISUAL_VIDEO,
-    subtype_label,
 )
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.events import (
@@ -29,8 +24,6 @@ from app.blogger_distillation.service.events import (
 from app.blogger_distillation.tikhub_client import TikHubUsage
 from app.config import Settings
 from app.models import (
-    BloggerCollectionPost,
-    BloggerCollectionRun,
     BloggerDistillationRun,
     BloggerPost,
     BloggerProfile,
@@ -71,24 +64,25 @@ def run_blogger_distillation(
     task_id: str,
     tenant_id: int,
     blogger_id: int,
-    collection_run_id: int,
+    post_ids: list[int],
+    source: str = "custom",
+    snapshot_id: int | None = None,
     mode: str = "A",
-    subtypes: list[str] | None = None,
 ) -> DistillationResult:
     mode = normalize_mode(mode)
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("博主不存在或不属于当前工作空间")
-    collection_run = db.get(BloggerCollectionRun, collection_run_id)
-    if not collection_run or collection_run.tenant_id != tenant_id or collection_run.blogger_id != blogger.id:
-        raise ValueError("采集批次不存在或不属于当前博主")
-    if collection_run.status != "succeeded":
-        raise ValueError("只能基于已完成的采集批次进行蒸馏")
+    ids = [int(x) for x in (post_ids or [])]
+    if not ids:
+        raise ValueError("没有选择任何笔记")
 
     run = BloggerDistillationRun(
         tenant_id=tenant_id,
         blogger_id=blogger.id,
-        collection_run_id=collection_run.id,
+        collection_run_id=None,
+        snapshot_id=snapshot_id,
+        selection_json=json.dumps({"source": source, "post_ids": ids}, ensure_ascii=False),
         task_id=task_id,
         status="running",
     )
@@ -97,19 +91,11 @@ def run_blogger_distillation(
     db.refresh(run)
     try:
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        record_task_event(db, tenant_id, task_id, "采集批次", "succeeded", f"使用采集批次 #{collection_run.id}，样本={collection_run.post_count}")
-        post_ids = list(
-            db.scalars(
-                select(BloggerCollectionPost.post_id)
-                .where(BloggerCollectionPost.collection_run_id == collection_run.id)
-                .order_by(BloggerCollectionPost.position.asc(), BloggerCollectionPost.id.asc())
-            )
-        )
         posts = list(
             db.scalars(
                 select(BloggerPost)
                 .where(
-                    BloggerPost.id.in_(post_ids),
+                    BloggerPost.id.in_(ids),
                     BloggerPost.tenant_id == tenant_id,
                     BloggerPost.blogger_id == blogger.id,
                     BloggerPost.status != "delisted",
@@ -117,44 +103,32 @@ def run_blogger_distillation(
                 .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
             )
         )
-        if not posts:
-            raise ValueError("采集批次没有可用于蒸馏的样本")
-        # 按所选内容模态过滤 + 最低样本门槛;空=全选=通用 skill。
-        valid_subtypes = (IMAGE_TEXT, TALKING_VIDEO, VISUAL_VIDEO)
-        selected = [s for s in (subtypes or []) if s in valid_subtypes]
-        if selected:
-            counts = Counter(post.content_subtype for post in posts)
-            too_few = [s for s in selected if counts.get(s, 0) < settings.distill_min_samples_per_subtype]
-            if too_few:
-                labels = "、".join(subtype_label(s) for s in too_few)
-                raise ValueError(f"以下模态样本不足 {settings.distill_min_samples_per_subtype} 条，无法蒸馏：{labels}")
-            posts = [post for post in posts if post.content_subtype in selected]
-            if not posts:
-                raise ValueError("所选模态在该采集批次没有样本")
-            scope = selected
-            record_task_event(
-                db, tenant_id, task_id, "蒸馏范围", "succeeded",
-                f"按所选模态蒸馏：{('、'.join(subtype_label(s) for s in selected))}，样本 {len(posts)} 条",
+        if len(posts) < settings.distill_min_samples:
+            raise ValueError(
+                f"用于蒸馏的笔记只有 {len(posts)} 篇，至少需要 {settings.distill_min_samples} 篇"
+                f"（建议 ≥{settings.distill_recommend_samples} 篇,样本越多越准）"
             )
-        else:
+        # 选材来源:自动=通用 skill;自定义=按所选笔记的模态推导 scope。
+        if source == "auto":
             scope = [SCOPE_ALL]
+        else:
+            present = sorted({post.content_subtype for post in posts if post.content_subtype and post.content_subtype != "unknown"})
+            scope = present or [SCOPE_ALL]
+        record_task_event(
+            db, tenant_id, task_id, "蒸馏选材", "succeeded",
+            f"{'自动蒸馏(高赞)' if source == 'auto' else '自定义选材'}:{len(posts)} 篇笔记",
+        )
         record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         stats = analysis.analyze_posts(posts)
-        try:
-            collection_summary = json.loads(collection_run.summary_json or "{}")
-            if isinstance(collection_summary, dict) and collection_summary.get("quality_report"):
-                stats["quality_report"] = collection_summary["quality_report"]
-        except json.JSONDecodeError:
-            pass
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
         diagnostics = build_distillation_diagnostics(posts, stats)
         logger.info(
-            "认知蒸馏诊断：任务ID=%s，平台=%s，博主ID=%s，批次ID=%s，样本=%s，视频=%s，转写样本=%s，总转写字数=%s，评论=%s，stats字符=%s，发送字符=%s，模型=%s",
+            "认知蒸馏诊断：任务ID=%s，平台=%s，博主ID=%s，来源=%s，样本=%s，视频=%s，转写样本=%s，总转写字数=%s，评论=%s，stats字符=%s，发送字符=%s，模型=%s",
             task_id,
             blogger.platform,
             blogger.id,
-            collection_run.id,
+            source,
             diagnostics["sample_count"],
             diagnostics["video_count"],
             diagnostics["transcript_count"],
@@ -211,10 +185,6 @@ def run_blogger_distillation(
         run.sample_count = len(posts)
         run.hot_post_count = len(stats["hot_posts"])
         run.comment_count = stats["comment_total"]
-        run.tikhub_request_count = collection_run.tikhub_request_count
-        run.tikhub_estimated_cost_usd = collection_run.tikhub_estimated_cost_usd
-        run.tikhub_cost_min_usd = collection_run.tikhub_cost_min_usd
-        run.tikhub_cost_max_usd = collection_run.tikhub_cost_max_usd
         run.report_json = json.dumps(
             {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "synthesis": synthesis_trace.to_dict()},
             ensure_ascii=False,
@@ -230,9 +200,8 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成，等待确认：批次 #{collection_run.id}，质量评分 {quality['score']}（{quality['grade']}），自我修订 {synthesis_trace.revisions} 次",
+            f"蒸馏完成，等待确认：质量评分 {quality['score']}（{quality['grade']}），自我修订 {synthesis_trace.revisions} 次",
             {
-                "collection_run_id": collection_run.id,
                 "run_id": run.id,
                 "skill_id": skill.id,
                 "mode": mode,

@@ -66,11 +66,38 @@ class BloggerSearchResultRead(BaseModel):
 
 
 class BloggerDistillRequest(BaseModel):
-    collection_run_id: int
+    # auto=自动蒸馏(系统预设:高赞 top-N);custom=自定义(选快照 或 手选 N 篇)。
+    source: str = Field(default="auto", pattern="^(auto|custom)$")
+    # custom 手选笔记 id(与 snapshot_id 二选一;手选会自动存一个快照)。
+    post_ids: list[int] = Field(default_factory=list)
+    # custom 复用已有快照。
+    snapshot_id: int | None = None
+    # 自动存快照时的命名(留空则后端自动生成)。
+    snapshot_name: str = Field(default="", max_length=160)
     # A=拆解对标博主（默认）；B=诊断我的账号。
     mode: str = Field(default="A")
-    # 要蒸馏的内容模态(image_text/talking_video/visual_video);空=全选=通用 skill。
-    subtypes: list[str] = Field(default_factory=list)
+
+
+class BloggerSnapshotCreate(BaseModel):
+    name: str = Field(default="", max_length=160)
+    post_ids: list[int] = Field(min_length=1)
+
+
+class BloggerSnapshotUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class BloggerSnapshotRead(BaseModel):
+    id: int
+    tenant_id: int
+    blogger_id: int
+    name: str
+    post_ids: list[int]
+    post_count: int
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectEstimate(BaseModel):
@@ -161,6 +188,8 @@ class BloggerDistillationRunRead(BaseModel):
     tenant_id: int
     blogger_id: int
     collection_run_id: int | None
+    snapshot_id: int | None = None
+    selection_json: str = "{}"
     task_id: str | None
     status: str
     sample_count: int

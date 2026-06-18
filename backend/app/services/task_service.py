@@ -213,21 +213,23 @@ def run_blogger_url_collection_task(
 def run_blogger_distillation_task(
     task_id: str,
     blogger_id: int,
-    collection_run_id: int,
+    post_ids: list[int],
+    source: str = "custom",
+    snapshot_id: int | None = None,
     mode: str = "A",
-    subtypes: list[str] | None = None,
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
-        mark_task_running(db, task, "正在基于已采集样本蒸馏 Skill")
+        mark_task_running(db, task, "正在基于所选样本蒸馏 Skill")
         result = run_blogger_distillation(
             db=db,
             settings=get_settings(),
             task_id=task_id,
             tenant_id=task.tenant_id,
             blogger_id=blogger_id,
-            collection_run_id=collection_run_id,
+            post_ids=post_ids,
+            source=source,
+            snapshot_id=snapshot_id,
             mode=mode,
-            subtypes=subtypes,
         )
         mark_task_succeeded(db, task, f"博主蒸馏完成，等待确认：{result.skill.name}")
         logger.info("任务成功：任务ID=%s，类型=博主蒸馏，运行ID=%s，Skill ID=%s", task_id, result.run.id, result.skill.id)

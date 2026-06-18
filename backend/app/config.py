@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     talking_video_min_transcript_chars: int = 200
     # 蒸馏时每个被选模态的最低样本数,不足则拒绝(避免样本太少蒸出垃圾)。
     distill_min_samples_per_subtype: int = 5
+    # 蒸馏选材:最低样本硬下限(<此值拒绝)、软建议值(界面提示)、自动蒸馏取高赞 top-N。
+    distill_min_samples: int = 8
+    distill_recommend_samples: int = 15
+    blogger_auto_distill_top_n: int = 30
     # 候选翻页:动态翻页的安全上限(最多翻这么多条候选,防超大号无限翻);只翻列表不抓详情,成本低。
     # 最新优先:翻到"没采过的够 N 条"就停;高赞优先:翻到底或到此上限再排序。系统决定,用户端不暴露。
     candidate_pool_cap: int = 600

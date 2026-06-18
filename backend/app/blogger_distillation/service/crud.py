@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -11,12 +13,63 @@ from app.models import (
     BloggerPost,
     BloggerProfile,
     BloggerSkill,
+    BloggerSnapshot,
     OperationTask,
     OperationTaskEvent,
     XhsPublishPackage,
 )
 
 _UNSET = object()
+
+
+def list_snapshots(db: Session, tenant_id: int, blogger_id: int) -> list[BloggerSnapshot]:
+    return list(
+        db.scalars(
+            select(BloggerSnapshot)
+            .where(BloggerSnapshot.tenant_id == tenant_id, BloggerSnapshot.blogger_id == blogger_id)
+            .order_by(BloggerSnapshot.created_at.desc(), BloggerSnapshot.id.desc())
+        )
+    )
+
+
+def create_snapshot(db: Session, tenant_id: int, blogger_id: int, name: str, post_ids: list[int]) -> BloggerSnapshot:
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("博主不存在或不属于当前工作空间")
+    clean_ids = [int(x) for x in (post_ids or [])]
+    if not clean_ids:
+        raise ValueError("快照至少要包含一篇笔记")
+    snapshot = BloggerSnapshot(
+        tenant_id=tenant_id,
+        blogger_id=blogger_id,
+        name=(name or "").strip() or "未命名快照",
+        post_ids_json=json.dumps(clean_ids, ensure_ascii=False),
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return snapshot
+
+
+def rename_snapshot(db: Session, tenant_id: int, snapshot_id: int, name: str) -> BloggerSnapshot:
+    snapshot = db.get(BloggerSnapshot, snapshot_id)
+    if not snapshot or snapshot.tenant_id != tenant_id:
+        raise ValueError("快照不存在或不属于当前工作空间")
+    clean = (name or "").strip()
+    if not clean:
+        raise ValueError("快照名称不能为空")
+    snapshot.name = clean
+    db.commit()
+    db.refresh(snapshot)
+    return snapshot
+
+
+def delete_snapshot(db: Session, tenant_id: int, snapshot_id: int) -> None:
+    snapshot = db.get(BloggerSnapshot, snapshot_id)
+    if not snapshot or snapshot.tenant_id != tenant_id:
+        raise ValueError("快照不存在或不属于当前工作空间")
+    db.delete(snapshot)
+    db.commit()
 
 
 def archive_active_skills(db: Session, tenant_id: int, blogger_id: int) -> None:

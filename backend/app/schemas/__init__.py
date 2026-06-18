@@ -33,6 +33,9 @@ from app.schemas.blogger import (
     BloggerProfileUpdate,
     BloggerSearchResultRead,
     BloggerSkillRead,
+    BloggerSnapshotCreate,
+    BloggerSnapshotRead,
+    BloggerSnapshotUpdate,
 )
 from app.schemas.news import NewsItemRead, NewsItemUpdate, NewsSourceRead
 from app.schemas.settings import SettingRead, SettingUpdate
@@ -118,6 +121,9 @@ __all__ = [
     "BloggerCollectionRunRead",
     "BloggerDistillationRunRead",
     "BloggerSkillRead",
+    "BloggerSnapshotCreate",
+    "BloggerSnapshotRead",
+    "BloggerSnapshotUpdate",
     "XhsPublishPackageCreate",
     "XhsPublishPackageDraftRead",
     "XhsPublishPackageSave",
