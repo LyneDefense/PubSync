@@ -71,7 +71,8 @@ class Settings(BaseSettings):
     asr_provider: str = "tencent_rec_task"
     asr_max_duration_seconds: int = 1800
     asr_poll_interval_seconds: int = 10
-    asr_timeout_seconds: int = 1800
+    # 识别结果轮询上限:超过则放弃该条并降级(从 30 分钟降到 5 分钟,真卡住的快速降级,不傻等)。
+    asr_timeout_seconds: int = 300
     # 单条视频下载的硬上限:总墙钟时长 + 文件体积。超限抛错降级(防个别视频/慢节点拖死整批采集)。
     asr_download_max_seconds: int = 120
     asr_download_max_mb: int = 80

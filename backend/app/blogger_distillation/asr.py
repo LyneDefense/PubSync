@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,13 +32,19 @@ class ASRResult:
     provider: str = "tencent_rec_task"
 
 
+# 识别轮询时,每隔这么多秒回报一次「识别中…已等待 Xs」心跳,让前端/日志不至于看起来卡死。
+ASR_PROGRESS_HEARTBEAT_SECONDS = 15
+
+ProgressCallback = Callable[[str], None]
+
+
 class ASRProvider:
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "") -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
         raise NotImplementedError
 
 
 class DisabledASRProvider(ASRProvider):
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "") -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
         raise ASRError("ASR 未开启")
 
 
@@ -60,7 +67,7 @@ class TencentRecTaskASRProvider(ASRProvider):
         if not shutil.which("ffmpeg"):
             raise ASRError("服务器未安装 ffmpeg，无法从视频提取音频")
 
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "") -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
         started_at = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="pubsync-asr-") as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -78,7 +85,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             cos_key = self.upload_audio(audio_path, source_id=source_id)
             audio_url = self.get_presigned_url(cos_key)
             task_id = self.create_rec_task(audio_url)
-            text = self.wait_result(task_id)
+            text = self.wait_result(task_id, on_progress=on_progress)
             elapsed = round(time.perf_counter() - started_at, 2)
             logger.info("腾讯云长音频识别完成：source=%s，task_id=%s，耗时=%ss，文本长度=%s", source_id, task_id, elapsed, len(text))
             return ASRResult(text=text, task_id=task_id, duration_seconds=duration, provider="tencent_rec_task")
@@ -170,7 +177,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             raise ASRError(f"腾讯云 ASR 未返回 TaskId：{payload}")
         return task_id
 
-    def wait_result(self, task_id: str) -> str:
+    def wait_result(self, task_id: str, on_progress: ProgressCallback | None = None) -> str:
         from tencentcloud.asr.v20190614 import asr_client, models
         from tencentcloud.common import credential
         from tencentcloud.common.profile.client_profile import ClientProfile
@@ -181,7 +188,9 @@ class TencentRecTaskASRProvider(ASRProvider):
         client_profile = ClientProfile(httpProfile=http_profile)
         cred = credential.Credential(self.settings.tencent_asr_secret_id, self.settings.tencent_asr_secret_key)
         client = asr_client.AsrClient(cred, self.settings.tencent_asr_region, client_profile)
-        deadline = time.monotonic() + self.settings.asr_timeout_seconds
+        started_at = time.monotonic()
+        deadline = started_at + self.settings.asr_timeout_seconds
+        last_beat = 0.0
         last_payload: dict[str, Any] = {}
         while time.monotonic() < deadline:
             request = models.DescribeTaskStatusRequest()
@@ -197,6 +206,13 @@ class TencentRecTaskASRProvider(ASRProvider):
                 return result
             if status in {"failed", "failure", "error", "3"}:
                 raise ASRError(f"腾讯云 ASR 任务失败：{error_msg or payload}")
+            # 识别中无任何输出会让前端/日志看起来卡死,这里按心跳间隔回报已等待时长。
+            elapsed = time.monotonic() - started_at
+            if elapsed - last_beat >= ASR_PROGRESS_HEARTBEAT_SECONDS:
+                last_beat = elapsed
+                logger.info("腾讯云 ASR 识别中：task_id=%s，已等待 %ds", task_id, int(elapsed))
+                if on_progress is not None:
+                    on_progress(f"识别中…已等待 {int(elapsed)}s")
             time.sleep(max(self.settings.asr_poll_interval_seconds, 3))
         raise ASRError(f"腾讯云 ASR 任务超时：task_id={task_id}，最后状态={last_payload}")
 

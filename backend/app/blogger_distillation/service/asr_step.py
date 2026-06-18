@@ -72,6 +72,9 @@ def handle_video_asr(
     if not size_bytes:
         size_bytes = probe_remote_size(video_url)
     size_label = f"{size_bytes / (1 << 20):.1f}MB" if size_bytes else "未知"
+    def on_progress(message: str) -> None:
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"{message}（note_id={candidate.external_id}）")
+
     try:
         record_task_event(
             db,
@@ -81,7 +84,7 @@ def handle_video_asr(
             "running",
             f"检测到视频笔记且无字幕，视频大小 {size_label}，开始转写：note_id={candidate.external_id}",
         )
-        result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id)
+        result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id, on_progress=on_progress)
         normalized["transcript_text"] = result.text
         normalized["asr_status"] = "succeeded"
         normalized["asr_error"] = ""
