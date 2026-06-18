@@ -66,7 +66,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             tmp_path = Path(tmp_dir)
             video_path = tmp_path / "source-video"
             audio_path = tmp_path / "audio.mp3"
-            download_file(video_url, video_path)
+            self.download_video(video_url, video_path)
             streams = probe_media_streams(video_path)
             if "audio" not in streams["types"]:
                 codecs = ", ".join(streams["codecs"][:6]) or "unknown"
@@ -82,6 +82,24 @@ class TencentRecTaskASRProvider(ASRProvider):
             elapsed = round(time.perf_counter() - started_at, 2)
             logger.info("腾讯云长音频识别完成：source=%s，task_id=%s，耗时=%ss，文本长度=%s", source_id, task_id, elapsed, len(text))
             return ASRResult(text=text, task_id=task_id, duration_seconds=duration, provider="tencent_rec_task")
+
+    def download_video(self, video_url: str, video_path: Path) -> None:
+        """下载视频:优先 https(快约 3 倍),失败则回退 http 重试一次;带总时长+体积硬上限。"""
+        max_seconds = self.settings.asr_download_max_seconds
+        max_bytes = max(self.settings.asr_download_max_mb, 1) * (1 << 20)
+        https_url = video_url.replace("http://", "https://", 1) if video_url.startswith("http://") else video_url
+        try:
+            download_file(https_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
+            return
+        except httpx.HTTPError as exc:
+            http_url = "http://" + https_url[len("https://") :] if https_url.startswith("https://") else https_url
+            if http_url == https_url:
+                raise ASRError(f"视频下载失败：{exc}") from exc
+            logger.info("https 下载失败,回退 http 重试：%s", exc)
+            try:
+                download_file(http_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
+            except httpx.HTTPError as exc2:
+                raise ASRError(f"视频下载失败(https/http 均失败)：{exc2}") from exc2
 
     def upload_audio(self, audio_path: Path, *, source_id: str = "") -> str:
         from qcloud_cos import CosConfig, CosS3Client
@@ -191,13 +209,26 @@ def build_asr_provider(settings: Settings) -> ASRProvider:
     raise ASRError(f"不支持的 ASR_PROVIDER：{settings.asr_provider}")
 
 
-def download_file(url: str, output_path: Path) -> None:
-    with httpx.stream("GET", url, timeout=120, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 PubSync/1.0"}) as response:
+def download_file(url: str, output_path: Path, *, max_seconds: int = 120, max_bytes: int = 0) -> None:
+    """流式下载,带总墙钟时长 + 文件体积硬上限。超限抛 ASRError(上层据此降级)。
+
+    httpx 的 timeout 是「单块读取」超时,对慢速涓流不生效;必须额外用总时长 deadline 兜底。
+    """
+    deadline = time.monotonic() + max_seconds if max_seconds and max_seconds > 0 else None
+    timeout = httpx.Timeout(connect=15.0, read=30.0, write=30.0, pool=15.0)
+    total = 0
+    with httpx.stream("GET", url, timeout=timeout, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 PubSync/1.0"}) as response:
         response.raise_for_status()
         with output_path.open("wb") as file:
             for chunk in response.iter_bytes():
-                if chunk:
-                    file.write(chunk)
+                if not chunk:
+                    continue
+                file.write(chunk)
+                total += len(chunk)
+                if max_bytes and total > max_bytes:
+                    raise ASRError(f"视频体积超过上限 {max_bytes // (1 << 20)}MB,跳过转写并降级分析")
+                if deadline and time.monotonic() > deadline:
+                    raise ASRError(f"视频下载超过 {max_seconds}s 仍未完成,跳过转写并降级分析")
 
 
 def probe_duration(input_path: Path) -> float | None:

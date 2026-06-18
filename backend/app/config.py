@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     asr_max_duration_seconds: int = 1800
     asr_poll_interval_seconds: int = 10
     asr_timeout_seconds: int = 1800
+    # 单条视频下载的硬上限:总墙钟时长 + 文件体积。超限抛错降级(防个别视频/慢节点拖死整批采集)。
+    asr_download_max_seconds: int = 120
+    asr_download_max_mb: int = 80
     tencent_asr_secret_id: str = ""
     tencent_asr_secret_key: str = ""
     tencent_asr_region: str = "ap-shanghai"
