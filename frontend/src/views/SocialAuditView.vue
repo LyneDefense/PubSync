@@ -18,9 +18,7 @@ import {
   openCreateMyAccountModal,
   pendingAction,
   selectedAuditRun,
-  selectedAuditRunId,
-  taskButtonStyle,
-  taskProgress
+  selectedAuditRunId
 } from '../composables/useWorkspaceStore'
 
 function toggle(arr: number[], id: number) {
@@ -92,14 +90,13 @@ function pickBench(id: number) {
     </p>
     <button
       type="button"
-      class="task-button primary audit-run"
+      class="primary audit-run"
       :class="{ running: pendingAction === 'audit' }"
-      :style="taskButtonStyle('audit')"
       :disabled="!auditForm.my_blogger_id || !auditForm.benchmark_blogger_id || Boolean(pendingAction)"
       :title="!auditForm.my_blogger_id ? '请先选择我的账号' : (!auditForm.benchmark_blogger_id ? '请先选择对标账号' : '')"
       @click="handleRunAccountAudit"
     >
-      <span>{{ pendingAction === 'audit' ? `对标中 ${Math.round(taskProgress.audit)}%` : '开始对标诊断' }}</span>
+      <span>{{ pendingAction === 'audit' ? '对标中…' : '开始对标诊断' }}</span>
     </button>
 
     <div class="audit-results">

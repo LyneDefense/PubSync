@@ -16,9 +16,7 @@ import {
   selectedSelfRun,
   selectedSelfRunId,
   selfDiagnoseRuns,
-  selfForm,
-  taskButtonStyle,
-  taskProgress
+  selfForm
 } from '../composables/useWorkspaceStore'
 
 function toggle(arr: number[], id: number) {
@@ -62,14 +60,13 @@ function pick(id: number) {
         <p v-if="!selfForm.my_blogger_id" class="form-hint">请先在上方选择一个「我的账号」(没有就点「去添加」)。</p>
         <button
           type="button"
-          class="task-button primary audit-run"
+          class="primary audit-run"
           :class="{ running: pendingAction === 'self-diagnose' }"
-          :style="taskButtonStyle('self-diagnose')"
           :disabled="!selfForm.my_blogger_id || Boolean(pendingAction)"
           :title="!selfForm.my_blogger_id ? '请先选择我的账号' : ''"
           @click="handleRunSelfDiagnose"
         >
-          <span>{{ pendingAction === 'self-diagnose' ? `诊断中 ${Math.round(taskProgress['self-diagnose'])}%` : '开始诊断' }}</span>
+          <span>{{ pendingAction === 'self-diagnose' ? '诊断中…' : '开始诊断' }}</span>
         </button>
       </div>
 

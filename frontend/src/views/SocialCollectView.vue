@@ -28,8 +28,6 @@ import {
   selectedBloggerId,
   selectedCollectionRunId,
   setCurrentSocialTab,
-  taskButtonStyle,
-  taskProgress,
   urlCollectInput,
   xhsCollectStep,
   xhsCollectStepLabels
@@ -119,8 +117,8 @@ function toggleContentType(value: string) {
             <section v-if="xhsCollectStep === 3" class="creation-stage-card active">
               <div class="inline-card-header">
                 <div><span>03 执行采集</span><h3>提交后台采集任务</h3></div>
-                <button type="button" class="task-button primary" :class="{ running: pendingAction === 'collect' }" :style="taskButtonStyle('collect')" :disabled="!selectedBloggerId || Boolean(pendingAction)" :title="!selectedBloggerId ? '请先在第 1 步选择或创建博主' : ''" @click="handleCollectBlogger">
-                  <span>{{ pendingAction === 'collect' ? `采集中 ${Math.round(taskProgress.collect)}%` : '开始采集' }}</span>
+                <button type="button" class="primary" :class="{ running: pendingAction === 'collect' }" :disabled="!selectedBloggerId || Boolean(pendingAction)" :title="!selectedBloggerId ? '请先在第 1 步选择或创建博主' : ''" @click="handleCollectBlogger">
+                  <span>{{ pendingAction === 'collect' ? '采集中…' : '开始采集' }}</span>
                 </button>
               </div>
               <p v-if="!selectedBloggerId" class="form-hint">还没选择博主——请回到第 1 步「选择博主」选择或创建一个博主。</p>

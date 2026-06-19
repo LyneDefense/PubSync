@@ -29,8 +29,7 @@ import {
   selectedBloggerRunCount,
   selectedBloggerRunId,
   selectedBloggerSkill,
-  subtypeLabel,
-  taskProgress
+  subtypeLabel
 } from '../composables/useWorkspaceStore'
 
 const distilling = computed(() => pendingAction.value === 'distill')
@@ -77,7 +76,7 @@ const selectedSkillScope = computed(() => {
           <div class="run-list-header"><strong>自动蒸馏</strong><span>高赞优先</span></div>
           <div class="distill-row">
             <button type="button" class="primary" :disabled="distilling" @click="handleAutoDistill">
-              {{ distilling ? `蒸馏中 ${Math.round(taskProgress.distill)}%` : '一键自动蒸馏' }}
+              {{ distilling ? '蒸馏中…' : '一键自动蒸馏' }}
             </button>
             <span class="form-hint">系统自动取该博主笔记池里赞藏最高的若干篇，按模态分车道，产出通用 Skill（不依赖快照）。</span>
           </div>

@@ -29,8 +29,6 @@ import {
   pendingAction,
   publicationName,
   setNewsTab,
-  taskButtonStyle,
-  taskProgress,
   visibleNewsTabs,
   wechatBriefStep,
   wechatBriefStepLabels,
@@ -66,13 +64,12 @@ import {
             <div><span>01 选新闻</span><h3>抓取并勾选候选新闻</h3></div>
             <button
               type="button"
-              class="task-button"
+              class=""
               :class="{ running: pendingAction === 'fetch' }"
-              :style="taskButtonStyle('fetch')"
               :disabled="Boolean(pendingAction)"
               @click="handleFetchNews"
             >
-              <span>{{ pendingAction === 'fetch' ? `抓取中 ${Math.round(taskProgress.fetch)}%` : '重新抓取' }}</span>
+              <span>{{ pendingAction === 'fetch' ? '抓取中…' : '重新抓取' }}</span>
             </button>
           </div>
           <div class="module-subnav">
@@ -124,13 +121,12 @@ import {
             <div><span>02 生成文章</span><h3>基于已勾选新闻生成文章</h3></div>
             <button
               type="button"
-              class="task-button primary"
+              class="primary"
               :class="{ running: pendingAction === 'generate' }"
-              :style="taskButtonStyle('generate')"
               :disabled="Boolean(pendingAction)"
               @click="handleGenerateArticle"
             >
-              <span>{{ pendingAction === 'generate' ? `生成中 ${Math.round(taskProgress.generate)}%` : '生成文章' }}</span>
+              <span>{{ pendingAction === 'generate' ? '生成中…' : '生成文章' }}</span>
             </button>
           </div>
           <p class="form-hint">当前文章状态：{{ articleStateLabel }}。生成完成后会自动进入「预览/编辑」。</p>

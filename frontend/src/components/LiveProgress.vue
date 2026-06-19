@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 全站统一的「实时进度」面板:展示当前正在执行任务的真实事件时间线。
 // 在 App.vue 的 workspace 顶部渲染一份,按当前平台/动作自动显隐(isVisibleTaskRunning)。
+import { ref, watch, nextTick } from 'vue'
 import {
   isVisibleTaskRunning,
   liveStage,
@@ -12,10 +13,23 @@ import {
   taskElapsedLabel,
   handleCancelDistillation
 } from '../composables/useWorkspaceStore'
+
+// 任务一开始就把进度面板滚动到可见处。手机上动作按钮在页面下方,面板在顶部,
+// 不滚动的话用户点完按钮根本看不到进度(block:center 避开吸顶的顶栏遮挡)。
+const root = ref<HTMLElement | null>(null)
+watch(
+  isVisibleTaskRunning,
+  (running) => {
+    if (running) {
+      nextTick(() => root.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
-  <section v-if="isVisibleTaskRunning" class="live-progress" role="status" aria-live="polite">
+  <section v-if="isVisibleTaskRunning" ref="root" class="live-progress" role="status" aria-live="polite">
     <header class="live-progress__head">
       <span class="live-progress__spinner" aria-hidden="true"></span>
       <div class="live-progress__headline">
