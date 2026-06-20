@@ -28,21 +28,11 @@ import {
   selectedBloggerRun,
   selectedBloggerRunCount,
   selectedBloggerRunId,
-  selectedBloggerSkill,
-  subtypeLabel
+  selectedBloggerSkill
 } from '../composables/useWorkspaceStore'
 
 const distilling = computed(() => pendingAction.value === 'distill')
 const runMeta = computed(() => distillRunMeta(selectedBloggerRun.value))
-const selectedSkillScope = computed(() => {
-  try {
-    const scope = JSON.parse(selectedBloggerSkill.value?.scope_json || '["__all__"]')
-    const items = (Array.isArray(scope) ? scope : []).filter((s: string) => s && s !== '__all__')
-    return items.length ? items.map((s: string) => subtypeLabel(s)).join(' + ') : '通用（全部模态）'
-  } catch {
-    return '通用（全部模态）'
-  }
-})
 </script>
 
 <template>
@@ -78,7 +68,7 @@ const selectedSkillScope = computed(() => {
             <button type="button" class="primary" :disabled="distilling" @click="handleAutoDistill">
               {{ distilling ? '蒸馏中…' : '一键自动蒸馏' }}
             </button>
-            <span class="form-hint">系统自动取该博主笔记池里赞藏最高的若干篇，按模态分车道，产出通用 Skill（不依赖快照）。</span>
+            <span class="form-hint">系统自动取该博主笔记池里赞藏最高的若干篇蒸馏出一个 Skill（不用先存快照）。想自己挑笔记就用下面的快照。</span>
           </div>
         </section>
 
@@ -125,7 +115,6 @@ const selectedSkillScope = computed(() => {
               <h3>第 {{ distillRunOrdinal(selectedBloggerRun.id) }} 次蒸馏</h3>
               <p class="distill-result-meta">
                 <span class="status-chip status-chip--neutral">{{ runMeta.mode === 'B' ? '诊断我的账号' : '拆解对标博主' }}</span>
-                <span v-if="selectedBloggerSkill" class="status-chip status-chip--info">适用：{{ selectedSkillScope }}</span>
                 <span v-if="runMeta.qualityScore !== null" class="status-chip" :class="`status-chip--${qualityTone(runMeta.qualityGrade)}`">质量自检 {{ runMeta.qualityScore }} 分 · {{ runMeta.qualityGrade }}</span>
                 <span v-if="runMeta.revisions > 0" class="status-chip status-chip--info">已自我修订 {{ runMeta.revisions }} 次</span>
               </p>
