@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // App.vue = 应用外壳:登录门、顶栏(平台快速切换 + 用户菜单)、侧栏导航,主区交给 <router-view>。
 // 路由是平台/页签的唯一真相;这里把 URL 同步进 store,各业务视图仍按 store 自门控显隐。
-import { onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import LoginView from './components/LoginView.vue'
@@ -72,10 +72,26 @@ watch(isAuthenticated, (authed) => {
   }
 })
 
-// 顶栏平台快速切换:进入该平台默认页签。
+// 顶栏「切换平台」:点按钮弹出弹窗,弹窗里选平台 → 进入该平台默认页签。
+const PLATFORM_OPTIONS: Array<{ id: PlatformParam; name: string; desc: string; badge?: string }> = [
+  { id: 'xhs', name: '小红书', desc: '对标蒸馏 · 账号诊断 · AI 创作' },
+  { id: 'douyin', name: '抖音', desc: '对标蒸馏 · 账号诊断 · AI 创作' },
+  { id: 'wechat', name: '公众号', desc: '每日早报(降级)', badge: '降级' }
+]
+const showPlatformModal = ref(false)
+const currentPlatform = computed<PlatformParam | ''>(() =>
+  route.name === 'workspace' ? (route.params.platform as PlatformParam) : ''
+)
+const currentPlatformName = computed(() => PLATFORM_OPTIONS.find((p) => p.id === currentPlatform.value)?.name || '选择平台')
+
 function switchPlatform(platform: PlatformParam) {
   if (route.name === 'workspace' && route.params.platform === platform) return
   router.push({ name: 'workspace', params: { platform, tab: DEFAULT_TAB[platform] } })
+}
+
+function choosePlatform(platform: PlatformParam) {
+  showPlatformModal.value = false
+  switchPlatform(platform)
 }
 
 // 侧栏页签点击:在当前平台内切换二级页签(路由驱动 store)。
@@ -122,35 +138,16 @@ onUnmounted(() => {
     <header class="topbar">
       <h1 class="topbar-title">多平台内容自动化</h1>
       <div class="topbar-controls">
-        <div class="platform-switch" role="tablist" aria-label="媒体平台">
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="activeMainTab === 'wechat' && route.name === 'workspace'"
-            :class="{ active: activeMainTab === 'wechat' && route.name === 'workspace' }"
-            @click="switchPlatform('wechat')"
-          >
-            公众号
-          </button>
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="activeMainTab === 'xhs' && route.name === 'workspace'"
-            :class="{ active: activeMainTab === 'xhs' && route.name === 'workspace' }"
-            @click="switchPlatform('xhs')"
-          >
-            小红书
-          </button>
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="activeMainTab === 'douyin' && route.name === 'workspace'"
-            :class="{ active: activeMainTab === 'douyin' && route.name === 'workspace' }"
-            @click="switchPlatform('douyin')"
-          >
-            抖音
-          </button>
-        </div>
+        <button
+          type="button"
+          class="platform-switch-btn"
+          aria-haspopup="dialog"
+          :aria-expanded="showPlatformModal"
+          @click="showPlatformModal = true"
+        >
+          <span class="platform-switch-current">{{ currentPlatformName }}</span>
+          <span class="platform-switch-hint">切换平台</span>
+        </button>
         <a v-if="isAdmin" class="admin-console-link" :href="adminConsoleUrl">管理后台</a>
         <div class="user-menu" @mouseleave="showUserMenu = false">
           <button
@@ -203,6 +200,36 @@ onUnmounted(() => {
       <main class="workspace">
         <router-view />
       </main>
+    </div>
+
+    <div v-if="showPlatformModal" class="modal-backdrop" role="presentation" @click.self="showPlatformModal = false">
+      <div class="modal-panel platform-modal" role="dialog" aria-modal="true" aria-label="切换平台">
+        <div class="section-header">
+          <div>
+            <h2>切换平台</h2>
+            <p class="toolbar-subtitle">选择要进入的平台工作台。</p>
+          </div>
+          <button type="button" class="ghost" @click="showPlatformModal = false">关闭</button>
+        </div>
+        <div class="platform-modal-list">
+          <button
+            v-for="option in PLATFORM_OPTIONS"
+            :key="option.id"
+            type="button"
+            class="platform-modal-item"
+            :class="{ active: option.id === currentPlatform }"
+            :aria-current="option.id === currentPlatform"
+            @click="choosePlatform(option.id)"
+          >
+            <span class="platform-modal-item-main">
+              <strong>{{ option.name }}</strong>
+              <small>{{ option.desc }}</small>
+            </span>
+            <span v-if="option.id === currentPlatform" class="platform-modal-current">当前</span>
+            <span v-else class="platform-modal-go">进入 →</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

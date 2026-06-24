@@ -301,31 +301,105 @@ button.task-button.running span {
   gap: var(--space-sm);
 }
 
-.platform-switch {
+/* 顶栏「切换平台」按钮:左边显示当前平台,右边是切换提示。 */
+.platform-switch-btn {
   display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs, 6px);
+  min-height: 32px;
+  padding: 0 var(--space-sm);
   border: 1px solid var(--color-rule-strong);
   border-radius: var(--radius-pill);
-  overflow: hidden;
   background: var(--color-surface);
-}
-
-.platform-switch button {
-  min-height: 32px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--color-ink-2);
-  padding: 0 var(--space-sm);
+  color: var(--color-ink-1);
   font-weight: 700;
+  cursor: pointer;
 }
 
-.platform-switch button:hover {
+.platform-switch-btn:hover {
   background: var(--color-paper-3);
 }
 
-.platform-switch button.active {
+.platform-switch-current {
+  color: var(--color-accent);
+}
+
+.platform-switch-hint {
+  color: var(--color-ink-2);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.platform-switch-hint::before {
+  content: '· ';
+  color: var(--color-rule-strong);
+}
+
+/* 切换平台弹窗 */
+.platform-modal {
+  max-width: 420px;
+}
+
+.platform-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs, 8px);
+}
+
+.platform-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.platform-modal-item:hover {
+  border-color: var(--color-accent);
+  background: var(--color-paper-3);
+}
+
+.platform-modal-item.active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  cursor: default;
+}
+
+.platform-modal-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.platform-modal-item-main strong {
+  font-size: 1.05rem;
+}
+
+.platform-modal-item-main small {
+  color: var(--color-ink-2);
+}
+
+.platform-modal-current {
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
   background: var(--color-accent);
   color: var(--color-paper);
+}
+
+.platform-modal-go {
+  flex: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-ink-2);
 }
 
 .app-body {
