@@ -145,16 +145,22 @@ class PubSyncStyleAdapter(EnvAdapter):
     def rollout(self, env_manager, skill_content: str, out_dir: str, **kwargs) -> list[dict]:
         items: list[dict] = env_manager
         results: list[dict] = []
+        skipped = 0
         for idx, item in enumerate(items, start=1):
-            try:
-                gen = generate_with_skill(
-                    self.settings, skill_content, item["topic"], item["modality"], model=self.gen_model
-                )
-            except Exception as exc:  # noqa: BLE001 - 单条生成失败记 0 分,不中断
-                gen = ""
-                if self.on_event:
-                    self.on_event("rollout", f"第 {idx}/{len(items)} 条生成失败:{type(exc).__name__}")
-            hard, soft = self.score_text(gen) if gen else (0, 0.0)
+            gen = ""
+            for _attempt in range(3):  # 瞬时超时重试,避免把网络抖动当成"不像"
+                try:
+                    gen = generate_with_skill(
+                        self.settings, skill_content, item["topic"], item["modality"], model=self.gen_model
+                    )
+                    if gen:
+                        break
+                except Exception:  # noqa: BLE001 - 重试,持续失败则跳过该条(不计 0 分污染信号)
+                    gen = ""
+            if not gen:
+                skipped += 1
+                continue  # 跳过:缺数据而非"风格差",不拉低均分
+            hard, soft = self.score_text(gen)
             results.append(
                 {
                     "id": item["id"],
@@ -167,5 +173,6 @@ class PubSyncStyleAdapter(EnvAdapter):
             )
         if self.on_event:
             avg = round(sum(r["soft"] for r in results) / max(len(results), 1) * 100, 1)
-            self.on_event("rollout", f"生成并打分 {len(results)} 条,平均风格相似度 {avg}")
+            note = f"(跳过 {skipped} 条生成失败)" if skipped else ""
+            self.on_event("rollout", f"生成并打分 {len(results)} 条,平均风格相似度 {avg}{note}")
         return results
