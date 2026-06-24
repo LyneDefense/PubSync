@@ -19,3 +19,6 @@ backend/.env
 node_modules/
 dist/
 build/
+
+# Claude Code 会话数据(本地,不入库)
+.claude/projects/
