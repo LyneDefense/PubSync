@@ -150,6 +150,7 @@ def run_poc(blogger_id: int, tenant_id: int = 1, epochs: int = 2, out_root: str 
     adapter = PubSyncStyleAdapter(
         settings, split.train, split.val, split.test, self_profile, floor_profile,
         gen_model=model, on_event=lambda stage, msg: log(f"[{stage}] {msg}"),
+        analyst_workers=2, minibatch_size=min(8, len(split.train)), edit_budget=3,
     )
 
     # whiteboard(白板 AI,无 skill)+ before(种子 skill)在 test 上

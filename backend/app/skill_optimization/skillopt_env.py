@@ -69,12 +69,21 @@ class PubSyncStyleAdapter(EnvAdapter):
         *,
         gen_model: str | None = None,
         on_event: EventFn | None = None,
+        analyst_workers: int = 2,
+        failure_only: bool = False,
+        minibatch_size: int = 8,
+        edit_budget: int = 3,
     ) -> None:
         self.settings = settings
         self.self_profile = self_profile
         self.floor_profile = floor_profile
         self.gen_model = gen_model
         self.on_event = on_event
+        # reflect 阶段(优化器产出编辑)需要的参数,默认 reflect 实现会读 self.*。
+        self.analyst_workers = analyst_workers
+        self.failure_only = failure_only
+        self.minibatch_size = minibatch_size
+        self.edit_budget = edit_budget
         self.dataloader = PubSyncStyleDataLoader(train, val, test)
 
     # —— env 装配 ——
@@ -99,6 +108,32 @@ class PubSyncStyleAdapter(EnvAdapter):
 
     def get_task_types(self) -> list[str]:
         return ["style_imitation"]
+
+    def reflect(self, results: list[dict], skill_content: str, out_dir: str, **kwargs) -> list[dict | None]:
+        """优化器:把打了分的 rollout 变成对 skill 的编辑。
+
+        显式实现(PyPI v0.1.0 把它设为抽象方法),委托给库内标准 minibatch reflect。
+        """
+        import os
+
+        from skillopt.gradient.reflect import run_minibatch_reflect
+
+        return run_minibatch_reflect(
+            results=results,
+            skill_content=skill_content,
+            prediction_dir=kwargs.get("prediction_dir", os.path.join(out_dir, "predictions")),
+            patches_dir=kwargs.get("patches_dir", os.path.join(out_dir, "patches")),
+            workers=self.analyst_workers,
+            failure_only=self.failure_only,
+            minibatch_size=self.minibatch_size,
+            edit_budget=self.edit_budget,
+            random_seed=kwargs.get("random_seed"),
+            error_system=self.get_error_minibatch_prompt(),
+            success_system=self.get_success_minibatch_prompt(),
+            step_buffer_context=kwargs.get("step_buffer_context", ""),
+            meta_skill_context=kwargs.get("meta_skill_context", ""),
+            update_mode=getattr(self, "_cfg", {}).get("skill_update_mode", "patch"),
+        )
 
     # —— 核心:用 skill 生成 + 打分 ——
     def score_text(self, text: str) -> tuple[int, float]:
