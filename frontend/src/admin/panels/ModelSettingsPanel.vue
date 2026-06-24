@@ -72,6 +72,14 @@ function valueOf(key: string): string {
 const textKeyField = computed(() => field(TEXT_KEYS[textProvider.value]?.key))
 const advancedFields = computed(() => modelFields.value.filter((f) => !HANDLED.has(f.key)))
 
+// 某供应商的 key 是否已配置(读各自的 *_api_key 字段)。
+function keyConfigured(provider: string): boolean {
+  return Boolean(field(TEXT_KEYS[provider]?.key)?.configured)
+}
+// 文本/图像「可用」= 该供应商 key 已配置,或本次已填了新 key。未就绪则模型与应用置灰。
+const textReady = computed(() => keyConfigured(textProvider.value) || textKeyDraft.value.trim() !== '')
+const imageReady = computed(() => keyConfigured(imageProvider.value))
+
 function syncTextModelFromProvider() {
   const saved = valueOf(TEXT_KEYS[textProvider.value].model)
   const options = TEXT_MODELS[textProvider.value] || []
@@ -223,29 +231,37 @@ async function clearAdv(f: ConfigFieldView) {
         <div class="ms-grid">
           <label>供应商
             <select v-model="textProvider" @change="onTextProviderChange">
-              <option v-for="p in TEXT_PROVIDERS" :key="p.value" :value="p.value">{{ p.label }}</option>
+              <option v-for="p in TEXT_PROVIDERS" :key="p.value" :value="p.value">
+                {{ p.label }}{{ keyConfigured(p.value) ? ' ✓' : ' · 未配置 key' }}
+              </option>
             </select>
           </label>
-          <label>模型
-            <select v-model="textModelSel">
-              <option v-for="m in (TEXT_MODELS[textProvider] || [])" :key="m" :value="m">{{ m }}</option>
-              <option :value="CUSTOM">自定义…</option>
-            </select>
+          <label>
+            <span class="ms-keyhead">
+              {{ TEXT_PROVIDERS.find((p) => p.value === textProvider)?.label }} API Key
+              <span class="ms-badge" :class="textKeyField?.configured ? 'ms-badge--ok' : 'ms-badge--warn'">
+                {{ textKeyField?.configured ? '✓ 已配置' : '未配置' }}
+              </span>
+            </span>
+            <input
+              v-model="textKeyDraft"
+              type="password"
+              autocomplete="off"
+              :placeholder="textKeyField?.configured ? '已配置（留空保持不变）' : '请输入该供应商的 API Key'"
+            />
           </label>
         </div>
+        <p v-if="!textReady" class="ms-warn-line">⚠ 当前供应商的 API Key 未配置,请先在上方填写 Key,才能选用它的模型。</p>
+        <label class="ms-full">模型
+          <select v-model="textModelSel" :disabled="!textReady">
+            <option v-for="m in (TEXT_MODELS[textProvider] || [])" :key="m" :value="m">{{ m }}</option>
+            <option :value="CUSTOM">自定义…</option>
+          </select>
+        </label>
         <label v-if="textModelSel === CUSTOM" class="ms-full">自定义模型 ID
-          <input v-model="textModelCustom" type="text" placeholder="填该供应商的模型 ID" />
+          <input v-model="textModelCustom" type="text" :disabled="!textReady" placeholder="填该供应商的模型 ID" />
         </label>
-        <label class="ms-full">{{ TEXT_PROVIDERS.find((p) => p.value === textProvider)?.label }} API Key
-          <input
-            v-model="textKeyDraft"
-            type="password"
-            autocomplete="off"
-            :placeholder="textKeyField?.configured ? '已配置（留空则不变）' : '输入该供应商的 API Key'"
-          />
-          <small class="ms-sub">{{ textKeyField?.configured ? '🔒 已配置' : '未配置' }}</small>
-        </label>
-        <button type="button" class="primary" :disabled="busy === 'text'" @click="saveText">应用文本模型</button>
+        <button type="button" class="primary" :disabled="busy === 'text' || !textReady" @click="saveText">应用文本模型</button>
       </div>
 
       <!-- 图像模型 -->
@@ -255,20 +271,23 @@ async function clearAdv(f: ConfigFieldView) {
         <div class="ms-grid">
           <label>供应商
             <select v-model="imageProvider" @change="syncImageModelFromProvider">
-              <option v-for="p in IMAGE_PROVIDERS" :key="p.value" :value="p.value">{{ p.label }}</option>
+              <option v-for="p in IMAGE_PROVIDERS" :key="p.value" :value="p.value">
+                {{ p.label }}{{ keyConfigured(p.value) ? ' ✓' : ' · 未配置 key' }}
+              </option>
             </select>
           </label>
           <label>模型
-            <select v-model="imageModelSel">
+            <select v-model="imageModelSel" :disabled="!imageReady">
               <option v-for="m in (IMAGE_MODELS[imageProvider] || [])" :key="m" :value="m">{{ m }}</option>
               <option :value="CUSTOM">自定义…</option>
             </select>
           </label>
         </div>
+        <p v-if="!imageReady" class="ms-warn-line">⚠ {{ IMAGE_PROVIDERS.find((p) => p.value === imageProvider)?.label }} 的 API Key 未配置,请到上面「文本模型」卡选该供应商填一次 Key(key 共用)。</p>
         <label v-if="imageModelSel === CUSTOM" class="ms-full">自定义模型 ID
-          <input v-model="imageModelCustom" type="text" />
+          <input v-model="imageModelCustom" type="text" :disabled="!imageReady" />
         </label>
-        <button type="button" class="primary" :disabled="busy === 'image'" @click="saveImage">应用图像模型</button>
+        <button type="button" class="primary" :disabled="busy === 'image' || !imageReady" @click="saveImage">应用图像模型</button>
       </div>
 
       <!-- 高级:其余原始参数 -->
@@ -328,6 +347,35 @@ async function clearAdv(f: ConfigFieldView) {
 .ms-sub {
   color: var(--color-ink-2, #6b7280);
   font-size: var(--text-xs, 12px);
+}
+.ms-keyhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ms-badge {
+  font-size: var(--text-xs, 11px);
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+.ms-badge--ok {
+  background: var(--color-success-bg, #e8f5ec);
+  color: #2e9e5b;
+}
+.ms-badge--warn {
+  background: var(--color-danger-bg, #fdecec);
+  color: #c0392b;
+}
+.ms-warn-line {
+  margin: 10px 0 0;
+  font-size: var(--text-sm, 13px);
+  color: #c0392b;
+}
+select:disabled,
+input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ms-card > .primary {
   margin-top: 14px;
