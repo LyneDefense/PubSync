@@ -28,6 +28,7 @@ import {
   handleXhsCreatorBloggerChange,
   handleXhsCreatorSkillChange,
   isSocialPlatform,
+  myAccountsOnPlatform,
   openImagePreview,
   pendingAction,
   selectXhsTopicIdea,
@@ -253,6 +254,13 @@ import {
                   <h3>预览并决定是否保存</h3>
                 </div>
                 <div class="actions compact-actions">
+                  <label v-if="myAccountsOnPlatform.length" class="target-account">
+                    给哪个账号用
+                    <select v-model="xhsPackageForm.my_account_id" :disabled="!currentXhsDraft">
+                      <option :value="null">暂不指定</option>
+                      <option v-for="a in myAccountsOnPlatform" :key="a.id" :value="a.id">{{ a.display_name }}</option>
+                    </select>
+                  </label>
                   <button type="button" :disabled="!currentXhsDraft" @click="currentXhsDraft && copyText(xhsPackageCopyText(currentXhsDraft), '发布文案')">复制发布文案</button>
                   <button type="button" class="primary" :disabled="Boolean(pendingAction) || !currentXhsDraft" @click="handleSaveXhsPackage">
                     {{ pendingAction === 'xhs-package-save' ? '保存中' : '保存发布包' }}
@@ -260,6 +268,9 @@ import {
                   <button type="button" :disabled="!currentXhsDraft" @click="handleDiscardXhsDraft">放弃本次创作</button>
                 </div>
               </div>
+              <p v-if="!myAccountsOnPlatform.length && currentXhsDraft" class="field-hint">
+                还没有自己的{{ currentSocialPlatformName }}账号？到「我的账号」添加后，保存时可归到该账号，便于在效果看板按账号统计。
+              </p>
               <p v-if="!currentXhsDraft" class="empty-region">生成内容后，这里会显示本次创作的最终预览。保存后才会进入发布包历史。</p>
               <div v-else class="package-preview draft-preview">
                 <div class="package-preview-head">

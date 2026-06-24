@@ -1,8 +1,10 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
+from app.dashboard.service import mark_package_published
 from app.database import get_db
 from app.models import OperationTask, Tenant, XhsPublishPackage
 from app.queue import submit_background
@@ -24,6 +26,10 @@ from app.xhs_creation.service import (
 )
 
 router = APIRouter()
+
+
+class PublishMark(BaseModel):
+    published: bool = True
 
 
 @router.get("/xhs/publish-packages", response_model=list[XhsPublishPackageRead])
@@ -51,6 +57,19 @@ def create_xhs_publish_package_endpoint(
         return create_xhs_publish_package(db, tenant.id, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/xhs/publish-packages/{package_id}/mark-published", response_model=XhsPublishPackageRead)
+def mark_xhs_package_published_endpoint(
+    package_id: int,
+    payload: PublishMark,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> XhsPublishPackage:
+    try:
+        return mark_package_published(db, tenant.id, package_id, payload.published)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/xhs/package-drafts", response_model=XhsPublishPackageDraftRead)

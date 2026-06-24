@@ -14,6 +14,7 @@ import {
   currentSocialPlatformName,
   currentSocialTab,
   formatDate,
+  handleMarkPublished,
   isSocialPlatform,
   openImagePreview,
   selectedXhsPackage,
@@ -60,8 +61,18 @@ import {
                 <span>{{ selectedXhsPackageBloggerName }} · {{ xhsContentTypeLabel(selectedXhsPackage.content_type) }}</span>
                 <h3>{{ selectedXhsPackage.title }}</h3>
               </div>
-              <button type="button" @click="copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
+              <div class="actions compact-actions">
+                <button type="button" @click="copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
+                <button
+                  v-if="!selectedXhsPackage.published_at"
+                  type="button"
+                  class="primary"
+                  @click="handleMarkPublished(selectedXhsPackage, true)"
+                >我已发布</button>
+                <button v-else type="button" @click="handleMarkPublished(selectedXhsPackage, false)">已发布 ✓（点此撤销）</button>
+              </div>
             </div>
+            <p v-if="!selectedXhsPackage.published_at" class="field-hint">复制内容去{{ currentSocialPlatformName }}发布后，回来点「我已发布」，效果看板才能统计真实发布数与转化。</p>
             <div class="workspace-snapshot scoped-snapshot">
               <div>
                 <span>主题</span>

@@ -31,6 +31,7 @@ from app.database import SessionLocal
 from app.db.migrate import run_migrations
 from app.logging_config import configure_logging
 from app.services.auth_service import verify_token
+from app.dashboard.service import capture_daily_snapshots
 from app.services.task_service import scheduled_workspace_publish
 
 settings = get_settings()
@@ -54,6 +55,14 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=1,
         id="workspace_daily_publish",
+        replace_existing=True,
+    )
+    # 效果看板：每 12 小时给「我的账号」拍一次指标快照(同日幂等覆盖;没账号则空转)。
+    scheduler.add_job(
+        capture_daily_snapshots,
+        "interval",
+        hours=12,
+        id="account_metric_snapshot",
         replace_existing=True,
     )
     scheduler.start()

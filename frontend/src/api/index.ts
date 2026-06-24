@@ -41,6 +41,9 @@ import type {
   SelfDiagnoseCreate,
   WorkspaceConfig,
   WorkspaceConfigUpdate,
+  DashboardAccount,
+  DashboardGrowth,
+  DashboardOverview,
   XhsPublishPackage,
   XhsPublishPackageCreate,
   XhsPublishPackageDraft,
@@ -420,6 +423,26 @@ export function listBloggerSkills(platform: SocialPlatform = 'xhs') {
 
 export function listXhsPublishPackages() {
   return request<XhsPublishPackage[]>('/xhs/publish-packages')
+}
+
+export function markXhsPackagePublished(packageId: number, published: boolean) {
+  return request<XhsPublishPackage>(`/xhs/publish-packages/${packageId}/mark-published`, {
+    method: 'POST',
+    body: JSON.stringify({ published })
+  })
+}
+
+// —— 效果看板 ——
+export function getDashboardOverview(range = '30d') {
+  return request<DashboardOverview>(`/dashboard/overview?range=${range}`)
+}
+
+export function getAccountDashboard(accountId: number, range = '30d') {
+  return request<DashboardAccount>(`/dashboard/account/${accountId}?range=${range}`)
+}
+
+export function getAccountGrowth(accountId: number, range = '30d') {
+  return request<DashboardGrowth>(`/dashboard/account/${accountId}/growth?range=${range}`)
 }
 
 export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {

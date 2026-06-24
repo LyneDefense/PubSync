@@ -31,7 +31,7 @@ from app.models.workspace import (
     PublishingSettings,
     WeChatAccount,
 )
-from app.models.xhs import XhsPublishPackage
+from app.models.xhs import AccountMetricSnapshot, XhsPublishPackage
 
 __all__ = [
     "utc_now",
@@ -63,6 +63,7 @@ __all__ = [
     "BloggerSkill",
     "BloggerSnapshot",
     "XhsPublishPackage",
+    "AccountMetricSnapshot",
     "AccountAuditRun",
     "BenchmarkRecommendationRun",
     "SkillTrainingRun",

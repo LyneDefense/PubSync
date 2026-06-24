@@ -27,6 +27,7 @@ GROUPS: list[tuple[str, str]] = [
     ("tikhub", "采集 / TikHub"),
     ("benchmark", "对标博主搜寻"),
     ("asr", "ASR 语音转写"),
+    ("dashboard", "效果看板"),
 ]
 
 
@@ -59,6 +60,11 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("audit_max_revise_iterations", "model", "体检-最大修订次数", "int"),
     ConfigField("audit_min_quality_score", "model", "体检-质量阈值", "int"),
     ConfigField("audit_llm_critic_enabled", "model", "体检-启用 LLM 评审", "bool"),
+    # —— 效果看板 ——
+    ConfigField("dashboard_minutes_write_per_post", "dashboard", "省时-手写一篇估时(分钟)", "int"),
+    ConfigField("dashboard_minutes_ai_draft_per_post", "dashboard", "省时-AI起草一篇估时(分钟)", "int"),
+    ConfigField("dashboard_minutes_research_per_distill", "dashboard", "省时-一次蒸馏省下研究估时(分钟)", "int"),
+    ConfigField("dashboard_viral_multiplier", "dashboard", "爆款判定倍数(高于自身均值)", "float"),
     # —— 采集 / TikHub ——
     ConfigField("tikhub_base_url", "tikhub", "TikHub Base URL"),
     ConfigField("tikhub_api_key", "tikhub", "TikHub API Key", is_secret=True),

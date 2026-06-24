@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     creation_llm_critic_enabled: bool = True
     # 创作产出的平台限流词/违禁词规避（提示词规避 + 命中强制重写）。
     creation_compliance_enabled: bool = True
+    # 效果看板：省时估算常量（后台可调）+ 爆款判定倍数。
+    dashboard_minutes_write_per_post: int = 40   # 手写一篇估时（分钟）
+    dashboard_minutes_ai_draft_per_post: int = 8  # 用 AI 起草一篇估时（分钟）
+    dashboard_minutes_research_per_distill: int = 30  # 一次蒸馏省下的研究对标估时（分钟）
+    dashboard_viral_multiplier: float = 2.0  # 互动高于自身均值多少倍算「爆款」
     # 账号体检/对标的合成循环参数（偏诊断，阈值略低）。
     audit_max_revise_iterations: int = 1
     audit_min_quality_score: int = 75

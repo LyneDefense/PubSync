@@ -13,6 +13,8 @@ class XhsPublishPackageCreate(BaseModel):
     keywords: str = Field(default="", max_length=500)
     image_count_mode: str = Field(default="auto", pattern="^(auto|manual)$")
     requested_image_count: int | None = Field(default=None, ge=1, le=9)
+    # 这篇创作给我的哪个账号用;可空(用户未绑/还没添加自己的账号)。
+    my_account_id: int | None = None
 
 
 class XhsPublishPackageDraftRead(BaseModel):
@@ -58,6 +60,7 @@ class XhsPublishPackageSave(BaseModel):
     image_plan_json: str = "[]"
     image_urls_json: str = "[]"
     script_json: str = "{}"
+    my_account_id: int | None = None
     error_message: str | None = None
 
 
@@ -102,6 +105,8 @@ class XhsPublishPackageRead(BaseModel):
     image_urls_json: str
     script_json: str
     status: str
+    my_account_id: int | None = None
+    published_at: datetime | None = None
     error_message: str | None
     created_at: datetime
     updated_at: datetime

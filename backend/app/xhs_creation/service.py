@@ -126,10 +126,18 @@ def create_xhs_publish_package(
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("Skill 对应的博主不存在")
 
+    # 目标「我的账号」可选;给了就校验归属 + 是 mine 类型(没绑账号的用户传 None 即可)。
+    my_account_id = getattr(payload, "my_account_id", None)
+    if my_account_id is not None:
+        my_account = db.get(BloggerProfile, my_account_id)
+        if not my_account or my_account.tenant_id != tenant_id or my_account.account_type != "mine":
+            raise ValueError("目标账号不存在或不是「我的账号」")
+
     package = XhsPublishPackage(
         tenant_id=tenant_id,
         blogger_id=blogger.id,
         skill_id=skill.id,
+        my_account_id=my_account_id,
         content_type=payload.content_type,
         topic=payload.topic,
         target_audience=payload.target_audience,

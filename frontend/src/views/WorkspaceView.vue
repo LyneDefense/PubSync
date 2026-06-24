@@ -7,6 +7,7 @@ import LiveProgress from '../components/LiveProgress.vue'
 import OverviewView from './OverviewView.vue'
 import FindBenchmarkView from './FindBenchmarkView.vue'
 import SkillOptimizeView from './SkillOptimizeView.vue'
+import EffectsDashboardView from './EffectsDashboardView.vue'
 import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
@@ -87,11 +88,7 @@ import {
     description="未来支持不依赖对标博主、直接输入主题由 AI 自主创作内容。"
   />
 
-  <ComingSoonPanel
-    v-if="isSocialPlatform && currentSocialTab === 'effects'"
-    :title="`${currentSocialPlatformName}效果看板`"
-    description="未来在这里直观看到用平台后的帮助:对标差距收敛曲线、涨粉与互动趋势、产能与省时。"
-  />
+  <EffectsDashboardView />
 
   <SkillOptimizeView />
 

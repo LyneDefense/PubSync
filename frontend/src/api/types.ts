@@ -622,6 +622,7 @@ export interface XhsPublishPackageDraft {
   image_urls_json: string
   script_json: string
   status: string
+  my_account_id?: number | null
   error_message: string | null
   // 过程与评判(随草稿透传,不入库)。
   synthesis?: SynthesisTrace
@@ -742,7 +743,69 @@ export interface XhsPublishPackage {
   image_urls_json: string
   script_json: string
   status: string
+  my_account_id: number | null
+  published_at: string | null
   error_message: string | null
   created_at: string
   updated_at: string
+}
+
+// —— 效果看板 ——
+export interface DashboardActivity {
+  key: string
+  label: string
+  count: number
+  attempts: number
+  avg_seconds: number
+}
+export interface DashboardSimilarityPoint {
+  date: string | null
+  blogger_id: number
+  before: number
+  after: number
+  gap_closed: number
+  floor: number
+  ceiling: number
+  verdict: string
+}
+export interface DashboardOverview {
+  range: string
+  activities: DashboardActivity[]
+  creation: { created: number; published: number; conversion: number }
+  library: { benchmark_count: number; my_account_count: number; post_count: number }
+  saved_minutes: number
+  similarity_trend: DashboardSimilarityPoint[]
+  recent: Array<{ task_type: string; label: string; status: string; at: string | null }>
+}
+export interface DashboardAccount {
+  account: { id: number; display_name: string; follower_count: number; note_total: number | null; platform: string }
+  range: string
+  creation: { created: number; published: number; conversion: number }
+  saved_minutes: number
+  content: {
+    post_count: number
+    avg_interactions: number
+    viral_count: number
+    viral_rate: number
+    by_modality: Record<string, number>
+  }
+}
+export interface DashboardGrowthPoint {
+  date: string
+  follower_count: number
+  note_total: number | null
+  total_interactions: number
+}
+export interface DashboardGrowth {
+  account_id: number
+  range: string
+  points: DashboardGrowthPoint[]
+  events: Array<{ date: string; type: string; label: string }>
+  comparison: {
+    active_avg_daily: number | null
+    silent_avg_daily: number | null
+    active_weeks: number
+    silent_weeks: number
+  }
+  disclaimer: string
 }

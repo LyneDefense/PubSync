@@ -69,6 +69,10 @@ import {
   optimizeSkill,
   listSkillTrainingRuns,
   confirmSkillTrainingRun,
+  getDashboardOverview,
+  getAccountDashboard,
+  getAccountGrowth,
+  markXhsPackagePublished,
   setTenantId,
   startXhsPublishPackageDraftTask,
   updateArticle,
@@ -98,6 +102,9 @@ import type {
   NewsItem,
   OperationTask,
   OperationTaskEvent,
+  DashboardAccount,
+  DashboardGrowth,
+  DashboardOverview,
   SocialPlatform,
   SynthesisTrace,
   Tenant,
@@ -303,7 +310,9 @@ export const xhsPackageForm = reactive({
   content_goal: '知识分享',
   keywords: '',
   image_count_mode: 'auto' as 'auto' | 'manual',
-  requested_image_count: 3
+  requested_image_count: 3,
+  // 这篇给我的哪个账号用;null=暂不指定(没绑账号也能创作)。
+  my_account_id: null as number | null
 })
 
 export const profileForm = reactive({
@@ -390,6 +399,76 @@ export const currentSocialTab = computed<SocialTab>(() => (activeMainTab.value =
 // 当前平台是否已录入「我的账号」(概览页据此二选一显示引导/已录入卡)。
 export const currentMyAccount = computed(() => myAccounts.value.find((a) => a.platform === currentSocialPlatform.value) || null)
 export const hasMyAccount = computed(() => Boolean(currentMyAccount.value))
+// 当前平台下的「我的账号」列表(创作目标选择 + 效果看板账号切换共用)。
+export const myAccountsOnPlatform = computed(() => myAccounts.value.filter((a) => a.platform === currentSocialPlatform.value))
+
+// —— 效果看板 ——
+export const dashboardRange = ref<'7d' | '30d' | 'all'>('30d')
+export const dashboardOverview = ref<DashboardOverview | null>(null)
+export const dashboardAccountId = ref<number | null>(null)
+export const dashboardAccount = ref<DashboardAccount | null>(null)
+export const dashboardGrowth = ref<DashboardGrowth | null>(null)
+export const dashboardLoading = ref(false)
+
+export async function loadDashboard() {
+  dashboardLoading.value = true
+  try {
+    // A 层总能加载(租户级,和有没有「我的账号」无关)。
+    dashboardOverview.value = await getDashboardOverview(dashboardRange.value)
+    // B 层:默认选当前平台第一个「我的账号」;没有则留空(视图显示引导)。
+    if (dashboardAccountId.value && !myAccountsOnPlatform.value.some((a) => a.id === dashboardAccountId.value)) {
+      dashboardAccountId.value = null
+    }
+    if (!dashboardAccountId.value) {
+      dashboardAccountId.value = myAccountsOnPlatform.value[0]?.id ?? null
+    }
+    await loadDashboardAccount()
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '加载看板失败', true)
+  } finally {
+    dashboardLoading.value = false
+  }
+}
+
+async function loadDashboardAccount() {
+  const id = dashboardAccountId.value
+  if (!id) {
+    dashboardAccount.value = null
+    dashboardGrowth.value = null
+    return
+  }
+  const [acc, growth] = await Promise.all([
+    getAccountDashboard(id, dashboardRange.value),
+    getAccountGrowth(id, dashboardRange.value)
+  ])
+  dashboardAccount.value = acc
+  dashboardGrowth.value = growth
+}
+
+export async function selectDashboardAccount(accountId: number | null) {
+  dashboardAccountId.value = accountId
+  try {
+    await loadDashboardAccount()
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '加载账号成果失败', true)
+  }
+}
+
+export async function setDashboardRange(range: '7d' | '30d' | 'all') {
+  dashboardRange.value = range
+  await loadDashboard()
+}
+
+export async function handleMarkPublished(pkg: XhsPublishPackage, published: boolean) {
+  try {
+    const updated = await markXhsPackagePublished(pkg.id, published)
+    const idx = xhsPackages.value.findIndex((p) => p.id === updated.id)
+    if (idx >= 0) xhsPackages.value[idx] = updated
+    showMessage(published ? '已记录:这篇已发布 ✓' : '已撤销发布标记')
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+  }
+}
 export const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 export const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 export const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -2156,7 +2235,8 @@ export async function handleSaveXhsPackage() {
     return
   }
   await runAction('xhs-package-save', '正在保存发布包', async () => {
-    const pack = await saveXhsPublishPackage(currentXhsDraft.value!)
+    // 绑定目标「我的账号」(可空);用于效果看板按账号统计创作/发布/省时。
+    const pack = await saveXhsPublishPackage({ ...currentXhsDraft.value!, my_account_id: xhsPackageForm.my_account_id })
     await refreshXhsPackages(pack.id)
     currentXhsDraft.value = null
     activeXhsTab.value = 'history'
