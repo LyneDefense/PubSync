@@ -8,6 +8,7 @@ import type { CurrentUser } from '../api/types'
 import AccountsPanel from './panels/AccountsPanel.vue'
 import ConfigPanel from './panels/ConfigPanel.vue'
 import CostsPanel from './panels/CostsPanel.vue'
+import ModelSettingsPanel from './panels/ModelSettingsPanel.vue'
 import SystemSettingsPanel from './panels/SystemSettingsPanel.vue'
 import TaskQueuePanel from './panels/TaskQueuePanel.vue'
 
@@ -105,7 +106,7 @@ function logout() {
 
     <div class="admin-content">
       <AccountsPanel v-if="section === 'accounts'" />
-      <ConfigPanel v-else-if="section === 'models'" title="模型与生成" :group-keys="['model']" />
+      <ModelSettingsPanel v-else-if="section === 'models'" />
       <ConfigPanel v-else-if="section === 'collect'" title="采集 / ASR" :group-keys="['tikhub', 'asr']" />
       <TaskQueuePanel v-else-if="section === 'tasks'" />
       <CostsPanel v-else-if="section === 'costs'" />
