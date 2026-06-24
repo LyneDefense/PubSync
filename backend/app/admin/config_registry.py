@@ -32,7 +32,7 @@ GROUPS: list[tuple[str, str]] = [
 
 OVERRIDABLE: list[ConfigField] = [
     # —— 模型与生成 ——
-    ConfigField("llm_provider", "model", "文本模型供应商 (openai/minimax)"),
+    ConfigField("llm_provider", "model", "文本模型供应商 (openai/minimax/claude)"),
     ConfigField("image_provider", "model", "图像模型供应商 (openai/minimax)"),
     ConfigField("openai_base_url", "model", "OpenAI Base URL"),
     ConfigField("openai_api_key", "model", "OpenAI API Key", is_secret=True),
@@ -42,6 +42,9 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("minimax_api_key", "model", "MiniMax API Key", is_secret=True),
     ConfigField("minimax_text_model", "model", "MiniMax 文本模型"),
     ConfigField("minimax_image_model", "model", "MiniMax 图像模型"),
+    ConfigField("anthropic_base_url", "model", "Anthropic Base URL"),
+    ConfigField("anthropic_api_key", "model", "Anthropic/Claude API Key", is_secret=True),
+    ConfigField("anthropic_text_model", "model", "Claude 文本模型 (如 claude-sonnet-4-6)"),
     ConfigField("distill_text_model", "model", "蒸馏/体检专用文本模型(留空=用上面的)"),
     ConfigField("blogger_auto_tag_enabled", "model", "采集后自动打内容标签(LLM)", "bool"),
     ConfigField("blogger_tag_model", "model", "标签提炼专用模型(留空=用蒸馏模型)"),

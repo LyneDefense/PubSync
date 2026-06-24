@@ -25,6 +25,8 @@ def is_ai_enabled(settings: Settings) -> bool:
         return bool(settings.openai_api_key)
     if provider == "minimax":
         return bool(settings.minimax_api_key)
+    if provider in ("claude", "anthropic"):
+        return bool(settings.anthropic_api_key)
     return False
 
 
@@ -97,6 +99,8 @@ def create_json_response(settings: Settings, prompt: str, model: str | None = No
         text = minimax_text(settings, prompt, model=model)
     elif provider == "openai":
         text = openai_text(settings, prompt, model=model)
+    elif provider in ("claude", "anthropic"):
+        text = anthropic_text(settings, prompt, model=model)
     else:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
@@ -173,6 +177,30 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> s
     raise AIServiceError(f"MiniMax 文本响应中没有可解析内容：{data}")
 
 
+def anthropic_text(settings: Settings, prompt: str, model: str | None = None) -> str:
+    if not settings.anthropic_api_key:
+        raise AIServiceError("未配置 ANTHROPIC_API_KEY")
+    model = model or settings.anthropic_text_model
+    payload = {
+        "model": model,
+        "max_tokens": int(settings.anthropic_max_tokens),
+        "system": (
+            "你是严谨的助手。所有输出必须是合法 JSON。"
+            "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
+        ),
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    data = anthropic_post(settings, "/v1/messages", payload, timeout=180)
+    record_text_usage("anthropic", model, data)
+    content = data.get("content")
+    if isinstance(content, list):
+        texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+        joined = "".join(texts).strip()
+        if joined:
+            return joined
+    raise AIServiceError(f"Anthropic 文本响应中没有可解析内容：{data}")
+
+
 def supports_minimax_response_format(model: str) -> bool:
     return model.strip().lower() in {"minimax-text-01", "text-01"}
 
@@ -195,6 +223,8 @@ def repair_json_response(settings: Settings, raw_text: str) -> str:
         return minimax_text(settings, prompt)
     if provider == "openai":
         return openai_text(settings, prompt)
+    if provider in ("claude", "anthropic"):
+        return anthropic_text(settings, prompt)
     raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
 
@@ -270,6 +300,22 @@ def minimax_post(settings: Settings, path: str, payload: dict[str, Any], timeout
             json=payload,
         )
     return parse_json_response(response, "MiniMax")
+
+
+def anthropic_post(settings: Settings, path: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    if not settings.anthropic_api_key:
+        raise AIServiceError("未配置 ANTHROPIC_API_KEY")
+    with httpx.Client(timeout=timeout) as client:
+        response = client.post(
+            f"{settings.anthropic_base_url.rstrip('/')}{path}",
+            headers={
+                "x-api-key": settings.anthropic_api_key,
+                "anthropic-version": settings.anthropic_version,
+                "content-type": "application/json",
+            },
+            json=payload,
+        )
+    return parse_json_response(response, "Anthropic")
 
 
 def parse_json_response(response: httpx.Response, provider: str) -> dict[str, Any]:
