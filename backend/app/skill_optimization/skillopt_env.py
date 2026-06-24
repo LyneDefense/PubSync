@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from skillopt.datasets.base import BaseDataLoader, BatchSpec
 from skillopt.envs.base import EnvAdapter
@@ -73,8 +74,10 @@ class PubSyncStyleAdapter(EnvAdapter):
         failure_only: bool = False,
         minibatch_size: int = 8,
         edit_budget: int = 3,
+        gen_timeout: float = 90.0,
     ) -> None:
         self.settings = settings
+        self.gen_timeout = gen_timeout
         self.self_profile = self_profile
         self.floor_profile = floor_profile
         self.gen_model = gen_model
@@ -146,31 +149,38 @@ class PubSyncStyleAdapter(EnvAdapter):
         items: list[dict] = env_manager
         results: list[dict] = []
         skipped = 0
-        for idx, item in enumerate(items, start=1):
-            gen = ""
-            for _attempt in range(3):  # 瞬时超时重试,避免把网络抖动当成"不像"
-                try:
-                    gen = generate_with_skill(
-                        self.settings, skill_content, item["topic"], item["modality"], model=self.gen_model
-                    )
-                    if gen:
-                        break
-                except Exception:  # noqa: BLE001 - 重试,持续失败则跳过该条(不计 0 分污染信号)
-                    gen = ""
-            if not gen:
-                skipped += 1
-                continue  # 跳过:缺数据而非"风格差",不拉低均分
-            hard, soft = self.score_text(gen)
-            results.append(
-                {
-                    "id": item["id"],
-                    "hard": hard,
-                    "soft": soft,
-                    "topic": item["topic"],
-                    "predicted": gen,
-                    "gold": item["gold"],
-                }
-            )
+        # 单独的 executor 给每条生成加硬超时:慢/挂的调用不会拖死整轮(超时即跳过)。
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            for idx, item in enumerate(items, start=1):
+                gen = ""
+                for _attempt in range(3):  # 瞬时超时重试,避免把网络抖动当成"不像"
+                    try:
+                        fut = pool.submit(
+                            generate_with_skill,
+                            self.settings, skill_content, item["topic"], item["modality"], self.gen_model,
+                        )
+                        gen = fut.result(timeout=self.gen_timeout)
+                        if gen:
+                            break
+                    except Exception:  # noqa: BLE001 - 超时/失败重试,持续失败则跳过(不计 0 分污染信号)
+                        gen = ""
+                if not gen:
+                    skipped += 1
+                    continue  # 跳过:缺数据而非"风格差",不拉低均分
+                hard, soft = self.score_text(gen)
+                results.append(
+                    {
+                        "id": item["id"],
+                        "hard": hard,
+                        "soft": soft,
+                        "topic": item["topic"],
+                        "predicted": gen,
+                        "gold": item["gold"],
+                    }
+                )
+        finally:
+            pool.shutdown(wait=False)
         if self.on_event:
             avg = round(sum(r["soft"] for r in results) / max(len(results), 1) * 100, 1)
             note = f"(跳过 {skipped} 条生成失败)" if skipped else ""
