@@ -10,8 +10,7 @@ import { clearAuthToken, clearTenantId } from './api'
 import { DEFAULT_TAB, readLastPlatform } from './router'
 import type { PlatformParam } from './router'
 
-// 管理后台是独立入口(自带登录),仅给管理员一个跳转链接。
-const adminConsoleUrl = `${import.meta.env.BASE_URL}admin.html`
+// 管理后台是完全独立入口(admin.html,自带登录),不在工作台顶栏放入口,管理员直接访问 /PubSync/admin/。
 
 import {
   activeDouyinTab,
@@ -23,7 +22,6 @@ import {
   handleGlobalKeydown,
   handleLogin,
   handleLogout,
-  isAdmin,
   isAuthenticated,
   isLoggingIn,
   isSocialPlatform,
@@ -148,7 +146,6 @@ onUnmounted(() => {
           <span class="platform-switch-current">{{ currentPlatformName }}</span>
           <span class="platform-switch-hint">切换平台</span>
         </button>
-        <a v-if="isAdmin" class="admin-console-link" :href="adminConsoleUrl">管理后台</a>
         <div class="user-menu" @mouseleave="showUserMenu = false">
           <button
             type="button"
