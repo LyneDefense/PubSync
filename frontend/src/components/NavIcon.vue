@@ -17,7 +17,13 @@ const PATHS: Record<string, string> = {
   settings: '<path d="M4 8h8M18 8h2M4 16h2M12 16h8"/><circle cx="15" cy="8" r="2.2"/><circle cx="9" cy="16" r="2.2"/>',
   send: '<path d="M21 4L3 11l6 2.5L11 20l3.5-6L21 4z"/><path d="M9 13.5L21 4"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>',
-  pulse: '<path d="M3 12h4l2 6 4-14 2 8h6"/>'
+  pulse: '<path d="M3 12h4l2 6 4-14 2 8h6"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-3.6-3.6"/>',
+  chart: '<path d="M4 5v14h16"/><path d="M8 15l3-4 3 2 4-6"/>',
+  'arrow-up': '<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',
+  'arrow-right': '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  'chevron-down': '<path d="M6 9l6 6 6-6"/>',
+  check: '<path d="M5 12l4 4 10-10"/>'
 }
 </script>
 

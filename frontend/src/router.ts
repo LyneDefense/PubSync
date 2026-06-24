@@ -8,8 +8,8 @@ import { isAuthenticated } from './composables/useWorkspaceStore'
 export const PLATFORMS = ['xhs', 'douyin', 'wechat'] as const
 export type PlatformParam = (typeof PLATFORMS)[number]
 export const DEFAULT_TAB: Record<PlatformParam, string> = {
-  xhs: 'assets',
-  douyin: 'assets',
+  xhs: 'overview',
+  douyin: 'overview',
   wechat: 'brief'
 }
 

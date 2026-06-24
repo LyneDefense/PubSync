@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 社媒·博主资产(阶段B)：博主信息 + 笔记池(只读、按类型、点开抽屉) + 快照(新建/详情/改名/重选/删除)。蒸馏在独立「蒸馏」页。
 import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { bloggerCommentLabel } from '../utils/format'
 import {
   activeNotePost,
@@ -29,7 +30,6 @@ import {
   noteBodyText,
   noteHashtags,
   noteTopComments,
-  openCreateBloggerModal,
   openEditBloggerModal,
   openNote,
   pendingAction,
@@ -42,6 +42,14 @@ import {
   subtypeLabel,
   togglePostSelection
 } from '../composables/useWorkspaceStore'
+
+// 「加对标」改为去「找对标博主」页(搜索/推荐/评分),不再直接弹空表单。
+const route = useRoute()
+const router = useRouter()
+function goFind() {
+  const platform = route.params.platform as string
+  if (platform) router.push({ name: 'workspace', params: { platform, tab: 'find' } })
+}
 
 // 选取弹框(新建/重选共用)。pickerSnapshotId=null 表示新建。
 const pickerOpen = ref(false)
@@ -132,7 +140,7 @@ async function deleteDetailSnapshot() {
         <h2>{{ currentSocialPlatformName }}博主资产</h2>
         <p class="toolbar-subtitle">查看博主笔记池（按类型、点开看单篇），把要参考的笔记存成快照，去「蒸馏」页提炼 Skill。</p>
       </div>
-      <button type="button" class="primary" @click="openCreateBloggerModal">创建博主</button>
+      <button type="button" class="primary" @click="goFind">去找对标博主</button>
     </div>
 
     <div class="xhs-assets-browser">

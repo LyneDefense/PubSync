@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 工作台主区:承载某个平台下的所有功能视图。每个子视图自行按 store 的平台/页签门控显隐,
 // 路由只负责把 URL 同步到 store(见 App.vue),因此这里把全部视图平铺即可。
-import BenchmarkFinder from '../components/BenchmarkFinder.vue'
 import ComingSoonPanel from '../components/ComingSoonPanel.vue'
 import ImagePreviewModal from '../components/ImagePreviewModal.vue'
 import LiveProgress from '../components/LiveProgress.vue'
+import OverviewView from './OverviewView.vue'
+import FindBenchmarkView from './FindBenchmarkView.vue'
 import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
@@ -47,6 +48,10 @@ import {
 <template>
   <LiveProgress />
 
+  <OverviewView />
+
+  <FindBenchmarkView />
+
   <WechatBriefView />
 
   <ComingSoonPanel
@@ -81,6 +86,18 @@ import {
     description="未来支持不依赖对标博主、直接输入主题由 AI 自主创作内容。"
   />
 
+  <ComingSoonPanel
+    v-if="isSocialPlatform && currentSocialTab === 'effects'"
+    :title="`${currentSocialPlatformName}效果看板`"
+    description="未来在这里直观看到用平台后的帮助:对标差距收敛曲线、涨粉与互动趋势、产能与省时。"
+  />
+
+  <ComingSoonPanel
+    v-if="isSocialPlatform && currentSocialTab === 'skill-optimize'"
+    title="Skill 优化"
+    description="未来支持用博主真实笔记把 Skill 练得更像,并对比优化前后的效果、形成正反馈。"
+  />
+
   <XhsRecordsView />
 
   <DouyinRecordsView />
@@ -91,15 +108,17 @@ import {
     <form class="modal-panel" role="dialog" aria-modal="true" :aria-label="`${editingBlogger ? '编辑' : '创建'}${currentSocialPlatformName}博主`" @submit.prevent="handleCreateBlogger">
       <div class="section-header">
         <div>
-          <h2>{{ editingBlogger ? '编辑博主信息' : '创建博主' }}</h2>
-          <p class="toolbar-subtitle">{{ editingBlogger ? '只能编辑基础信息，不会修改已有采集和蒸馏结果。' : '先搜索并选择博主，再补充领域和备注。' }}</p>
+          <h2>{{ editingBlogger ? '编辑博主信息' : bloggerModalAccountType === 'mine' ? '添加我的账号' : '确认对标博主' }}</h2>
+          <p class="toolbar-subtitle">{{ editingBlogger ? '只能编辑基础信息，不会修改已有采集和蒸馏结果。' : bloggerModalAccountType === 'mine' ? '搜索并选择你的账号主页，补充信息后保存。' : '补充领域和备注后保存。' }}</p>
         </div>
         <button type="button" class="ghost" @click="closeBloggerModal">关闭</button>
       </div>
-      <!-- 创建对标博主:用「找对标博主」三段 tab(智能推荐/搜索/链接评分);采用候选后填入下方表单。 -->
-      <BenchmarkFinder v-if="!editingBlogger && bloggerModalAccountType === 'benchmark'" />
+      <!-- 创建对标博主:候选来自「找对标博主」页(采用后弹此框确认);未选则提示去找对标。 -->
+      <p v-if="!editingBlogger && bloggerModalAccountType === 'benchmark' && !selectedBloggerCandidate" class="empty-region">
+        请先到「找对标博主」找到并「采用」一个博主,再补充资料保存。
+      </p>
       <!-- 创建「我的账号」:沿用简单搜索即可。 -->
-      <template v-else-if="!editingBlogger">
+      <template v-else-if="!editingBlogger && bloggerModalAccountType === 'mine'">
         <div class="search-row">
           <label>
             搜索{{ currentSocialPlatformName }}博主

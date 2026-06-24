@@ -113,7 +113,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -194,8 +194,8 @@ export const loginMessage = ref('')
 // 这些 ref 仍保留:大量视图沿用 currentSocialTab 等自门控逻辑,改由路由写入而非自行持久化。
 export const activeMainTab = ref<MainTab>('xhs')
 export const activeWechatTab = ref<WeChatTab>('brief')
-export const activeXhsTab = ref<XhsTab>('assets')
-export const activeDouyinTab = ref<DouyinTab>('assets')
+export const activeXhsTab = ref<XhsTab>('overview')
+export const activeDouyinTab = ref<DouyinTab>('overview')
 
 // 只记录「最近平台」,供登录后跳回工作台(router.readLastPlatform 读同一 key)。admin 不计。
 const LAST_PLATFORM_KEY = 'pubsync_last_platform'
@@ -382,6 +382,9 @@ export const isSocialPlatform = computed(() => activeMainTab.value === 'xhs' || 
 export const currentSocialPlatform = computed<SocialPlatform>(() => (activeMainTab.value === 'douyin' ? 'douyin' : 'xhs'))
 export const currentSocialPlatformName = computed(() => (currentSocialPlatform.value === 'douyin' ? '抖音' : '小红书'))
 export const currentSocialTab = computed<SocialTab>(() => (activeMainTab.value === 'douyin' ? activeDouyinTab.value : activeXhsTab.value))
+// 当前平台是否已录入「我的账号」(概览页据此二选一显示引导/已录入卡)。
+export const currentMyAccount = computed(() => myAccounts.value.find((a) => a.platform === currentSocialPlatform.value) || null)
+export const hasMyAccount = computed(() => Boolean(currentMyAccount.value))
 export const usesRegionalGrouping = computed(() => profile.value?.grouping_mode !== 'none')
 export const enabledContentGroups = computed(() => contentGroups.value.filter((group) => group.enabled))
 export const hasNewsGroups = computed(() => enabledContentGroups.value.length > 0)
@@ -1585,9 +1588,12 @@ export async function handleEvaluateLink() {
   })
 }
 
-// 采用候选 → 填进创建博主表单(复用 selectBloggerCandidate),用户补领域/备注后保存。
+// 采用候选 → 打开「确认对标博主」弹窗(仅确认表单,候选已选好),用户补领域/备注后保存。
 // 接受 CandidateScore(已评估)或 BloggerSearchResult(搜索未评估),只用两者共有字段。
 export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearchResult) {
+  editingBloggerId.value = null
+  bloggerModalAccountType.value = 'benchmark'
+  resetBloggerForm()
   selectBloggerCandidate({
     platform: candidate.platform,
     external_id: candidate.external_id,
@@ -1598,6 +1604,7 @@ export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearc
     follower_count: candidate.follower_count,
     raw: {}
   })
+  showBloggerModal.value = true
   showMessage(`已选「${candidate.display_name}」,补充领域/备注后点保存即可`)
 }
 

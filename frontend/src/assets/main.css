@@ -467,6 +467,22 @@ button.task-button.running span {
   margin-top: 0;
 }
 
+/* 侧栏条目的小标(我的账号「可选」、新功能「新」),不抢主标题。 */
+.side-tag {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  color: var(--color-ink-3);
+  background: var(--color-paper-3);
+  line-height: 1.6;
+}
+.side-tag-new {
+  color: var(--color-ok, #2e9e5b);
+  background: color-mix(in srgb, var(--color-ok, #2e9e5b) 12%, transparent);
+}
+
 .side-sep {
   border: 0;
   border-top: var(--rule-hair);

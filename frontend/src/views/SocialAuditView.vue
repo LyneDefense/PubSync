@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 社媒·对标诊断:选我的账号(勾内容) + 对标账号(勾内容),比真实内容,逐维度给结论。
+import { useRoute, useRouter } from 'vue-router'
 import StatusChip from '../components/StatusChip.vue'
 import {
   accountAuditRuns,
@@ -14,12 +15,18 @@ import {
   isSocialPlatform,
   loadAccountPosts,
   myAccounts,
-  openCreateBloggerModal,
   openCreateMyAccountModal,
   pendingAction,
   selectedAuditRun,
   selectedAuditRunId
 } from '../composables/useWorkspaceStore'
+
+const route = useRoute()
+const router = useRouter()
+function goFind() {
+  const platform = route.params.platform as string
+  if (platform) router.push({ name: 'workspace', params: { platform, tab: 'find' } })
+}
 
 function toggle(arr: number[], id: number) {
   const i = arr.indexOf(id)
@@ -73,7 +80,7 @@ function pickBench(id: number) {
             <strong>{{ acc.display_name }}</strong><span>{{ acc.niche || '未设置领域' }} · 样本 {{ acc.sample_count }}</span>
           </button>
         </div>
-        <p v-else class="empty-region">还没有对标账号。<a href="#" @click.prevent="openCreateBloggerModal">去添加</a>(或到「数据采集」创建并采集)。</p>
+        <p v-else class="empty-region">还没有对标账号。<a href="#" @click.prevent="goFind">去找对标博主</a>(或到「数据采集」创建并采集)。</p>
         <div v-if="auditForm.benchmark_blogger_id" class="check-list">
           <p class="form-hint">勾选要对比的内容({{ auditForm.benchmark_post_ids.length }} 已选);不选则用最近内容。</p>
           <label v-for="post in accountPosts[auditForm.benchmark_blogger_id] || []" :key="post.id" class="check-row">
