@@ -40,7 +40,9 @@ const routes = [
   // /login 的画面由 App 外壳在未登录态直接渲染 LoginView，这里只占位用于 URL 与守卫。
   { path: '/login', name: 'login', component: { render: () => null } },
   { path: '/select', name: 'select', component: () => import('./views/SelectPlatformView.vue') },
-  { path: '/:platform/:tab?', name: 'workspace', component: () => import('./views/WorkspaceView.vue') }
+  { path: '/:platform/:tab?', name: 'workspace', component: () => import('./views/WorkspaceView.vue') },
+  // 兜底:任何未匹配路径(含从落地页进来的 /login.html 初始 URL)先归到登录,守卫再分流。
+  { path: '/:pathMatch(.*)*', name: 'notfound', redirect: () => ({ name: 'login' }) }
 ]
 
 export const router = createRouter({
