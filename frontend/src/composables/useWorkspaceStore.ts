@@ -185,29 +185,19 @@ export const isAuthenticated = ref(Boolean(getAuthToken()))
 export const isLoggingIn = ref(false)
 export const loginMessage = ref('')
 
-// 视图持久化:刷新后停留在当前平台/页签(原来每次刷新都回退到「公众号·每日早报」)。
-const VIEW_STATE_KEY = 'pubsync_view_state'
-function readViewState(): Record<string, string> {
-  try {
-    const raw = window.localStorage.getItem(VIEW_STATE_KEY)
-    const parsed = raw ? JSON.parse(raw) : {}
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-const savedView = readViewState()
+// 视图状态(平台/页签)由 vue-router 路由驱动,这里只是初值;路由守卫/App 会按 URL 同步。
+// 这些 ref 仍保留:大量视图沿用 currentSocialTab 等自门控逻辑,改由路由写入而非自行持久化。
+export const activeMainTab = ref<MainTab>('xhs')
+export const activeWechatTab = ref<WeChatTab>('brief')
+export const activeXhsTab = ref<XhsTab>('assets')
+export const activeDouyinTab = ref<DouyinTab>('assets')
 
-export const activeMainTab = ref<MainTab>((savedView.mainTab as MainTab) || 'wechat')
-export const activeWechatTab = ref<WeChatTab>((savedView.wechatTab as WeChatTab) || 'brief')
-export const activeXhsTab = ref<XhsTab>((savedView.xhsTab as XhsTab) || 'collect')
-export const activeDouyinTab = ref<DouyinTab>((savedView.douyinTab as DouyinTab) || 'collect')
-
-// 任一视图状态变化即写回 localStorage。admin 是独立入口,不持久化为主平台。
-watch([activeMainTab, activeWechatTab, activeXhsTab, activeDouyinTab], ([mainTab, wechatTab, xhsTab, douyinTab]) => {
-  if (mainTab === 'admin') return
+// 只记录「最近平台」,供登录后跳回工作台(router.readLastPlatform 读同一 key)。admin 不计。
+const LAST_PLATFORM_KEY = 'pubsync_last_platform'
+watch(activeMainTab, (tab) => {
+  if (tab === 'admin') return
   try {
-    window.localStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ mainTab, wechatTab, xhsTab, douyinTab }))
+    window.localStorage.setItem(LAST_PLATFORM_KEY, tab)
   } catch {
     /* localStorage 不可用时静默忽略,不影响功能 */
   }
