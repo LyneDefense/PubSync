@@ -66,6 +66,9 @@ import {
   recommendBloggers,
   listRecommendRuns,
   evaluateBlogger,
+  optimizeSkill,
+  listSkillTrainingRuns,
+  confirmSkillTrainingRun,
   setTenantId,
   startXhsPublishPackageDraftTask,
   updateArticle,
@@ -87,6 +90,7 @@ import type {
   BloggerSearchResult,
   BloggerSkill,
   CandidateScore,
+  SkillTrainingRun,
   BloggerSnapshot,
   ContentGroup,
   ContentProfile,
@@ -105,7 +109,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -230,7 +234,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   'xhs-package': 0,
   audit: 0,
   'self-diagnose': 0,
-  recommend: 0
+  recommend: 0,
+  optimize: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -705,7 +710,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 export const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskEventsMainTab.value === activeMainTab.value
@@ -722,7 +727,8 @@ const TASK_NAME_MAP: Record<string, string> = {
   'xhs-topic': '生成选题',
   audit: '对标诊断',
   'self-diagnose': '诊断我的账号',
-  recommend: '智能找对标'
+  recommend: '智能找对标',
+  optimize: '优化 Skill'
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
@@ -1606,6 +1612,47 @@ export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearc
   })
   showBloggerModal.value = true
   showMessage(`已选「${candidate.display_name}」,补充领域/备注后点保存即可`)
+}
+
+// —— Skill 优化 ——
+export const optimizeBloggerId = ref<number | null>(null)
+export const currentTrainingRun = ref<SkillTrainingRun | null>(null)
+export const optimizeConfirming = ref(false)
+
+export async function handleOptimizeSkill() {
+  const bloggerId = optimizeBloggerId.value
+  if (!bloggerId) {
+    showMessage('请先选择要优化的对标博主', true)
+    return
+  }
+  currentTrainingRun.value = null
+  await runTaskAction(
+    'optimize',
+    '正在优化 Skill',
+    async () => optimizeSkill(bloggerId, 2),
+    async () => {
+      const runs = await listSkillTrainingRuns(bloggerId)
+      currentTrainingRun.value = runs[0] || null
+    },
+    '优化仍在后台执行，请稍后刷新查看'
+  )
+}
+
+export async function handleConfirmOptimize(adopt: boolean) {
+  const run = currentTrainingRun.value
+  if (!run) return
+  optimizeConfirming.value = true
+  try {
+    currentTrainingRun.value = await confirmSkillTrainingRun(run.id, adopt)
+    showMessage(adopt ? '已采纳:优化版已设为当前 Skill' : '已放弃:保留原 Skill')
+    if (adopt) {
+      bloggerSkills.value = await listBloggerSkills(currentSocialPlatform.value)
+    }
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+  } finally {
+    optimizeConfirming.value = false
+  }
 }
 
 export async function handleSearchBloggerCandidates() {

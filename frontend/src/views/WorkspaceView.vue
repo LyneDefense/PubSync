@@ -6,6 +6,7 @@ import ImagePreviewModal from '../components/ImagePreviewModal.vue'
 import LiveProgress from '../components/LiveProgress.vue'
 import OverviewView from './OverviewView.vue'
 import FindBenchmarkView from './FindBenchmarkView.vue'
+import SkillOptimizeView from './SkillOptimizeView.vue'
 import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
@@ -92,11 +93,7 @@ import {
     description="未来在这里直观看到用平台后的帮助:对标差距收敛曲线、涨粉与互动趋势、产能与省时。"
   />
 
-  <ComingSoonPanel
-    v-if="isSocialPlatform && currentSocialTab === 'skill-optimize'"
-    title="Skill 优化"
-    description="未来支持用博主真实笔记把 Skill 练得更像,并对比优化前后的效果、形成正反馈。"
-  />
+  <SkillOptimizeView />
 
   <XhsRecordsView />
 

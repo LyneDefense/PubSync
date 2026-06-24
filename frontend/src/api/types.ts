@@ -421,6 +421,43 @@ export interface EvaluateResult {
   candidate: CandidateScore
 }
 
+// Skill 优化(训练)
+export interface SkillTrainingSample {
+  topic: string
+  seed_text: string
+  seed_sim: number
+  optimized_text: string
+  optimized_sim: number
+  real_text: string
+}
+export interface SkillTrainingReport {
+  anchors?: { floor: number; ceiling: number }
+  counts?: { train: number; val: number; test: number; dropped_minority: number }
+  epochs?: Array<{ step: number | null; action: string; val_score: number | null; edits: string[] }>
+  changelog?: string[]
+  samples?: SkillTrainingSample[]
+  process_note?: string
+}
+export interface SkillTrainingRun {
+  id: number
+  blogger_id: number
+  base_skill_id: number | null
+  result_skill_id: number | null
+  status: string
+  modality: string
+  before_score: number
+  after_score: number
+  before_gap: number
+  after_gap: number
+  delta: number
+  verdict: string
+  recommend_adopt: boolean
+  optimized_skill_markdown: string
+  report: SkillTrainingReport
+  error_message?: string | null
+  created_at: string
+}
+
 export interface BloggerDistillRequest {
   // auto=自动蒸馏(高赞 top-N);custom=自定义(选快照 或 手选 N 篇)
   source: 'auto' | 'custom'
