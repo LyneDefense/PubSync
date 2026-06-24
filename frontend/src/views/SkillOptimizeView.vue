@@ -15,8 +15,11 @@ import {
   optimizeConfirming,
   optimizeSkillId,
   optimizeSkillOptions,
-  pendingAction
+  pendingAction,
+  selectTrainingRun,
+  trainingRuns
 } from '../composables/useWorkspaceStore'
+import type { SkillTrainingRun } from '../api/types'
 
 const platformBloggers = computed(() => benchmarkAccounts.value.filter((b) => b.platform === currentSocialPlatform.value))
 const optimizing = computed(() => pendingAction.value === 'optimize')
@@ -29,6 +32,25 @@ const VERDICT: Record<string, { tone: string; text: string }> = {
 }
 function verdictInfo(v: string) {
   return VERDICT[v] || { tone: 'warn', text: '请人工判断是否采纳。' }
+}
+
+// 历史记录每条的标题:含「建议采纳/不建议采纳/未完成 + 是否已处理 + 时间」。
+function runTitle(run: SkillTrainingRun): { tone: string; label: string } {
+  if (run.status === 'failed') return { tone: 'bad', label: '⛔ 未完成（生成失败）' }
+  if (run.status === 'succeeded') return { tone: 'ok', label: '✅ 已采纳' }
+  if (run.status === 'abandoned') return { tone: 'mute', label: '⚪ 已放弃' }
+  if (run.status === 'running') return { tone: 'mute', label: '⏳ 优化中…' }
+  // pending_confirmation:还没处理,显示系统建议
+  if (run.recommend_adopt) return { tone: 'ok', label: '✅ 建议采纳' }
+  if (run.verdict === 'regressed') return { tone: 'bad', label: '⛔ 不建议采纳' }
+  return { tone: 'warn', label: '⚠️ 不建议采纳' }
+}
+
+function runTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 </script>
 
@@ -61,6 +83,27 @@ function verdictInfo(v: string) {
       </button>
     </div>
     <p class="field-hint">默认优化该博主当前 Skill;也可选历史版本。需采集了足够笔记(≥12 篇)。优化过程见上方进度条。</p>
+
+    <!-- 历史优化记录 -->
+    <div v-if="optimizeBloggerId && trainingRuns.length" class="so-history">
+      <h3>优化记录</h3>
+      <ul class="so-history-list">
+        <li v-for="r in trainingRuns" :key="r.id">
+          <button
+            type="button"
+            class="so-history-item"
+            :class="{ active: currentTrainingRun && currentTrainingRun.id === r.id }"
+            @click="selectTrainingRun(r)"
+          >
+            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`">{{ runTitle(r).label }}</span>
+            <span v-if="r.status !== 'failed' && r.status !== 'running'" class="so-history-delta">
+              {{ Math.round(r.before_score) }} → {{ Math.round(r.after_score) }}（Δ {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}）
+            </span>
+            <span class="so-history-time">{{ runTime(r.created_at) }}</span>
+          </button>
+        </li>
+      </ul>
+    </div>
 
     <!-- 失败:生成全部失败时不展示误导性的 0→0,直接说明原因 -->
     <div v-if="run && run.status === 'failed'" class="so-result">
@@ -151,6 +194,23 @@ function verdictInfo(v: string) {
 .skill-opt { max-width: 980px; }
 .so-launch { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 6px; }
 .so-launch label { display: flex; flex-direction: column; gap: 4px; flex: 1; max-width: 360px; }
+.so-history { margin-top: 18px; }
+.so-history h3 { margin: 0 0 8px; font-size: 1rem; }
+.so-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.so-history-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 8px 12px; border: 1px solid var(--color-field-border, #c8ced4); border-radius: 10px;
+  background: var(--color-field, #fff); cursor: pointer;
+}
+.so-history-item:hover { border-color: var(--color-accent, #2563eb); }
+.so-history-item.active { border-color: var(--color-accent, #2563eb); box-shadow: 0 0 0 1px var(--color-accent, #2563eb) inset; }
+.so-history-badge { font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
+.so-history-badge--ok { color: #1f7a45; }
+.so-history-badge--warn { color: #9a6a12; }
+.so-history-badge--bad { color: #c0392b; }
+.so-history-badge--mute { color: var(--color-ink-2, #6b7280); }
+.so-history-delta { font-size: 0.85rem; color: var(--color-ink-2, #6b7280); }
+.so-history-time { margin-left: auto; font-size: 0.8rem; color: var(--color-ink-3, #9aa0a6); white-space: nowrap; }
 .so-result { margin-top: 18px; display: flex; flex-direction: column; gap: 16px; }
 .so-verdict { padding: 12px 14px; border-radius: 12px; font-size: 1rem; }
 .so-verdict--ok { background: var(--color-ok-bg, #e8f5ec); color: #1f7a45; }

@@ -1618,6 +1618,7 @@ export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearc
 export const optimizeBloggerId = ref<number | null>(null)
 export const optimizeSkillId = ref<number | null>(null)
 export const currentTrainingRun = ref<SkillTrainingRun | null>(null)
+export const trainingRuns = ref<SkillTrainingRun[]>([]) // 该博主的历史优化记录(新→旧)
 export const optimizeConfirming = ref(false)
 
 // 所选博主下的 Skill 版本(active 在前);用于让用户选具体哪个 Skill 来优化。
@@ -1627,12 +1628,30 @@ export const optimizeSkillOptions = computed(() =>
     .sort((a, b) => (a.status === 'active' ? -1 : b.status === 'active' ? 1 : 0))
 )
 
-// 切博主时把 Skill 选择重置到该博主的 active 版本(没有则取第一个)。
-watch(optimizeBloggerId, () => {
+async function loadTrainingRuns(bloggerId: number | null) {
+  if (!bloggerId) {
+    trainingRuns.value = []
+    return
+  }
+  try {
+    trainingRuns.value = await listSkillTrainingRuns(bloggerId)
+  } catch {
+    trainingRuns.value = []
+  }
+}
+
+// 切博主时:把 Skill 选择重置到 active 版本,并加载该博主的历史优化记录。
+watch(optimizeBloggerId, async (bloggerId) => {
   const opts = optimizeSkillOptions.value
   const active = opts.find((s) => s.status === 'active')
   optimizeSkillId.value = active?.id ?? opts[0]?.id ?? null
+  currentTrainingRun.value = null
+  await loadTrainingRuns(bloggerId)
 })
+
+export function selectTrainingRun(run: SkillTrainingRun) {
+  currentTrainingRun.value = run
+}
 
 export async function handleOptimizeSkill() {
   const bloggerId = optimizeBloggerId.value
@@ -1647,8 +1666,8 @@ export async function handleOptimizeSkill() {
     '正在优化 Skill',
     async () => optimizeSkill(bloggerId, 2, skillId),
     async () => {
-      const runs = await listSkillTrainingRuns(bloggerId)
-      currentTrainingRun.value = runs[0] || null
+      await loadTrainingRuns(bloggerId)
+      currentTrainingRun.value = trainingRuns.value[0] || null
     },
     '优化仍在后台执行，请稍后刷新查看'
   )
@@ -1659,7 +1678,11 @@ export async function handleConfirmOptimize(adopt: boolean) {
   if (!run) return
   optimizeConfirming.value = true
   try {
-    currentTrainingRun.value = await confirmSkillTrainingRun(run.id, adopt)
+    const updated = await confirmSkillTrainingRun(run.id, adopt)
+    currentTrainingRun.value = updated
+    // 历史列表里同步这条记录的最新状态。
+    const idx = trainingRuns.value.findIndex((r) => r.id === updated.id)
+    if (idx >= 0) trainingRuns.value[idx] = updated
     showMessage(adopt ? '已采纳:优化版已设为当前 Skill' : '已放弃:保留原 Skill')
     if (adopt) {
       bloggerSkills.value = await listBloggerSkills(currentSocialPlatform.value)
