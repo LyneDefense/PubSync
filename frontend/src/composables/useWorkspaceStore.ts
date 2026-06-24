@@ -63,6 +63,9 @@ import {
   sendArticleToWechat,
   saveXhsPublishPackage,
   searchBloggers,
+  recommendBloggers,
+  listRecommendRuns,
+  evaluateBlogger,
   setTenantId,
   startXhsPublishPackageDraftTask,
   updateArticle,
@@ -76,12 +79,14 @@ import type {
   AccountAuditRun,
   Article,
   ArticleUpdate,
+  BenchmarkIntent,
   BloggerCollectionRun,
   BloggerDistillationRun,
   BloggerPost,
   BloggerProfile,
   BloggerSearchResult,
   BloggerSkill,
+  CandidateScore,
   BloggerSnapshot,
   ContentGroup,
   ContentProfile,
@@ -100,7 +105,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -224,7 +229,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   distill: 0,
   'xhs-package': 0,
   audit: 0,
-  'self-diagnose': 0
+  'self-diagnose': 0,
+  recommend: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -696,7 +702,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 export const isVisibleTaskRunning = computed(
   () => isTaskRunning.value && taskEventsAction.value !== null && taskEventsMainTab.value === activeMainTab.value
@@ -712,7 +718,8 @@ const TASK_NAME_MAP: Record<string, string> = {
   'xhs-package': '生成创作内容',
   'xhs-topic': '生成选题',
   audit: '对标诊断',
-  'self-diagnose': '诊断我的账号'
+  'self-diagnose': '诊断我的账号',
+  recommend: '智能找对标'
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
@@ -1449,6 +1456,7 @@ export function closeBloggerModal() {
   editingBloggerId.value = null
   resetBloggerSearch()
   resetBloggerForm()
+  resetBenchmarkFinder()
 }
 
 export function openCreateBloggerModal() {
@@ -1456,6 +1464,7 @@ export function openCreateBloggerModal() {
   bloggerModalAccountType.value = 'benchmark'
   resetBloggerForm()
   resetBloggerSearch()
+  resetBenchmarkFinder()
   showBloggerModal.value = true
 }
 
@@ -1475,6 +1484,121 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
     .join('，')
   resetBloggerSearch()
   showBloggerModal.value = true
+}
+
+// —— 对标博主搜寻:智能推荐 / 单博主评分(共用意图 + 可选「我的账号」)——
+export const benchmarkIntent = reactive<BenchmarkIntent>({ niche: '', audience: '', goal: '', content_form: 'any' })
+export const benchmarkMyAccountId = ref<number | null>(null)
+export const benchmarkCandidates = ref<CandidateScore[]>([])
+// 搜索 tab:按 external_id 缓存「评估」结果。
+export const benchmarkSearchScores = reactive<Record<string, CandidateScore>>({})
+export const benchmarkEvaluatingId = ref<string | null>(null)
+export const benchmarkLinkUrl = ref('')
+export const benchmarkLinkResult = ref<CandidateScore | null>(null)
+
+function benchmarkIntentValid(): boolean {
+  if (!benchmarkIntent.niche.trim()) {
+    showMessage('请先填写你的领域/赛道', true)
+    return false
+  }
+  return true
+}
+
+function benchmarkPayloadIntent(): BenchmarkIntent {
+  return {
+    niche: benchmarkIntent.niche.trim(),
+    audience: benchmarkIntent.audience?.trim() || '',
+    goal: benchmarkIntent.goal?.trim() || '',
+    content_form: benchmarkIntent.content_form || 'any'
+  }
+}
+
+export function resetBenchmarkFinder() {
+  benchmarkCandidates.value = []
+  benchmarkLinkUrl.value = ''
+  benchmarkLinkResult.value = null
+  benchmarkEvaluatingId.value = null
+  for (const key of Object.keys(benchmarkSearchScores)) delete benchmarkSearchScores[key]
+}
+
+// 智能推荐:按意图找一批对标博主(异步任务 + 进度面板),完成后取最新一次运行的候选。
+export async function handleRecommendBloggers() {
+  if (!benchmarkIntentValid()) return
+  benchmarkCandidates.value = []
+  let taskId = ''
+  await runTaskAction(
+    'recommend',
+    '正在帮你找对标博主',
+    async () => {
+      const task = await recommendBloggers({
+        platform: currentSocialPlatform.value,
+        intent: benchmarkPayloadIntent(),
+        my_account_id: benchmarkMyAccountId.value
+      })
+      taskId = task.id
+      return task
+    },
+    async () => {
+      const runs = await listRecommendRuns(taskId, currentSocialPlatform.value)
+      benchmarkCandidates.value = runs[0]?.candidates || []
+    },
+    '推荐仍在后台执行，请稍后刷新查看'
+  )
+}
+
+// 搜索 tab:对某一条搜索结果单独「评估」(同步,跑完整四项指标)。
+export async function handleEvaluateSearchCandidate(candidate: BloggerSearchResult) {
+  if (!benchmarkIntentValid()) return
+  benchmarkEvaluatingId.value = candidate.external_id
+  try {
+    const res = await evaluateBlogger({
+      platform: currentSocialPlatform.value,
+      intent: benchmarkPayloadIntent(),
+      my_account_id: benchmarkMyAccountId.value,
+      candidate
+    })
+    benchmarkSearchScores[candidate.external_id] = res.candidate
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '评估失败', true)
+  } finally {
+    benchmarkEvaluatingId.value = null
+  }
+}
+
+// 链接评分 tab:粘贴主页链接,评估这一个博主。
+export async function handleEvaluateLink() {
+  if (!benchmarkIntentValid()) return
+  const url = benchmarkLinkUrl.value.trim()
+  if (!url) {
+    showMessage('请粘贴博主主页链接', true)
+    return
+  }
+  benchmarkLinkResult.value = null
+  await runAction('benchmark-evaluate', '正在评估该博主', async () => {
+    const res = await evaluateBlogger({
+      platform: currentSocialPlatform.value,
+      intent: benchmarkPayloadIntent(),
+      my_account_id: benchmarkMyAccountId.value,
+      homepage_url: url
+    })
+    benchmarkLinkResult.value = res.candidate
+  })
+}
+
+// 采用候选 → 填进创建博主表单(复用 selectBloggerCandidate),用户补领域/备注后保存。
+// 接受 CandidateScore(已评估)或 BloggerSearchResult(搜索未评估),只用两者共有字段。
+export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearchResult) {
+  selectBloggerCandidate({
+    platform: candidate.platform,
+    external_id: candidate.external_id,
+    display_name: candidate.display_name,
+    homepage_url: candidate.homepage_url,
+    avatar_url: candidate.avatar_url,
+    description: candidate.description,
+    follower_count: candidate.follower_count,
+    raw: {}
+  })
+  showMessage(`已选「${candidate.display_name}」,补充领域/备注后点保存即可`)
 }
 
 export async function handleSearchBloggerCandidates() {

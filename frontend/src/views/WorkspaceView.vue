@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 工作台主区:承载某个平台下的所有功能视图。每个子视图自行按 store 的平台/页签门控显隐,
 // 路由只负责把 URL 同步到 store(见 App.vue),因此这里把全部视图平铺即可。
+import BenchmarkFinder from '../components/BenchmarkFinder.vue'
 import ComingSoonPanel from '../components/ComingSoonPanel.vue'
 import ImagePreviewModal from '../components/ImagePreviewModal.vue'
 import LiveProgress from '../components/LiveProgress.vue'
@@ -23,6 +24,7 @@ import {
   activeMainTab,
   activeWechatTab,
   bloggerForm,
+  bloggerModalAccountType,
   bloggerSearchKeyword,
   bloggerSearchResults,
   closeBloggerModal,
@@ -94,32 +96,37 @@ import {
         </div>
         <button type="button" class="ghost" @click="closeBloggerModal">关闭</button>
       </div>
-      <div v-if="!editingBlogger" class="search-row">
-        <label>
-          搜索{{ currentSocialPlatformName }}博主
-          <input v-model="bloggerSearchKeyword" type="search" placeholder="输入昵称或关键词" @keydown.enter.prevent="handleSearchBloggerCandidates" />
-        </label>
-        <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleSearchBloggerCandidates">
-          {{ pendingAction === 'blogger-search' ? '搜索中' : '搜索' }}
-        </button>
-      </div>
-      <div v-if="!editingBlogger && bloggerSearchResults.length" class="candidate-list" aria-label="博主搜索结果">
-        <button
-          v-for="candidate in bloggerSearchResults"
-          :key="`${candidate.platform}-${candidate.external_id}`"
-          type="button"
-          :class="{ active: selectedBloggerCandidate?.external_id === candidate.external_id }"
-          @click="selectBloggerCandidate(candidate)"
-        >
-          <img v-if="candidate.avatar_url" :src="candidate.avatar_url" alt="" />
-          <span>
-            <strong>{{ candidate.display_name }}</strong>
-            <small>{{ candidate.description || '暂无简介' }}</small>
-          </span>
-          <em>{{ candidate.follower_count ? `${candidate.follower_count} 粉丝` : '粉丝未知' }}</em>
-        </button>
-      </div>
-      <p v-else-if="!editingBlogger && bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
+      <!-- 创建对标博主:用「找对标博主」三段 tab(智能推荐/搜索/链接评分);采用候选后填入下方表单。 -->
+      <BenchmarkFinder v-if="!editingBlogger && bloggerModalAccountType === 'benchmark'" />
+      <!-- 创建「我的账号」:沿用简单搜索即可。 -->
+      <template v-else-if="!editingBlogger">
+        <div class="search-row">
+          <label>
+            搜索{{ currentSocialPlatformName }}博主
+            <input v-model="bloggerSearchKeyword" type="search" placeholder="输入昵称或关键词" @keydown.enter.prevent="handleSearchBloggerCandidates" />
+          </label>
+          <button type="button" class="primary" :disabled="Boolean(pendingAction)" @click="handleSearchBloggerCandidates">
+            {{ pendingAction === 'blogger-search' ? '搜索中' : '搜索' }}
+          </button>
+        </div>
+        <div v-if="bloggerSearchResults.length" class="candidate-list" aria-label="博主搜索结果">
+          <button
+            v-for="candidate in bloggerSearchResults"
+            :key="`${candidate.platform}-${candidate.external_id}`"
+            type="button"
+            :class="{ active: selectedBloggerCandidate?.external_id === candidate.external_id }"
+            @click="selectBloggerCandidate(candidate)"
+          >
+            <img v-if="candidate.avatar_url" :src="candidate.avatar_url" alt="" />
+            <span>
+              <strong>{{ candidate.display_name }}</strong>
+              <small>{{ candidate.description || '暂无简介' }}</small>
+            </span>
+            <em>{{ candidate.follower_count ? `${candidate.follower_count} 粉丝` : '粉丝未知' }}</em>
+          </button>
+        </div>
+        <p v-else-if="bloggerSearchKeyword" class="empty-region">搜索后会在这里展示候选博主。</p>
+      </template>
       <label>
         博主名称
         <input v-model="bloggerForm.display_name" type="text" required readonly />

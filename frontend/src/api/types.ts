@@ -375,6 +375,50 @@ export interface BloggerSearchResult {
   description: string
   follower_count: number
   raw: Record<string, unknown>
+  // 火爆度速览(仅按粉丝数粗算,免费);完整四项指标要点「评估」才跑。
+  quick_popularity?: number
+}
+
+// 对标博主搜寻:意图 + 候选评分 + 推荐运行。
+export interface BenchmarkIntent {
+  niche: string
+  audience?: string
+  goal?: string
+  content_form?: 'image_text' | 'video' | 'any'
+}
+
+export interface CandidateScore {
+  platform: SocialPlatform
+  external_id: string
+  display_name: string
+  homepage_url: string
+  avatar_url: string
+  description: string
+  follower_count: number
+  popularity: number
+  relevance: number
+  learnability: number
+  transferability: number | null
+  overall: number
+  active: boolean
+  reasons: { relevance?: string; learnability?: string; summary?: string }
+  existing_blogger_id: number | null
+}
+
+export interface BenchmarkRecommendationRun {
+  id: number
+  platform: SocialPlatform
+  kind: string
+  status: string
+  my_account_id: number | null
+  intent: Record<string, unknown>
+  candidates: CandidateScore[]
+  error_message?: string | null
+  created_at: string
+}
+
+export interface EvaluateResult {
+  candidate: CandidateScore
 }
 
 export interface BloggerDistillRequest {

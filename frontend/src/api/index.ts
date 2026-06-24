@@ -11,6 +11,8 @@ import type {
   BloggerCollectRequest,
   BloggerUrlCollectRequest,
   BloggerCollectionRun,
+  BenchmarkIntent,
+  BenchmarkRecommendationRun,
   BloggerDistillationRun,
   BloggerDistillRequest,
   BloggerPost,
@@ -21,6 +23,7 @@ import type {
   BloggerSnapshot,
   CollectEstimate,
   BloggerSkill,
+  EvaluateResult,
   ConfigView,
   ContentProfile,
   CostEvent,
@@ -445,6 +448,37 @@ export function saveXhsPublishPackage(payload: XhsPublishPackageSave) {
 
 export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
   return request<XhsTopicIdeaResponse>('/xhs/topic-ideas', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function recommendBloggers(payload: {
+  platform: SocialPlatform
+  intent: BenchmarkIntent
+  my_account_id?: number | null
+}) {
+  return request<OperationTask>('/bloggers/recommend', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function listRecommendRuns(taskId?: string, platform: SocialPlatform = 'xhs') {
+  const qs = taskId ? `&task_id=${encodeURIComponent(taskId)}` : ''
+  return request<BenchmarkRecommendationRun[]>(
+    `/bloggers/recommend/runs?platform=${encodeURIComponent(platform)}${qs}&limit=1`
+  )
+}
+
+export function evaluateBlogger(payload: {
+  platform: SocialPlatform
+  intent: BenchmarkIntent
+  my_account_id?: number | null
+  candidate?: BloggerSearchResult | null
+  homepage_url?: string | null
+}) {
+  return request<EvaluateResult>('/bloggers/evaluate', {
     method: 'POST',
     body: JSON.stringify(payload)
   })
