@@ -359,9 +359,13 @@ def run_skill_optimization_task(task_id: str, payload: dict) -> None:
             tenant_id=task.tenant_id,
             blogger_id=int(payload["blogger_id"]),
             epochs=int(payload.get("epochs") or 2),
+            skill_id=(int(payload["skill_id"]) if payload.get("skill_id") else None),
         )
-        mark_task_succeeded(db, task, f"优化完成:{run.before_score} → {run.after_score}(请在页面确认是否采纳)")
-        logger.info("任务成功：任务ID=%s,类型=%s,运行ID=%s", task_id, subject, run.id)
+        if run.status == "failed":
+            mark_task_succeeded(db, task, f"优化未完成:{run.error_message or '生成失败,请稍后重试'}")
+        else:
+            mark_task_succeeded(db, task, f"优化完成:{run.before_score} → {run.after_score}(请在页面确认是否采纳)")
+        logger.info("任务成功：任务ID=%s,类型=%s,运行ID=%s,状态=%s", task_id, subject, run.id, run.status)
 
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)

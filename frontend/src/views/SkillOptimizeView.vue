@@ -13,6 +13,8 @@ import {
   isSocialPlatform,
   optimizeBloggerId,
   optimizeConfirming,
+  optimizeSkillId,
+  optimizeSkillOptions,
   pendingAction
 } from '../composables/useWorkspaceStore'
 
@@ -46,14 +48,33 @@ function verdictInfo(v: string) {
           <option v-for="b in platformBloggers" :key="b.id" :value="b.id">{{ b.display_name }}</option>
         </select>
       </label>
-      <button type="button" class="primary" :disabled="optimizing || !optimizeBloggerId" @click="handleOptimizeSkill">
+      <label>选择要优化的 Skill 版本
+        <select v-model="optimizeSkillId" :disabled="optimizing || !optimizeBloggerId || !optimizeSkillOptions.length">
+          <option v-if="!optimizeSkillOptions.length" :value="null">该博主暂无 Skill</option>
+          <option v-for="s in optimizeSkillOptions" :key="s.id" :value="s.id">
+            {{ s.name }}{{ s.status === 'active' ? '（当前）' : '（历史）' }}
+          </option>
+        </select>
+      </label>
+      <button type="button" class="primary" :disabled="optimizing || !optimizeBloggerId || !optimizeSkillId" @click="handleOptimizeSkill">
         {{ optimizing ? '优化中…' : '开始优化' }}
       </button>
     </div>
-    <p class="field-hint">需要该博主已有 active Skill 且采集了足够笔记(≥12 篇)。优化过程见上方进度条。</p>
+    <p class="field-hint">默认优化该博主当前 Skill;也可选历史版本。需采集了足够笔记(≥12 篇)。优化过程见上方进度条。</p>
+
+    <!-- 失败:生成全部失败时不展示误导性的 0→0,直接说明原因 -->
+    <div v-if="run && run.status === 'failed'" class="so-result">
+      <div class="so-verdict so-verdict--bad">
+        <strong>⛔ 本次优化未能完成</strong>
+      </div>
+      <p class="so-note">{{ run.error_message || '生成失败，请稍后重试。' }}</p>
+      <p class="field-hint" v-if="run.report.anchors">
+        参照:其它博主基线 {{ Math.round(run.report.anchors.floor) }} 分 · 真笔记天花板 {{ Math.round(run.report.anchors.ceiling) }} 分(满分100，越高越像本人）。
+      </p>
+    </div>
 
     <!-- 结果 -->
-    <div v-if="run && run.status !== 'running'" class="so-result">
+    <div v-else-if="run && run.status !== 'running'" class="so-result">
       <!-- 建议横幅 -->
       <div class="so-verdict" :class="`so-verdict--${verdictInfo(run.verdict).tone}`">
         <strong>{{ verdictInfo(run.verdict).text }}</strong>

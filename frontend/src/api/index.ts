@@ -485,10 +485,10 @@ export function evaluateBlogger(payload: {
   })
 }
 
-export function optimizeSkill(bloggerId: number, epochs = 2) {
+export function optimizeSkill(bloggerId: number, epochs = 2, skillId: number | null = null) {
   return request<OperationTask>(`/bloggers/${bloggerId}/optimize-skill`, {
     method: 'POST',
-    body: JSON.stringify({ epochs })
+    body: JSON.stringify({ epochs, skill_id: skillId })
   })
 }
 

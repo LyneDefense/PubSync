@@ -213,15 +213,20 @@ def optimize_skill_endpoint(
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="博主不存在")
-    has_skill = db.scalar(
-        select(BloggerSkill).where(BloggerSkill.blogger_id == blogger_id, BloggerSkill.status == "active")
-    )
-    if not has_skill:
-        raise HTTPException(status_code=400, detail="该博主还没有 active Skill,请先去蒸馏")
+    if payload.skill_id is not None:
+        chosen = db.get(BloggerSkill, payload.skill_id)
+        if not chosen or chosen.tenant_id != tenant.id or chosen.blogger_id != blogger_id:
+            raise HTTPException(status_code=400, detail="指定的 Skill 不存在或不属于该博主")
+    else:
+        has_skill = db.scalar(
+            select(BloggerSkill).where(BloggerSkill.blogger_id == blogger_id, BloggerSkill.status == "active")
+        )
+        if not has_skill:
+            raise HTTPException(status_code=400, detail="该博主还没有 active Skill,请先去蒸馏")
     task = create_operation_task(db, "skill_optimization", tenant_id=tenant.id)
     submit_background(
         background_tasks, run_skill_optimization_task, task.id,
-        {"blogger_id": blogger_id, "epochs": payload.epochs},
+        {"blogger_id": blogger_id, "epochs": payload.epochs, "skill_id": payload.skill_id},
     )
     return task
 
@@ -703,6 +708,7 @@ def abandon_blogger_run_endpoint(
 @router.get("/blogger-skills", response_model=list[BloggerSkillRead])
 def list_blogger_skills_endpoint(
     platform: str = Query(default="xhs", pattern="^(xhs|douyin)$"),
+    blogger_id: int | None = None,
     limit: int | None = LimitQuery,
     offset: int = OffsetQuery,
     tenant: Tenant = Depends(current_tenant),
@@ -714,4 +720,6 @@ def list_blogger_skills_endpoint(
         .where(BloggerSkill.tenant_id == tenant.id, BloggerProfile.platform == platform)
         .order_by(BloggerSkill.created_at.desc())
     )
+    if blogger_id:
+        stmt = stmt.where(BloggerSkill.blogger_id == blogger_id)
     return list(db.scalars(apply_pagination(stmt, limit, offset)))

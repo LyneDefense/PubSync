@@ -100,6 +100,7 @@ def run_skill_optimization(
     tenant_id: int,
     blogger_id: int,
     epochs: int = 2,
+    skill_id: int | None = None,
 ) -> SkillTrainingRun:
     if not is_ai_enabled(settings):
         raise AIServiceError("未配置可用的大模型 API Key")
@@ -109,11 +110,18 @@ def run_skill_optimization(
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("博主不存在")
-    seed = db.scalar(
-        select(BloggerSkill)
-        .where(BloggerSkill.blogger_id == blogger_id, BloggerSkill.status == "active")
-        .order_by(BloggerSkill.id.desc())
-    )
+    if skill_id is not None:
+        # 用户指定某个 Skill 版本作为优化起点。
+        seed = db.get(BloggerSkill, skill_id)
+        if not seed or seed.tenant_id != tenant_id or seed.blogger_id != blogger_id:
+            raise ValueError("指定的 Skill 不存在或不属于该博主")
+    else:
+        # 不指定则用当前 active Skill。
+        seed = db.scalar(
+            select(BloggerSkill)
+            .where(BloggerSkill.blogger_id == blogger_id, BloggerSkill.status == "active")
+            .order_by(BloggerSkill.id.desc())
+        )
     if not seed:
         raise ValueError("该博主还没有 active Skill,请先去蒸馏")
 
@@ -179,6 +187,25 @@ def run_skill_optimization(
     test_items = adapter.build_eval_env(0, "test", 42)
     ev("跑基线", "running", "用当前 Skill 在测试集生成内容并打分(作为优化前基准)…")
     before_res = adapter.rollout(test_items, seed.skill_markdown, os.path.join(out_root, "eval_seed"))
+    # 兜底:若一条都没生成成功(模型超时/限流/Key 失效),分数会是 0,继续跑只会得到误导性的
+    # 「0→0 没提升」。这种情况直接判失败并把真实原因写清楚,而不是当成「优化无效」。
+    if not before_res:
+        msg = (
+            f"生成失败:用当前 Skill 在测试集 {len(test_items)} 条选题上一条都没能生成出内容。"
+            "通常是文本模型供应商超时/限流/Key 失效导致;请稍后重试,或在后台检查「模型与生成」配置。"
+        )
+        ev("跑基线", "failed", msg)
+        run.modality = split.main_modality
+        run.status = "failed"
+        run.error_message = msg
+        run.report_json = json.dumps(
+            {"anchors": {"floor": floor, "ceiling": ceiling},
+             "rollout_stats": {"attempted": len(test_items), "scored": 0, "skipped": len(test_items)}},
+            ensure_ascii=False,
+        )
+        db.commit()
+        db.refresh(run)
+        return run
     before = _avg([r["soft"] * 100 for r in before_res])
     ev("跑基线", "succeeded", f"优化前风格相似度 {before} 分(gap_closed {gap_closed(before, floor, ceiling)}%)")
 
@@ -206,6 +233,24 @@ def run_skill_optimization(
     best_path = os.path.join(out_root, "best_skill.md")
     optimized = open(best_path).read() if os.path.exists(best_path) else seed.skill_markdown
     after_res = adapter.rollout(test_items, optimized, os.path.join(out_root, "eval_best"))
+    if not after_res:
+        # 优化后一条都没生成成功:无法比较,同样判失败而非误导性的「变差」。
+        msg = (
+            "生成失败:用优化后的 Skill 在测试集上一条都没能生成出内容(文本模型供应商超时/限流/Key 失效)。"
+            "本次结果不可信,请稍后重试。"
+        )
+        ev("出对比报告", "failed", msg)
+        run.before_score = before
+        run.status = "failed"
+        run.error_message = msg
+        run.report_json = json.dumps(
+            {"anchors": {"floor": floor, "ceiling": ceiling},
+             "rollout_stats": {"attempted": len(test_items), "before_scored": len(before_res), "after_scored": 0}},
+            ensure_ascii=False,
+        )
+        db.commit()
+        db.refresh(run)
+        return run
     after = _avg([r["soft"] * 100 for r in after_res])
 
     before_gap = gap_closed(before, floor, ceiling)
@@ -229,6 +274,8 @@ def run_skill_optimization(
         "anchors": {"floor": floor, "ceiling": ceiling},
         "counts": {"train": len(split.train), "val": len(split.val), "test": len(split.test),
                    "dropped_minority": split.dropped_minority},
+        "rollout_stats": {"attempted": len(test_items),
+                          "before_scored": len(before_res), "after_scored": len(after_res)},
         "epochs": epochs_detail,
         "changelog": changelog,
         "samples": samples,

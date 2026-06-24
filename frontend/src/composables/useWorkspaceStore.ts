@@ -1616,8 +1616,23 @@ export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearc
 
 // —— Skill 优化 ——
 export const optimizeBloggerId = ref<number | null>(null)
+export const optimizeSkillId = ref<number | null>(null)
 export const currentTrainingRun = ref<SkillTrainingRun | null>(null)
 export const optimizeConfirming = ref(false)
+
+// 所选博主下的 Skill 版本(active 在前);用于让用户选具体哪个 Skill 来优化。
+export const optimizeSkillOptions = computed(() =>
+  bloggerSkills.value
+    .filter((s) => s.blogger_id === optimizeBloggerId.value)
+    .sort((a, b) => (a.status === 'active' ? -1 : b.status === 'active' ? 1 : 0))
+)
+
+// 切博主时把 Skill 选择重置到该博主的 active 版本(没有则取第一个)。
+watch(optimizeBloggerId, () => {
+  const opts = optimizeSkillOptions.value
+  const active = opts.find((s) => s.status === 'active')
+  optimizeSkillId.value = active?.id ?? opts[0]?.id ?? null
+})
 
 export async function handleOptimizeSkill() {
   const bloggerId = optimizeBloggerId.value
@@ -1625,11 +1640,12 @@ export async function handleOptimizeSkill() {
     showMessage('请先选择要优化的对标博主', true)
     return
   }
+  const skillId = optimizeSkillId.value
   currentTrainingRun.value = null
   await runTaskAction(
     'optimize',
     '正在优化 Skill',
-    async () => optimizeSkill(bloggerId, 2),
+    async () => optimizeSkill(bloggerId, 2, skillId),
     async () => {
       const runs = await listSkillTrainingRuns(bloggerId)
       currentTrainingRun.value = runs[0] || null

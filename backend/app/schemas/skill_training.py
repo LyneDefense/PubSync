@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class SkillOptimizeRequest(BaseModel):
     epochs: int = Field(default=2, ge=1, le=5)
+    # 要优化的 Skill 版本;不传则用该博主当前 active Skill。
+    skill_id: int | None = None
 
 
 class SkillOptimizeConfirm(BaseModel):
