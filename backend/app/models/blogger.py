@@ -79,7 +79,8 @@ class BloggerPost(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     comments_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     raw_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    # 生命周期:active=在架,delisted=已下架(博主删了,仅在「翻到底对账」时标记)。
+    # 生命周期:active=在架,delisted=已下架(博主删了,仅在「翻到底对账」时标记),
+    # preview=对标搜寻"深看"时抓的试采笔记(未采纳则清理,不进蒸馏)。
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active", index=True)
     # 最近一次出现在主页列表里的时间;下架对账用。
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

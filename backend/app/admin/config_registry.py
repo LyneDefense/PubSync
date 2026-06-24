@@ -25,6 +25,7 @@ class ConfigField:
 GROUPS: list[tuple[str, str]] = [
     ("model", "模型与生成"),
     ("tikhub", "采集 / TikHub"),
+    ("benchmark", "对标博主搜寻"),
     ("asr", "ASR 语音转写"),
 ]
 
@@ -62,6 +63,15 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("tikhub_min_request_price_usd", "tikhub", "单请求估价下限 (USD)", "float"),
     ConfigField("tikhub_max_request_price_usd", "tikhub", "单请求估价上限 (USD)", "float"),
     ConfigField("tikhub_min_request_interval_seconds", "tikhub", "请求最小间隔(秒,0=不限)", "float"),
+    # —— 对标博主搜寻 ——
+    ConfigField("benchmark_weight_relevance", "benchmark", "综合分权重-方向契合", "float"),
+    ConfigField("benchmark_weight_learnability", "benchmark", "综合分权重-可对标性", "float"),
+    ConfigField("benchmark_weight_popularity", "benchmark", "综合分权重-火爆度", "float"),
+    ConfigField("benchmark_weight_transferability", "benchmark", "综合分权重-可迁移度", "float"),
+    ConfigField("benchmark_candidate_pool_cap", "benchmark", "候选池上限(个)", "int"),
+    ConfigField("benchmark_list_sample", "benchmark", "每个候选取列表笔记数", "int"),
+    ConfigField("benchmark_search_terms_max", "benchmark", "搜索词扩展上限(个)", "int"),
+    ConfigField("benchmark_inactive_days", "benchmark", "不活跃判定阈值(天)", "int"),
     # —— ASR ——
     ConfigField("asr_enabled", "asr", "启用 ASR", "bool"),
     ConfigField("asr_provider", "asr", "ASR 供应商"),

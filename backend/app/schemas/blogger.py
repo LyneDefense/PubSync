@@ -63,6 +63,8 @@ class BloggerSearchResultRead(BaseModel):
     description: str
     follower_count: int
     raw: dict
+    # 火爆度速览(0-100,仅按粉丝数粗算,免费);评估按钮才跑完整四项指标。
+    quick_popularity: float = 0
 
 
 class BloggerDistillRequest(BaseModel):

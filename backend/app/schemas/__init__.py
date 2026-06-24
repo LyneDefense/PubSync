@@ -19,6 +19,14 @@ from app.schemas.admin import (
 )
 from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
 from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead, SelfDiagnoseCreate
+from app.schemas.benchmark import (
+    BenchmarkIntent,
+    BenchmarkRecommendationRunRead,
+    CandidateScore,
+    EvaluateRequest,
+    EvaluateResult,
+    RecommendRequest,
+)
 from app.schemas.blogger import (
     BloggerCollectRequest,
     BloggerUrlCollectRequest,
@@ -106,6 +114,12 @@ __all__ = [
     "AccountAuditReport",
     "AccountAuditRunRead",
     "SelfDiagnoseCreate",
+    "BenchmarkIntent",
+    "CandidateScore",
+    "RecommendRequest",
+    "EvaluateRequest",
+    "EvaluateResult",
+    "BenchmarkRecommendationRunRead",
     "SettingRead",
     "SettingUpdate",
     "BloggerProfileCreate",

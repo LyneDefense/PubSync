@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80
     synthesis_llm_critic_enabled: bool = True
+    # 对标博主搜寻(智能推荐/单博主评分):综合分四项权重 + 候选池上限 + 列表取数 + 搜索词扩展数 + 活跃度阈值。
+    benchmark_weight_relevance: float = 0.4
+    benchmark_weight_learnability: float = 0.25
+    benchmark_weight_popularity: float = 0.25
+    benchmark_weight_transferability: float = 0.1
+    benchmark_candidate_pool_cap: int = 12
+    benchmark_list_sample: int = 12
+    benchmark_search_terms_max: int = 5
+    benchmark_inactive_days: int = 60
     # AI 创作的合成循环参数（与蒸馏独立调参）。
     creation_max_revise_iterations: int = 1
     creation_min_quality_score: int = 80
