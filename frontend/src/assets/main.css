@@ -258,6 +258,16 @@ button.task-button.running span {
   height: 100vh;
 }
 
+/* 选平台:干净的独立全屏页,不含顶栏/侧栏,内容自身居中。 */
+.select-shell {
+  min-height: 100vh;
+  width: 100%;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 .topbar {
   position: sticky;
   top: 0;

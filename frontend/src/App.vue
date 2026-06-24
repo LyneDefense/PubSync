@@ -113,6 +113,11 @@ onUnmounted(() => {
 <template>
   <LoginView v-if="!isAuthenticated" :loading="isLoggingIn" :message="loginMessage" @submit="handleLogin" />
 
+  <!-- 选平台是一个干净的独立页面:不带顶栏/侧栏/用户菜单,只让用户挑一个平台。 -->
+  <div v-else-if="route.name === 'select'" class="select-shell">
+    <router-view />
+  </div>
+
   <div v-else class="app-shell">
     <header class="topbar">
       <h1 class="topbar-title">多平台内容自动化</h1>
