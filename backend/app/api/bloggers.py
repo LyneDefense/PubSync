@@ -60,7 +60,8 @@ from app.schemas import (
 from app.schemas.benchmark import (
     BenchmarkRecommendationRunRead,
     DiscoveryDirectionsRequest,
-    DiscoveryReviewRequest,
+    DiscoveryOpRequest,
+    DiscoveryRecallRequest,
     DiscoveryStartRequest,
     EvaluateRequest,
     EvaluateResult,
@@ -207,7 +208,7 @@ def evaluate_blogger_endpoint(
     return EvaluateResult(candidate=score)
 
 
-# —— 泛搜索(发现会话)——
+# —— 泛搜索(三列工作台)——
 def _discovery_or_404(db: Session, tenant_id: int, session_id: int) -> BenchmarkDiscoverySession:
     sess = db.get(BenchmarkDiscoverySession, session_id)
     if not sess or sess.tenant_id != tenant_id:
@@ -215,11 +216,6 @@ def _discovery_or_404(db: Session, tenant_id: int, session_id: int) -> Benchmark
     if sess.status == "expired":
         raise HTTPException(status_code=410, detail="本次发现会话已过期，请重新开始")
     return sess
-
-
-def _discovery_todo(sess: BenchmarkDiscoverySession) -> dict:
-    rec = flow.recommend_next(sess, has_seed_picks=bool(sess.seeds)) if sess.stage == "review_candidates" else None
-    return flow.build_todo(sess, recommended=rec)
 
 
 @router.post("/benchmark/discovery/start")
@@ -232,66 +228,84 @@ def discovery_start_endpoint(
         sess = flow.start_session(db, settings, tenant.id, payload.platform, payload.domains, payload.my_account_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _discovery_todo(sess)
+    return flow.build_workspace(sess)
 
 
 @router.get("/benchmark/discovery/{session_id}")
-def discovery_todo_endpoint(
+def discovery_workspace_endpoint(
     session_id: int,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    return _discovery_todo(_discovery_or_404(db, tenant.id, session_id))
+    return flow.build_workspace(_discovery_or_404(db, tenant.id, session_id))
 
 
-@router.post("/benchmark/discovery/{session_id}/directions", response_model=OperationTaskRead)
+@router.post("/benchmark/discovery/{session_id}/directions")
 def discovery_directions_endpoint(
     session_id: int,
     payload: DiscoveryDirectionsRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    """调方向(同步,不召回):应用勾选/权重 + 新增领域。"""
+    sess = _discovery_or_404(db, tenant.id, session_id)
+    flow.update_directions(db, settings, sess, [d.model_dump() for d in payload.directions], payload.add_domains)
+    return flow.build_workspace(sess)
+
+
+@router.post("/benchmark/discovery/{session_id}/recall", response_model=OperationTaskRead)
+def discovery_recall_endpoint(
+    session_id: int,
+    payload: DiscoveryRecallRequest,
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> OperationTask:
+    """找候选(异步):按方向 or 按种子,追加到候选池。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    flow.submit_directions(db, settings, sess, [d.model_dump() for d in payload.directions])
+    if payload.mode == "seed" and not sess.seeds:
+        raise HTTPException(status_code=400, detail="还没有种子，先从候选里「设为种子」")
     task = create_operation_task(db, "discovery_recall", tenant_id=tenant.id)
     sess.task_id = task.id
     db.commit()
-    submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id)
+    submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id, payload.mode)
     return task
 
 
-@router.post("/benchmark/discovery/{session_id}/review")
-def discovery_review_endpoint(
+@router.post("/benchmark/discovery/{session_id}/op")
+def discovery_op_endpoint(
     session_id: int,
-    payload: DiscoveryReviewRequest,
-    background_tasks: BackgroundTasks,
+    payload: DiscoveryOpRequest,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
+    """三列之间的移动/移除/清空(同步)。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    choice = flow.submit_review(db, settings, sess, payload.adopt_ids, payload.seed_ids, payload.choice, payload.text)
-    if choice in ("more", "seed_more"):
-        task = create_operation_task(db, "discovery_recall", tenant_id=tenant.id)
-        sess.task_id = task.id
-        db.commit()
-        submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id)
-        return {"mode": "recall", "task_id": task.id}
-    if choice == "change_directions":
-        return {"mode": "todo", "todo": _discovery_todo(sess)}
-    created = flow.checkout(db, sess)
-    return {"mode": "done", "todo": flow.build_todo(sess), "created": len(created)}
+    if payload.op == "to_seed":
+        flow.move_candidates(db, settings, sess, payload.ids, flow.DEST_SEED)
+    elif payload.op == "to_selected":
+        flow.move_candidates(db, settings, sess, payload.ids, flow.DEST_SELECTED)
+    elif payload.op == "seed_to_selected":
+        flow.seed_to_selected(db, settings, sess, payload.ids)
+    elif payload.op == "remove_seed":
+        flow.remove_from(db, settings, sess, payload.ids, flow.DEST_SEED)
+    elif payload.op == "remove_selected":
+        flow.remove_from(db, settings, sess, payload.ids, flow.DEST_SELECTED)
+    elif payload.op == "clear_candidates":
+        flow.clear_candidates(db, settings, sess)
+    return flow.build_workspace(sess)
 
 
-@router.post("/benchmark/discovery/{session_id}/checkout")
-def discovery_checkout_endpoint(
+@router.post("/benchmark/discovery/{session_id}/save")
+def discovery_save_endpoint(
     session_id: int,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
+    """把已选列表保存到对标库(幂等,可随时存)。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    created = flow.checkout(db, sess)
-    return {"mode": "done", "todo": flow.build_todo(sess), "created": len(created)}
+    created = flow.save_selected(db, sess)
+    return {"created": len(created), "workspace": flow.build_workspace(sess)}
 
 
 # —— Skill 优化(训练)——

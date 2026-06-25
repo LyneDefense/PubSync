@@ -15,6 +15,10 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 
+# 粉丝数合理上限:全网最大号也就 ~1 亿,超过基本是把"小红书号/用户ID"当成了粉丝数。
+MAX_PLAUSIBLE_FOLLOWERS = 200_000_000
+
+
 @dataclass
 class BloggerSearchResult:
     platform: str
@@ -25,6 +29,7 @@ class BloggerSearchResult:
     description: str
     follower_count: int
     raw: dict[str, Any]
+    follower_known: bool = True  # 解析不到/明显是ID → False,前端显示「粉丝未知」而非乱码数字
 
 
 class TikHubUserSearchClient(TikHubBaseClient):
@@ -86,9 +91,23 @@ class TikHubNoteSearchClient(TikHubBaseClient):
             payload = self.router.call("search_notes", {"keyword": clean, "page": max(page, 1), "cursor": max(page - 1, 0)})
         except RuntimeError as exc:
             if "空数据" in str(exc):
+                logger.warning("笔记搜索:全部端点返回空数据 关键词=%s", clean)
                 return []
             raise
-        return _authors_from_notes(self.platform, payload)
+        # 漏斗式日志:端点 → 笔记数 → 去重作者数。区分「端点没返回」「返回了但解析不出笔记」「有笔记但取不到作者」。
+        endpoint = payload.get("_endpoint_used", "?")
+        notes = _extract_note_items(payload)
+        authors = _authors_from_notes(self.platform, payload)
+        if not notes:
+            logger.warning(
+                "笔记搜索:端点返回了数据但没解析出笔记列表 关键词=%s 端点=%s 顶层字段=%s",
+                clean, endpoint, ",".join(list(payload.keys())[:12]),
+            )
+        elif not authors:
+            logger.warning("笔记搜索:解析出 %d 条笔记但没取到作者 关键词=%s 端点=%s", len(notes), clean, endpoint)
+        else:
+            logger.info("笔记搜索取作者 关键词=%s 端点=%s 笔记=%d → 去重作者=%d", clean, endpoint, len(notes), len(authors))
+        return authors
 
 
 def _extract_note_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -128,6 +147,49 @@ def search_note_authors(settings: Settings, platform: str, keyword: str, page: i
         return TikHubNoteSearchClient(settings, platform).search_authors(keyword, page)
     except Exception as exc:  # noqa: BLE001 - B 路失败退化到 A 路
         logger.warning("笔记搜索取作者失败(降级):平台=%s,关键词=%s,%s", platform, keyword, exc)
+        return []
+
+
+class TikHubFollowingClient(TikHubBaseClient):
+    """拉用户关注列表(泛搜索 C 路:种子→同类号)。取不到一律返回空,由上层退化。"""
+
+    def __init__(self, settings: Settings, platform: str) -> None:
+        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法拉关注列表")
+        self.platform = validate_platform(platform)
+        pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
+        self.router = EndpointRouter(self._get, pools)
+
+    def following(self, user_id: str, xsec_token: str = "", limit: int = 60) -> list[BloggerSearchResult]:
+        uid = (user_id or "").strip()
+        pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
+        if not uid or "user_following" not in pools:
+            return []
+        try:
+            payload = self.router.call(
+                "user_following", {"user_id": uid, "cursor": 0, "num": max(limit, 20), "xsec_token": xsec_token}
+            )
+        except RuntimeError as exc:
+            if "空数据" in str(exc):
+                logger.warning("关注列表:全部端点返回空数据 user_id=%s", uid)
+                return []
+            raise
+        endpoint = payload.get("_endpoint_used", "?")
+        items = extract_user_items(payload)
+        results = [r for item in items if (r := normalize_user(self.platform, item))]
+        if not results:
+            logger.warning("关注列表:端点返回了数据但没解析出用户 user_id=%s 端点=%s 顶层字段=%s",
+                           uid, endpoint, ",".join(list(payload.keys())[:12]))
+        else:
+            logger.info("关注列表 user_id=%s 端点=%s → 用户=%d", uid, endpoint, len(results))
+        return results[:limit]
+
+
+def get_user_following(settings: Settings, platform: str, user_id: str, xsec_token: str = "", limit: int = 60) -> list[BloggerSearchResult]:
+    """泛搜索 C 路:拉某个种子账号的关注列表。任何异常 → 空(不阻断召回)。"""
+    try:
+        return TikHubFollowingClient(settings, platform).following(user_id, xsec_token, limit)
+    except Exception as exc:  # noqa: BLE001 - C 路失败不阻断
+        logger.warning("拉关注列表失败(降级):平台=%s,user_id=%s,%s", platform, user_id, exc)
         return []
 
 
@@ -322,6 +384,10 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
     if not follower_count:
         # 小红书搜索把粉丝数放在 sub_title(如 "Fans 160.8k" / "粉丝 16.5万"),没有独立数值字段,需解析。
         follower_count = fans_from_text(deep_first_str(item, ["sub_title", "subTitle", "fans_desc", "fansDesc"]))
+    # 兜底校验:把"小红书号/用户ID 被当成粉丝数"(如 94351549807)和负数挡掉 → 粉丝未知。
+    follower_known = 0 < follower_count <= MAX_PLAUSIBLE_FOLLOWERS
+    if not follower_known:
+        follower_count = 0
     return BloggerSearchResult(
         platform=platform,
         external_id=external_id,
@@ -331,6 +397,7 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
         description=description,
         follower_count=follower_count,
         raw=item,
+        follower_known=follower_known,
     )
 
 
@@ -362,17 +429,25 @@ def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, An
 
 
 def fans_from_text(text: str) -> int:
-    """从 "Fans 160.8k" / "粉丝 16.5万" 这类文案里解析粉丝数。解析不出返回 0。"""
+    """从 "Fans 160.8k" / "粉丝 16.5万" 这类文案里解析粉丝数。解析不出返回 0。
+
+    防坑:当 sub_title 其实是"小红书号:9435154980"这类长串数字、又没有 万/k 单位时,
+    不要把它当粉丝数(否则会出现 94351549807 这种离谱值)。
+    """
     if not text:
         return 0
     match = re.search(r"([\d.]+)\s*([kKmMwW万亿])?", text)
     if not match:
         return 0
+    raw_digits = match.group(1)
     try:
-        num = float(match.group(1))
+        num = float(raw_digits)
     except (TypeError, ValueError):
         return 0
     suffix = (match.group(2) or "").lower()
+    # 无单位 + 一长串数字(>7 位)→ 基本是 ID/小红书号,不是粉丝数。
+    if not suffix and len(raw_digits.replace(".", "")) > 7:
+        return 0
     multiplier = {"k": 1_000, "m": 1_000_000, "w": 10_000, "万": 10_000, "亿": 100_000_000}.get(suffix, 1)
     return int(num * multiplier)
 

@@ -45,8 +45,9 @@ import type {
   DashboardGrowth,
   DashboardOverview,
   DiscoveryDirection,
-  DiscoveryReviewResult,
-  DiscoveryTodo,
+  DiscoveryOp,
+  DiscoverySaveResult,
+  DiscoveryWorkspace,
   XhsPublishPackage,
   XhsPublishPackageCreate,
   XhsPublishPackageDraft,
@@ -480,37 +481,41 @@ export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
   })
 }
 
-// —— 找对标 · 泛搜索(发现会话)——
+// —— 找对标 · 泛搜索(三列工作台)——
 export function discoveryStart(platform: SocialPlatform, domains: string[], myAccountId: number | null = null) {
-  return request<DiscoveryTodo>('/benchmark/discovery/start', {
+  return request<DiscoveryWorkspace>('/benchmark/discovery/start', {
     method: 'POST',
     body: JSON.stringify({ platform, domains, my_account_id: myAccountId })
   })
 }
 
-export function discoveryGetTodo(sessionId: number) {
-  return request<DiscoveryTodo>(`/benchmark/discovery/${sessionId}`)
+export function discoveryGetWorkspace(sessionId: number) {
+  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}`)
 }
 
-export function discoverySubmitDirections(sessionId: number, directions: DiscoveryDirection[]) {
-  return request<OperationTask>(`/benchmark/discovery/${sessionId}/directions`, {
+export function discoveryUpdateDirections(sessionId: number, directions: DiscoveryDirection[], addDomains: string[] = []) {
+  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}/directions`, {
     method: 'POST',
-    body: JSON.stringify({ directions })
+    body: JSON.stringify({ directions, add_domains: addDomains })
   })
 }
 
-export function discoveryReview(
-  sessionId: number,
-  payload: { adopt_ids: string[]; seed_ids: string[]; choice: string; text?: string }
-) {
-  return request<DiscoveryReviewResult>(`/benchmark/discovery/${sessionId}/review`, {
+export function discoveryRecall(sessionId: number, mode: 'directions' | 'seed' = 'directions') {
+  return request<OperationTask>(`/benchmark/discovery/${sessionId}/recall`, {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ mode })
   })
 }
 
-export function discoveryCheckout(sessionId: number) {
-  return request<DiscoveryReviewResult>(`/benchmark/discovery/${sessionId}/checkout`, { method: 'POST' })
+export function discoveryOp(sessionId: number, op: DiscoveryOp, ids: string[] = []) {
+  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}/op`, {
+    method: 'POST',
+    body: JSON.stringify({ op, ids })
+  })
+}
+
+export function discoverySave(sessionId: number) {
+  return request<DiscoverySaveResult>(`/benchmark/discovery/${sessionId}/save`, { method: 'POST' })
 }
 
 export function recommendBloggers(payload: {

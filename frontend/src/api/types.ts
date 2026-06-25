@@ -421,7 +421,7 @@ export interface EvaluateResult {
   candidate: CandidateScore
 }
 
-// 找对标 · 泛搜索(发现会话)
+// 找对标 · 泛搜索(三列工作台)
 export interface DiscoveryDirection {
   id?: string
   label: string
@@ -436,29 +436,32 @@ export interface DiscoveryCandidate {
   avatar_url: string
   description: string
   follower_count: number
+  follower_known: boolean          // false → 显示「粉丝未知」
   is_personal: boolean
   score: number
-  reason: string
+  reason: string                   // 为什么推荐它(命中方向 + 发现渠道)
+  matched?: string[]               // 命中的方向
+  from_seed?: boolean              // 来自种子关注
+  is_mine?: boolean                // 入口选的「我的账号」种子
   existing_blogger_id: number | null
 }
-export interface DiscoveryTodo {
+export interface DiscoveryWorkspace {
   session_id: number
+  platform: string
   stage: string
+  status: string
   message: string
   round: number
-  basket: DiscoveryCandidate[]
+  directions: DiscoveryDirection[]
+  candidates: DiscoveryCandidate[]
   seeds: DiscoveryCandidate[]
-  directions?: DiscoveryDirection[]
-  candidates?: DiscoveryCandidate[]
-  options?: Array<{ id: string; label: string }>
-  recommended?: { option_id: string; reason: string } | null
-  input?: { key: string; placeholder: string }
+  selected: DiscoveryCandidate[]
 }
-export interface DiscoveryReviewResult {
-  mode: 'recall' | 'todo' | 'done'
-  task_id?: string
-  todo?: DiscoveryTodo
-  created?: number
+export type DiscoveryOp =
+  | 'to_seed' | 'to_selected' | 'seed_to_selected' | 'remove_seed' | 'remove_selected' | 'clear_candidates'
+export interface DiscoverySaveResult {
+  created: number
+  workspace: DiscoveryWorkspace
 }
 
 // Skill 优化(训练)

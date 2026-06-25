@@ -11,16 +11,32 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.blogger_distillation.search import BloggerSearchResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class WeightedDomain:
     label: str
     weight: float = 50.0  # 0-100
+
+
+@dataclass
+class RecalledCandidate:
+    """召回结果 + 溯源:命中了哪些方向(label,weight)、走了哪几条路、是否来自种子关注。
+
+    溯源用来:① 给前端写"为什么是它"的理由;② 把命中方向的权重喂给打分(让权重真生效)。
+    """
+
+    result: BloggerSearchResult
+    matched: list[tuple[str, float]] = field(default_factory=list)  # 命中方向(按权重降序)
+    channels: list[str] = field(default_factory=list)              # {"users","authors","following"}
+    from_seed: bool = False                                        # 来自某个种子的关注列表
 
 
 def _key(r: BloggerSearchResult) -> str:
@@ -71,18 +87,75 @@ def recall(
     seed_following: list[BloggerSearchResult] | None = None,
     cap: int,
     exclude_ids: Iterable[str] = (),
-) -> list[BloggerSearchResult]:
-    """三路召回 → 合并去重截断。单个方向/通道失败应由调用方吞掉(返回空列表)。"""
-    labels = [d.label for d in domains if d.label.strip()]
-    chan_users = _domain_interleave([_safe(search_users_fn, lbl) for lbl in labels])
-    chan_authors = _domain_interleave([_safe(search_notes_authors_fn, lbl) for lbl in labels])
+    on_domain: Callable[[str, int, int], None] | None = None,
+) -> list[RecalledCandidate]:
+    """三路召回 → 合并去重截断,带溯源。单个方向/通道失败由 _safe 吞掉(返回空列表)。
+
+    on_domain(label, 用户数, 作者数):每搜完一个方向回调一次,供任务层写进度事件。
+    """
+    labels = [(d.label.strip(), d.weight) for d in domains if d.label.strip()]
+    prov: dict[str, dict] = {}
+
+    def _tag(r: BloggerSearchResult, label: str, weight: float, channel: str, from_seed: bool = False) -> None:
+        k = _key(r)
+        if not k:
+            return
+        p = prov.setdefault(k, {"matched": {}, "channels": set(), "from_seed": False})
+        if label:
+            p["matched"][label] = max(p["matched"].get(label, 0.0), weight)
+        p["channels"].add(channel)
+        if from_seed:
+            p["from_seed"] = True
+
+    users_per_domain: list[list[BloggerSearchResult]] = []
+    authors_per_domain: list[list[BloggerSearchResult]] = []
+    for label, weight in labels:
+        users = _safe(search_users_fn, label, channel="搜用户", domain=label)
+        authors = _safe(search_notes_authors_fn, label, channel="搜笔记取作者", domain=label)
+        for r in users:
+            _tag(r, label, weight, "users")
+        for r in authors:
+            _tag(r, label, weight, "authors")
+        users_per_domain.append(users)
+        authors_per_domain.append(authors)
+        # 每方向命中数:判断「B 路到底有没有出号」最直接的证据,也回调给进度条。
+        logger.info("泛搜索·召回 方向=「%s」 搜用户=%d 搜笔记取作者=%d", label, len(users), len(authors))
+        if on_domain is not None:
+            try:
+                on_domain(label, len(users), len(authors))
+            except Exception:  # noqa: BLE001 - 进度回调失败不能影响召回
+                pass
+
+    chan_users = _domain_interleave(users_per_domain)
+    chan_authors = _domain_interleave(authors_per_domain)
     chan_following = list(seed_following or [])
-    return merge_interleave_dedupe([chan_users, chan_authors, chan_following], exclude_ids, cap)
+    for r in chan_following:
+        _tag(r, "", 0.0, "following", from_seed=True)
+
+    exclude_n = len({str(x).strip() for x in exclude_ids if str(x).strip()})
+    merged = merge_interleave_dedupe([chan_users, chan_authors, chan_following], exclude_ids, cap)
+    out: list[RecalledCandidate] = []
+    for r in merged:
+        p = prov.get(_key(r), {"matched": {}, "channels": set(), "from_seed": False})
+        out.append(RecalledCandidate(
+            result=r,
+            matched=sorted(p["matched"].items(), key=lambda kv: -kv[1]),
+            channels=sorted(p["channels"]),
+            from_seed=bool(p["from_seed"]),
+        ))
+    logger.info(
+        "泛搜索·召回汇总 通道[用户=%d 笔记作者=%d 种子关注=%d] 排除已看过=%d → 去重截断后=%d (cap=%d)",
+        len(chan_users), len(chan_authors), len(chan_following), exclude_n, len(merged), cap,
+    )
+    return out
 
 
-def _safe(fn: Callable[[str], list[BloggerSearchResult]], arg: str) -> list[BloggerSearchResult]:
-    """单路取数失败不阻断整体召回。"""
+def _safe(
+    fn: Callable[[str], list[BloggerSearchResult]], arg: str, *, channel: str = "", domain: str = ""
+) -> list[BloggerSearchResult]:
+    """单路取数失败不阻断整体召回(但要记一条警告,免得静默退化看不出来)。"""
     try:
         return list(fn(arg) or [])
-    except Exception:  # noqa: BLE001 - 某个方向/通道挂了就跳过它
+    except Exception as exc:  # noqa: BLE001 - 某个方向/通道挂了就跳过它
+        logger.warning("泛搜索·召回 单路失败已跳过 通道=%s 方向=「%s」: %s", channel, domain, exc)
         return []

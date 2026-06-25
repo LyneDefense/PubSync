@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from app.benchmark_discovery.context import BenchmarkContext
@@ -44,6 +45,8 @@ def expand_directions(
         + f'只输出 JSON:{{"directions":[{{"label":"子方向","weight":0-100,"reason":"一句话"}}]}},'
         f"最多 {max_directions} 个,按权重降序。"
     )
+    # 注意:本调用同步发生在 POST /start 请求里,LLM 默认 180s 超时;慢/挂会让前端「准备中…」一直转。
+    t0 = time.monotonic()
     try:
         data = create_json_response(settings, prompt)
         raw = data.get("directions") if isinstance(data, dict) else None
@@ -62,14 +65,19 @@ def expand_directions(
                 weight = 50.0
             out.append(Direction(label=label, weight=round(weight, 1), reason=str(item.get("reason", "")).strip()))
         if not out:
+            logger.info("泛搜索·扩展方向 LLM未给出有效方向,退回原始领域%s (用时%.1fs)", clean, time.monotonic() - t0)
             return fallback
         out.sort(key=lambda d: d.weight, reverse=True)
         out = out[:max_directions]
         for i, d in enumerate(out):
             d.selected = i < 4  # 默认勾选 top 4
+        logger.info(
+            "泛搜索·扩展方向 输入%s → LLM给出%d个(用时%.1fs):%s",
+            clean, len(out), time.monotonic() - t0, [(d.label, round(d.weight)) for d in out],
+        )
         return out
     except Exception as exc:  # noqa: BLE001 - 扩展失败退回原始领域,绝不卡住
-        logger.warning("方向扩展失败,退回原始领域:%s", exc)
+        logger.warning("泛搜索·扩展方向失败,退回原始领域(用时%.1fs):%s", time.monotonic() - t0, exc)
         return fallback
 
 

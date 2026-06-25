@@ -72,13 +72,17 @@ class DiscoveryDirection(BaseModel):
 
 class DiscoveryDirectionsRequest(BaseModel):
     directions: list[DiscoveryDirection] = Field(default_factory=list)
+    add_domains: list[str] = Field(default_factory=list)   # 「调方向」里新增的领域(可空)
 
 
-class DiscoveryReviewRequest(BaseModel):
-    adopt_ids: list[str] = Field(default_factory=list)
-    seed_ids: list[str] = Field(default_factory=list)
-    choice: str = Field(default="more", pattern="^(more|seed_more|change_directions|finish)$")
-    text: str = Field(default="", max_length=300)
+class DiscoveryRecallRequest(BaseModel):
+    mode: str = Field(default="directions", pattern="^(directions|seed)$")  # 按方向找 / 按种子找
+
+
+class DiscoveryOpRequest(BaseModel):
+    # 三列之间的移动/移除/清空(同步、轻量)。
+    op: str = Field(pattern="^(to_seed|to_selected|seed_to_selected|remove_seed|remove_selected|clear_candidates)$")
+    ids: list[str] = Field(default_factory=list)
 
 
 class BenchmarkRecommendationRunRead(BaseModel):

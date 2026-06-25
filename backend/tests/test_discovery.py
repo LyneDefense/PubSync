@@ -64,10 +64,25 @@ def test_recall_runs_all_channels_and_survives_channel_failure():
         cap=10,
         exclude_ids=(),
     )
-    ids = {r.external_id for r in out}
-    assert "user-香港保险" in ids and "user-储蓄险" in ids   # A 路两个方向都跑了
-    assert "seed-follow" in ids                              # C 路在
+    by_id = {rc.result.external_id: rc for rc in out}
+    assert "user-香港保险" in by_id and "user-储蓄险" in by_id   # A 路两个方向都跑了
+    assert "seed-follow" in by_id                                # C 路在
+    # 溯源:A 路命中了对应方向,种子关注标记 from_seed
+    assert by_id["user-香港保险"].matched == [("香港保险", 80.0)]
+    assert by_id["seed-follow"].from_seed and "following" in by_id["seed-follow"].channels
     # B 路抛错被吞,不影响其它
+
+
+def test_recall_progress_callback_fires_per_domain():
+    seen = []
+    recall(
+        [WeightedDomain("香港保险", 80), WeightedDomain("储蓄险", 50)],
+        search_users_fn=lambda kw: [_r(f"u-{kw}")],
+        search_notes_authors_fn=lambda kw: [],
+        cap=10, exclude_ids=(),
+        on_domain=lambda label, nu, na: seen.append((label, nu, na)),
+    )
+    assert seen == [("香港保险", 1, 0), ("储蓄险", 1, 0)]
 
 
 # ——— querygen: 方向扩展 + LLM 失败兜底 ———

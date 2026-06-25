@@ -41,7 +41,7 @@ async function doSearch() {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="panel find-benchmark">
+  <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="panel find-benchmark" :class="{ wide: entry === 'discovery' }">
     <div class="section-header">
       <div>
         <h2>选对标</h2>
@@ -78,6 +78,7 @@ async function doSearch() {
 
 <style scoped>
 .find-benchmark { max-width: 820px; }
+.find-benchmark.wide { max-width: 1120px; }
 .fb-entries { display: flex; gap: 8px; margin-bottom: 16px; }
 .fb-entries button { padding: 6px 16px; border: 1px solid var(--color-field-border, #c8ced4); border-radius: 999px; background: var(--color-field, #fff); cursor: pointer; }
 .fb-entries button.active { background: var(--color-accent, #2563eb); color: #fff; border-color: var(--color-accent, #2563eb); }

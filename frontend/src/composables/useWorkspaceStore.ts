@@ -45,10 +45,11 @@ import {
   getTenantId,
   getTask,
   discoveryStart,
-  discoveryGetTodo,
-  discoverySubmitDirections,
-  discoveryReview,
-  discoveryCheckout,
+  discoveryGetWorkspace,
+  discoveryUpdateDirections,
+  discoveryRecall,
+  discoveryOp,
+  discoverySave,
   getTaskEvents,
   getWorkspaceConfig,
   listBloggerCollectionPosts,
@@ -111,7 +112,8 @@ import type {
   DashboardGrowth,
   DashboardOverview,
   DiscoveryDirection,
-  DiscoveryTodo,
+  DiscoveryOp,
+  DiscoveryWorkspace,
   SocialPlatform,
   SynthesisTrace,
   Tenant,
@@ -1606,11 +1608,12 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
   showBloggerModal.value = true
 }
 
-// —— 找对标 · 泛搜索(发现会话状态机)——
-export const discoveryTodo = ref<DiscoveryTodo | null>(null)
-export const discoveryDomains = ref<string[]>([])          // S1 领域 chips
+// —— 找对标 · 泛搜索(三列工作台)——
+export const discoveryWorkspace = ref<DiscoveryWorkspace | null>(null)
+export const discoveryDomains = ref<string[]>([])          // 入口领域 chips
 export const discoverySeedAccountId = ref<number | null>(null)
 export const discoveryStarting = ref(false)
+export const discoveryOpPending = ref(false)               // 同步操作(移动/移除/保存)进行中
 export const discoveryRecalling = computed(() => pendingAction.value === 'discovery')
 
 export async function handleDiscoveryStart() {
@@ -1621,68 +1624,75 @@ export async function handleDiscoveryStart() {
   }
   discoveryStarting.value = true
   try {
-    discoveryTodo.value = await discoveryStart(currentSocialPlatform.value, domains, discoverySeedAccountId.value)
+    discoveryWorkspace.value = await discoveryStart(currentSocialPlatform.value, domains, discoverySeedAccountId.value)
   } catch (error) {
     showMessage(error instanceof Error ? error.message : '发起失败', true)
+    return
   } finally {
     discoveryStarting.value = false
   }
+  await handleDiscoveryRecall('directions')   // 进工作台即拉首批候选
 }
 
-export async function handleDiscoverySubmitDirections(directions: DiscoveryDirection[]) {
-  const sid = discoveryTodo.value?.session_id
+// 找候选:按方向 / 按种子(异步任务,进度走 LiveProgress)。
+export async function handleDiscoveryRecall(mode: 'directions' | 'seed' = 'directions') {
+  const sid = discoveryWorkspace.value?.session_id
   if (!sid) return
   await runTaskAction(
-    'discovery', '正在搜罗候选博主',
-    () => discoverySubmitDirections(sid, directions),
-    async () => { discoveryTodo.value = await discoveryGetTodo(sid) },
+    'discovery', mode === 'seed' ? '正在按种子找相似' : '正在搜罗候选博主',
+    () => discoveryRecall(sid, mode),
+    async () => { discoveryWorkspace.value = await discoveryGetWorkspace(sid) },
     '候选召回仍在后台执行，请稍后刷新'
   )
 }
 
-export async function handleDiscoveryReview(adoptIds: string[], seedIds: string[], choice: string, text = '') {
-  const sid = discoveryTodo.value?.session_id
+// 调方向(同步):应用勾选/权重 + 新增领域。
+export async function handleDiscoveryUpdateDirections(directions: DiscoveryDirection[], addDomains: string[] = []) {
+  const sid = discoveryWorkspace.value?.session_id
   if (!sid) return
-  if (choice === 'more' || choice === 'seed_more') {
-    await runTaskAction(
-      'discovery', '正在搜罗候选博主',
-      async () => {
-        const res = await discoveryReview(sid, { adopt_ids: adoptIds, seed_ids: seedIds, choice, text })
-        return await getTask(res.task_id as string)   // 取任务对象供轮询
-      },
-      async () => { discoveryTodo.value = await discoveryGetTodo(sid) },
-      '候选召回仍在后台执行，请稍后刷新'
-    )
-    return
-  }
-  // change_directions / finish:同步返回
+  discoveryOpPending.value = true
   try {
-    const res = await discoveryReview(sid, { adopt_ids: adoptIds, seed_ids: seedIds, choice, text })
-    if (res.todo) discoveryTodo.value = res.todo
-    if (res.mode === 'done') {
-      showMessage(`已入库 ${res.created ?? 0} 个对标博主`)
-      bloggers.value = await listBloggers(currentSocialPlatform.value)
-    }
+    discoveryWorkspace.value = await discoveryUpdateDirections(sid, directions, addDomains)
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : '操作失败', true)
+    showMessage(error instanceof Error ? error.message : '调整方向失败', true)
+  } finally {
+    discoveryOpPending.value = false
   }
 }
 
-export async function handleDiscoveryCheckout() {
-  const sid = discoveryTodo.value?.session_id
+// 三列之间的移动/移除/清空(同步)。
+export async function handleDiscoveryOp(op: DiscoveryOp, ids: string[] = []) {
+  const sid = discoveryWorkspace.value?.session_id
   if (!sid) return
+  discoveryOpPending.value = true
   try {
-    const res = await discoveryCheckout(sid)
-    if (res.todo) discoveryTodo.value = res.todo
-    showMessage(`已入库 ${res.created ?? 0} 个对标博主`)
+    discoveryWorkspace.value = await discoveryOp(sid, op, ids)
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+  } finally {
+    discoveryOpPending.value = false
+  }
+}
+
+// 保存已选到对标库(幂等,可随时存)。
+export async function handleDiscoverySave() {
+  const sid = discoveryWorkspace.value?.session_id
+  if (!sid) return
+  discoveryOpPending.value = true
+  try {
+    const res = await discoverySave(sid)
+    discoveryWorkspace.value = res.workspace
+    showMessage(`已保存 ${res.created} 个到对标库`)
     bloggers.value = await listBloggers(currentSocialPlatform.value)
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : '入库失败', true)
+    showMessage(error instanceof Error ? error.message : '保存失败', true)
+  } finally {
+    discoveryOpPending.value = false
   }
 }
 
 export function resetDiscovery() {
-  discoveryTodo.value = null
+  discoveryWorkspace.value = null
   discoveryDomains.value = []
   discoverySeedAccountId.value = null
 }

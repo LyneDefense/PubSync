@@ -85,6 +85,12 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
         Endpoint("app", "/api/v1/xiaohongshu/app/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
     ],
+    # 用户关注列表(泛搜索 C 路:种子→同类号)。路径按命名规律推,多端点兜底;取不到由上层退化。
+    "user_following": [
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_user_following", {"user_id": "${user_id}", "cursor": "${cursor}", "xsec_token": "${xsec_token}"}),
+        Endpoint("app", "/api/v1/xiaohongshu/app/get_user_followings", {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}"}),
+        Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_user_followings", {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}"}),
+    ],
 }
 
 
