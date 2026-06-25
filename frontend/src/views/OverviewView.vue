@@ -1,20 +1,22 @@
 <script setup lang="ts">
-// 概览:一段引导说明 —— 先讲(可选)录入账号,再用一条「编号流程线」把功能串起来,每步展开细分能力。
-// 各步可点击跳转。Hallmark redesign:保留路由/文案意图/设计 token,只重做视觉结构(居中 + 编号流程 + 子项)。
+// 概览:编号流程线串起功能。第 01 步 = 录入我的账号(可选):有则可展开账号列表(支持多个),无则显示未录入。
+// 02–05 为找对标→学透→创作→诊断提升,每步展开细分能力,可点击跳转。
+// Hallmark redesign:保留路由/文案意图/设计 token,只做视觉结构(居中 + 编号脊线 + 子项)。
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NavIcon from '../components/NavIcon.vue'
 import {
-  currentMyAccount,
   currentSocialPlatformName,
-  hasMyAccount,
   isSocialPlatform,
   currentSocialTab,
+  myAccountsOnPlatform,
   openCreateMyAccountModal
 } from '../composables/useWorkspaceStore'
 
 const route = useRoute()
 const router = useRouter()
+const accountExpanded = ref(false)
 
 function goTab(tab: string) {
   const platform = route.params.platform as string
@@ -23,7 +25,7 @@ function goTab(tab: string) {
 
 const steps = [
   {
-    n: '01',
+    n: '02',
     icon: 'search',
     title: '找对标博主',
     tab: 'find',
@@ -35,7 +37,7 @@ const steps = [
     ]
   },
   {
-    n: '02',
+    n: '03',
     icon: 'funnel',
     title: '学透对标',
     tab: 'collect',
@@ -47,7 +49,7 @@ const steps = [
     ]
   },
   {
-    n: '03',
+    n: '04',
     icon: 'sparkles',
     title: '用他的打法创作',
     tab: 'packages',
@@ -60,7 +62,7 @@ const steps = [
     ]
   },
   {
-    n: '04',
+    n: '05',
     icon: 'target',
     title: '诊断差距 & 持续提升',
     tab: 'audit',
@@ -82,27 +84,53 @@ const steps = [
       <p class="ov-lead">把你想学的{{ currentSocialPlatformName }}头部博主，变成你自己能日更的内容，还告诉你差在哪、怎么补。</p>
     </header>
 
-    <!-- 录入账号:未录入→引导卡+按钮;已录入→只显示账号,无按钮 -->
-    <div v-if="!hasMyAccount" class="ov-account ov-account-cta">
-      <NavIcon name="user" />
-      <div class="ov-account-text">
-        <strong>先录入你的账号（可选）</strong>
-        <span>让对标更准、还能看到自己的成长。只想产出内容？直接从下面「找对标」开始也行。</span>
-      </div>
-      <button type="button" class="primary" @click="openCreateMyAccountModal">录入账号</button>
-    </div>
-    <div v-else class="ov-account ov-account-done">
-      <div class="ov-avatar">{{ (currentMyAccount?.display_name || '我').slice(0, 1) }}</div>
-      <div class="ov-account-text">
-        <strong>我的账号 · {{ currentMyAccount?.display_name }}</strong>
-        <span>{{ currentMyAccount?.follower_count || 0 }} 粉丝 · 已采 {{ currentMyAccount?.sample_count || 0 }} 篇 · 对标 / 诊断都会用它</span>
-      </div>
-      <NavIcon name="check" class="ov-done-icon" />
-    </div>
-
-    <p class="ov-sub">从找到对标，到练成自己的产能 —— 四步走：</p>
+    <p class="ov-sub">从录入账号到练成自己的产能 —— 顺着这条线走：</p>
 
     <ol class="ov-flow">
+      <!-- 01 · 录入我的账号(可选):有→可展开列表;无→未录入 -->
+      <li class="ov-step">
+        <span class="ov-num" aria-hidden="true">01</span>
+        <div class="ov-step-main">
+          <button
+            v-if="myAccountsOnPlatform.length"
+            type="button"
+            class="ov-step-head"
+            :aria-expanded="accountExpanded"
+            @click="accountExpanded = !accountExpanded"
+          >
+            <NavIcon name="user" class="ov-step-icon" />
+            <span class="ov-step-title">我的账号</span>
+            <span class="ov-tag">可选</span>
+            <span class="ov-acct-count">{{ myAccountsOnPlatform.length }} 个</span>
+            <NavIcon name="chevron-down" class="ov-acct-chevron" :class="{ open: accountExpanded }" />
+          </button>
+          <button v-else type="button" class="ov-step-head" @click="openCreateMyAccountModal">
+            <NavIcon name="user" class="ov-step-icon" />
+            <span class="ov-step-title">录入我的账号</span>
+            <span class="ov-tag">可选</span>
+            <span class="ov-acct-empty">未录入</span>
+            <span class="ov-step-go">去录入<NavIcon name="arrow-right" /></span>
+          </button>
+          <p class="ov-step-desc">把你自己的账号放进来，对标更准，还能追踪成长；不想要也能跳过。</p>
+
+          <ul v-if="myAccountsOnPlatform.length && accountExpanded" class="ov-acct-list">
+            <li v-for="a in myAccountsOnPlatform" :key="a.id" class="ov-acct-row">
+              <span class="ov-acct-avatar">{{ (a.display_name || '我').slice(0, 1) }}</span>
+              <span class="ov-acct-info">
+                <strong>{{ a.display_name }}</strong>
+                <small>{{ a.follower_count || 0 }} 粉丝</small>
+              </span>
+            </li>
+            <li>
+              <button type="button" class="ov-acct-add" @click="openCreateMyAccountModal">
+                <span class="ov-acct-plus" aria-hidden="true">＋</span> 添加账号
+              </button>
+            </li>
+          </ul>
+        </div>
+      </li>
+
+      <!-- 02–05 · 功能步骤 -->
       <li v-for="step in steps" :key="step.tab" class="ov-step">
         <span class="ov-num" aria-hidden="true">{{ step.n }}</span>
         <div class="ov-step-main">
@@ -134,7 +162,7 @@ const steps = [
 .ov-head {
   text-align: center;
   max-width: 620px;
-  margin: 0 auto 28px;
+  margin: 0 auto 26px;
 }
 .ov-kicker {
   font-size: 0.78rem;
@@ -156,60 +184,13 @@ const steps = [
   line-height: 1.75;
   margin: 0;
 }
-.ov-account {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  margin-bottom: 28px;
-}
-.ov-account-cta {
-  background: color-mix(in srgb, var(--color-accent, #2563eb) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent, #2563eb) 30%, transparent);
-}
-.ov-account-done {
-  background: var(--color-field, #fff);
-  border: 1px solid var(--color-field-border, #c8ced4);
-}
-.ov-account-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.ov-account-text strong { font-weight: 600; }
-.ov-account-text span {
-  font-size: 0.85rem;
-  color: var(--color-ink-2, #6b7280);
-}
-.ov-account .primary {
-  margin-left: auto;
-  white-space: nowrap;
-}
-.ov-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--color-paper-3, #eef0f3);
-  color: var(--color-ink-2, #6b7280);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  flex: none;
-}
-.ov-done-icon {
-  margin-left: auto;
-  color: var(--color-ok, #2e9e5b);
-}
 .ov-sub {
   color: var(--color-ink-2, #6b7280);
   font-size: 0.92rem;
   margin: 0 0 18px;
 }
 
-/* 编号流程脊线:左侧大编号 + 贯穿竖线,区别于「四张一样的圆角卡片」 */
+/* 编号流程脊线:左侧大编号 + 贯穿竖线,区别于「同款圆角卡片」 */
 .ov-flow {
   list-style: none;
   margin: 0;
@@ -223,7 +204,6 @@ const steps = [
   position: relative;
   padding-bottom: 26px;
 }
-/* 竖线:连接相邻编号,最后一步不画 */
 .ov-step:not(:last-child)::before {
   content: '';
   position: absolute;
@@ -257,12 +237,22 @@ const steps = [
   border: none;
   cursor: pointer;
   color: var(--color-ink, #1f2430);
+  max-width: 100%;
 }
 .ov-step-icon { color: var(--color-accent, #2563eb); flex: none; }
 .ov-step-title {
   font-size: 1.12rem;
   font-weight: 700;
   letter-spacing: -0.005em;
+}
+.ov-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-ink-3, #9aa0a6);
+  border: 1px solid var(--color-field-border, #d6dbe1);
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex: none;
 }
 .ov-step-go {
   display: inline-flex;
@@ -292,6 +282,73 @@ const steps = [
   line-height: 1.6;
   margin: 4px 0 10px;
 }
+
+/* 账号步:计数 / 未录入 / 展开箭头 / 列表 */
+.ov-acct-count {
+  font-size: 0.82rem;
+  color: var(--color-ink-2, #6b7280);
+  flex: none;
+}
+.ov-acct-empty {
+  font-size: 0.82rem;
+  color: var(--color-ink-3, #9aa0a6);
+  flex: none;
+}
+.ov-acct-chevron {
+  color: var(--color-ink-3, #9aa0a6);
+  transition: transform 0.18s;
+  flex: none;
+}
+.ov-acct-chevron.open { transform: rotate(180deg); }
+.ov-acct-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ov-acct-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-field-border, #d6dbe1);
+  border-radius: 12px;
+  background: var(--color-field, #fff);
+}
+.ov-acct-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-accent, #2563eb) 12%, var(--color-paper, #fff));
+  color: var(--color-accent, #2563eb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex: none;
+}
+.ov-acct-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ov-acct-info strong { font-weight: 600; }
+.ov-acct-info small { font-size: 0.78rem; color: var(--color-ink-2, #6b7280); }
+.ov-acct-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px dashed var(--color-field-border, #c8ced4);
+  border-radius: 12px;
+  background: none;
+  color: var(--color-ink-2, #6b7280);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.ov-acct-add:hover {
+  border-color: var(--color-accent, #2563eb);
+  color: var(--color-accent, #2563eb);
+}
+
 .ov-points {
   list-style: none;
   margin: 0;
@@ -307,7 +364,6 @@ const steps = [
   line-height: 1.6;
   color: var(--color-ink-2, #6b7280);
 }
-/* 自绘短横作为子项标记:比圆点更克制、不那么「模板感」 */
 .ov-points li::before {
   content: '';
   position: absolute;
@@ -324,6 +380,6 @@ const steps = [
   .ov-step { grid-template-columns: 40px 1fr; gap: 12px; }
   .ov-step:not(:last-child)::before { left: 19px; }
   .ov-num { width: 40px; height: 34px; font-size: 1.2rem; border-radius: 10px; }
-  .ov-step-go { opacity: 1; transform: none; }  /* 触屏无 hover,直接显示「进入」 */
+  .ov-step-go { opacity: 1; transform: none; }
 }
 </style>
