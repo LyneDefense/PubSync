@@ -44,6 +44,11 @@ import {
   getLatestArticle,
   getTenantId,
   getTask,
+  discoveryStart,
+  discoveryGetTodo,
+  discoverySubmitDirections,
+  discoveryReview,
+  discoveryCheckout,
   getTaskEvents,
   getWorkspaceConfig,
   listBloggerCollectionPosts,
@@ -105,6 +110,8 @@ import type {
   DashboardAccount,
   DashboardGrowth,
   DashboardOverview,
+  DiscoveryDirection,
+  DiscoveryTodo,
   SocialPlatform,
   SynthesisTrace,
   Tenant,
@@ -116,7 +123,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize' | 'discovery'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -244,7 +251,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   audit: 0,
   'self-diagnose': 0,
   recommend: 0,
-  optimize: 0
+  optimize: 0,
+  discovery: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -795,7 +803,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize', 'discovery'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 // 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
 export const isOnTaskHome = computed(
@@ -826,7 +834,8 @@ const TASK_NAME_MAP: Record<string, string> = {
   audit: '对标诊断',
   'self-diagnose': '诊断我的账号',
   recommend: '智能找对标',
-  optimize: '优化 Skill'
+  optimize: '优化 Skill',
+  discovery: '搜罗候选博主'
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
@@ -1595,6 +1604,87 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
     .join('，')
   resetBloggerSearch()
   showBloggerModal.value = true
+}
+
+// —— 找对标 · 泛搜索(发现会话状态机)——
+export const discoveryTodo = ref<DiscoveryTodo | null>(null)
+export const discoveryDomains = ref<string[]>([])          // S1 领域 chips
+export const discoverySeedAccountId = ref<number | null>(null)
+export const discoveryStarting = ref(false)
+export const discoveryRecalling = computed(() => pendingAction.value === 'discovery')
+
+export async function handleDiscoveryStart() {
+  const domains = discoveryDomains.value.map((d) => d.trim()).filter(Boolean)
+  if (!domains.length) {
+    showMessage('请至少填写一个领域', true)
+    return
+  }
+  discoveryStarting.value = true
+  try {
+    discoveryTodo.value = await discoveryStart(currentSocialPlatform.value, domains, discoverySeedAccountId.value)
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '发起失败', true)
+  } finally {
+    discoveryStarting.value = false
+  }
+}
+
+export async function handleDiscoverySubmitDirections(directions: DiscoveryDirection[]) {
+  const sid = discoveryTodo.value?.session_id
+  if (!sid) return
+  await runTaskAction(
+    'discovery', '正在搜罗候选博主',
+    () => discoverySubmitDirections(sid, directions),
+    async () => { discoveryTodo.value = await discoveryGetTodo(sid) },
+    '候选召回仍在后台执行，请稍后刷新'
+  )
+}
+
+export async function handleDiscoveryReview(adoptIds: string[], seedIds: string[], choice: string, text = '') {
+  const sid = discoveryTodo.value?.session_id
+  if (!sid) return
+  if (choice === 'more' || choice === 'seed_more') {
+    await runTaskAction(
+      'discovery', '正在搜罗候选博主',
+      async () => {
+        const res = await discoveryReview(sid, { adopt_ids: adoptIds, seed_ids: seedIds, choice, text })
+        return await getTask(res.task_id as string)   // 取任务对象供轮询
+      },
+      async () => { discoveryTodo.value = await discoveryGetTodo(sid) },
+      '候选召回仍在后台执行，请稍后刷新'
+    )
+    return
+  }
+  // change_directions / finish:同步返回
+  try {
+    const res = await discoveryReview(sid, { adopt_ids: adoptIds, seed_ids: seedIds, choice, text })
+    if (res.todo) discoveryTodo.value = res.todo
+    if (res.mode === 'done') {
+      showMessage(`已入库 ${res.created ?? 0} 个对标博主`)
+      bloggers.value = await listBloggers(currentSocialPlatform.value)
+    }
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+  }
+}
+
+export async function handleDiscoveryCheckout() {
+  const sid = discoveryTodo.value?.session_id
+  if (!sid) return
+  try {
+    const res = await discoveryCheckout(sid)
+    if (res.todo) discoveryTodo.value = res.todo
+    showMessage(`已入库 ${res.created ?? 0} 个对标博主`)
+    bloggers.value = await listBloggers(currentSocialPlatform.value)
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '入库失败', true)
+  }
+}
+
+export function resetDiscovery() {
+  discoveryTodo.value = null
+  discoveryDomains.value = []
+  discoverySeedAccountId.value = null
 }
 
 // —— 对标博主搜寻:智能推荐 / 单博主评分(共用意图 + 可选「我的账号」)——

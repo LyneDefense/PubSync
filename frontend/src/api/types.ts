@@ -421,6 +421,46 @@ export interface EvaluateResult {
   candidate: CandidateScore
 }
 
+// 找对标 · 泛搜索(发现会话)
+export interface DiscoveryDirection {
+  id?: string
+  label: string
+  weight: number
+  reason: string
+  selected: boolean
+}
+export interface DiscoveryCandidate {
+  external_id: string
+  display_name: string
+  homepage_url: string
+  avatar_url: string
+  description: string
+  follower_count: number
+  is_personal: boolean
+  score: number
+  reason: string
+  existing_blogger_id: number | null
+}
+export interface DiscoveryTodo {
+  session_id: number
+  stage: string
+  message: string
+  round: number
+  basket: DiscoveryCandidate[]
+  seeds: DiscoveryCandidate[]
+  directions?: DiscoveryDirection[]
+  candidates?: DiscoveryCandidate[]
+  options?: Array<{ id: string; label: string }>
+  recommended?: { option_id: string; reason: string } | null
+  input?: { key: string; placeholder: string }
+}
+export interface DiscoveryReviewResult {
+  mode: 'recall' | 'todo' | 'done'
+  task_id?: string
+  todo?: DiscoveryTodo
+  created?: number
+}
+
 // Skill 优化(训练)
 export interface SkillTrainingSample {
   topic: string

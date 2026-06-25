@@ -44,6 +44,9 @@ import type {
   DashboardAccount,
   DashboardGrowth,
   DashboardOverview,
+  DiscoveryDirection,
+  DiscoveryReviewResult,
+  DiscoveryTodo,
   XhsPublishPackage,
   XhsPublishPackageCreate,
   XhsPublishPackageDraft,
@@ -475,6 +478,39 @@ export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
     method: 'POST',
     body: JSON.stringify(payload)
   })
+}
+
+// —— 找对标 · 泛搜索(发现会话)——
+export function discoveryStart(platform: SocialPlatform, domains: string[], myAccountId: number | null = null) {
+  return request<DiscoveryTodo>('/benchmark/discovery/start', {
+    method: 'POST',
+    body: JSON.stringify({ platform, domains, my_account_id: myAccountId })
+  })
+}
+
+export function discoveryGetTodo(sessionId: number) {
+  return request<DiscoveryTodo>(`/benchmark/discovery/${sessionId}`)
+}
+
+export function discoverySubmitDirections(sessionId: number, directions: DiscoveryDirection[]) {
+  return request<OperationTask>(`/benchmark/discovery/${sessionId}/directions`, {
+    method: 'POST',
+    body: JSON.stringify({ directions })
+  })
+}
+
+export function discoveryReview(
+  sessionId: number,
+  payload: { adopt_ids: string[]; seed_ids: string[]; choice: string; text?: string }
+) {
+  return request<DiscoveryReviewResult>(`/benchmark/discovery/${sessionId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function discoveryCheckout(sessionId: number) {
+  return request<DiscoveryReviewResult>(`/benchmark/discovery/${sessionId}/checkout`, { method: 'POST' })
 }
 
 export function recommendBloggers(payload: {
