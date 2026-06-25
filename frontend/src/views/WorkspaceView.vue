@@ -4,6 +4,7 @@
 import ComingSoonPanel from '../components/ComingSoonPanel.vue'
 import ImagePreviewModal from '../components/ImagePreviewModal.vue'
 import LiveProgress from '../components/LiveProgress.vue'
+import MiniProgressBanner from '../components/MiniProgressBanner.vue'
 import OverviewView from './OverviewView.vue'
 import FindBenchmarkView from './FindBenchmarkView.vue'
 import SkillOptimizeView from './SkillOptimizeView.vue'
@@ -48,6 +49,8 @@ import {
 </script>
 
 <template>
+  <MiniProgressBanner />
+
   <LiveProgress />
 
   <OverviewView />

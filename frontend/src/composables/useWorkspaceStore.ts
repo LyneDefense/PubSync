@@ -196,6 +196,8 @@ export const runningTaskId = ref<string | null>(null)
 export const taskEvents = ref<OperationTaskEvent[]>([])
 export const taskEventsAction = ref<TaskActionName | null>(null)
 export const taskEventsMainTab = ref<MainTab | null>(null)
+// 任务发起时所在的子页签;进度条只在「发起任务的那个页面」展开,切走只留顶部迷你条。
+export const taskEventsSubTab = ref<string | null>(null)
 export const showTaskEventDetails = ref(false)
 export const isAuthenticated = ref(Boolean(getAuthToken()))
 export const isLoggingIn = ref(false)
@@ -396,6 +398,10 @@ export const isSocialPlatform = computed(() => activeMainTab.value === 'xhs' || 
 export const currentSocialPlatform = computed<SocialPlatform>(() => (activeMainTab.value === 'douyin' ? 'douyin' : 'xhs'))
 export const currentSocialPlatformName = computed(() => (currentSocialPlatform.value === 'douyin' ? '抖音' : '小红书'))
 export const currentSocialTab = computed<SocialTab>(() => (activeMainTab.value === 'douyin' ? activeDouyinTab.value : activeXhsTab.value))
+// 当前所在子页签(跨平台统一):用于判断进度条是否在「任务主页」。
+export const activeSubTab = computed<string>(() =>
+  activeMainTab.value === 'wechat' ? activeWechatTab.value : currentSocialTab.value
+)
 // 当前平台是否已录入「我的账号」(概览页据此二选一显示引导/已录入卡)。
 export const currentMyAccount = computed(() => myAccounts.value.find((a) => a.platform === currentSocialPlatform.value) || null)
 export const hasMyAccount = computed(() => Boolean(currentMyAccount.value))
@@ -791,8 +797,21 @@ export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTas
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
 const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
+// 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
+export const isOnTaskHome = computed(
+  () => taskEventsMainTab.value === activeMainTab.value && taskEventsSubTab.value === activeSubTab.value
+)
 export const isVisibleTaskRunning = computed(
-  () => isTaskRunning.value && taskEventsAction.value !== null && taskEventsMainTab.value === activeMainTab.value
+  () => isTaskRunning.value && taskEventsAction.value !== null && isOnTaskHome.value
+)
+// 任务在跑、但当前不在它的主页 → 顶部只显示一条迷你「xx 进行中·查看」。
+export const isMiniTaskRunning = computed(
+  () => isTaskRunning.value && taskEventsAction.value !== null && !isOnTaskHome.value
+)
+// 迷你条用:不受页签门控的最新事件(visibleTaskEvents 会按平台清空)。
+export const latestEventAny = computed(() => taskEvents.value[taskEvents.value.length - 1] || null)
+export const miniTaskStep = computed(() =>
+  latestEventAny.value ? humanizeStepName(latestEventAny.value.step_name) : '进行中'
 )
 // 是否有「需要展示进度」的任务在执行(全局顶部进度卡片用)。涵盖所有会跑一会儿的动作。
 export const PROGRESS_ACTIONS = ['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-package-save', 'xhs-topic', 'audit'] as const
@@ -1062,12 +1081,12 @@ export function eventPayloadSummary(event: OperationTaskEvent) {
 // 进行中任务持久化:后台任务(RQ/Redis)本身持久,但前端轮询循环和 pendingAction 是内存态,
 // 刷新即丢 → 任务从界面消失、还能重复发起。这里把 runningTaskId 落 localStorage,刷新后重挂轮询。
 const RUNNING_TASK_KEY = 'pubsync_running_task'
-type PersistedTask = { id: string; name: TaskActionName; mainTab: MainTab }
+type PersistedTask = { id: string; name: TaskActionName; mainTab: MainTab; subTab?: string | null }
 const TERMINAL_TASK_STATUS: string[] = ['succeeded', 'cancelled', 'failed']
 
 function persistRunningTask(name: TaskActionName, id: string) {
   try {
-    window.localStorage.setItem(RUNNING_TASK_KEY, JSON.stringify({ id, name, mainTab: activeMainTab.value }))
+    window.localStorage.setItem(RUNNING_TASK_KEY, JSON.stringify({ id, name, mainTab: activeMainTab.value, subTab: taskEventsSubTab.value }))
   } catch {
     /* localStorage 不可用时静默忽略 */
   }
@@ -1130,6 +1149,7 @@ export async function runTaskAction(
   pendingAction.value = name
   taskEventsAction.value = name
   taskEventsMainTab.value = activeMainTab.value
+  taskEventsSubTab.value = activeSubTab.value
   showTaskEventDetails.value = false
   startFakeProgress(name)
   startElapsed()
@@ -1181,6 +1201,7 @@ export async function resumeRunningTaskIfAny() {
   pendingAction.value = name
   taskEventsAction.value = name
   taskEventsMainTab.value = (mainTab as MainTab) || activeMainTab.value
+  taskEventsSubTab.value = persisted.subTab ?? null
   showTaskEventDetails.value = false
   startFakeProgress(name)
   startElapsed()
