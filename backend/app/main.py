@@ -32,7 +32,7 @@ from app.db.migrate import run_migrations
 from app.logging_config import configure_logging
 from app.services.auth_service import verify_token
 from app.dashboard.service import capture_daily_snapshots
-from app.services.task_service import scheduled_workspace_publish
+from app.services.task_service import reap_stale_tasks, scheduled_workspace_publish
 
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
@@ -63,6 +63,14 @@ async def lifespan(app: FastAPI):
         "interval",
         hours=12,
         id="account_metric_snapshot",
+        replace_existing=True,
+    )
+    # 僵死任务看门狗：每 5 分钟扫一次,把长时间无进展的 running 任务标记为失败并告知前端。
+    scheduler.add_job(
+        reap_stale_tasks,
+        "interval",
+        minutes=5,
+        id="reap_stale_tasks",
         replace_existing=True,
     )
     scheduler.start()

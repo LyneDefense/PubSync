@@ -1,10 +1,10 @@
 import logging
 from calendar import monthrange
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -21,7 +21,15 @@ from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import SessionLocal
 from app.pipeline import PubSyncPipeline
 from app.queue import enqueue
-from app.models import AppSetting, OperationTask, PublishingSettings, TaskStatus, Tenant, TenantStatus
+from app.models import (
+    AppSetting,
+    OperationTask,
+    OperationTaskEvent,
+    PublishingSettings,
+    TaskStatus,
+    Tenant,
+    TenantStatus,
+)
 from app.services.ai_service import AIServiceError
 from app.services.tenant_service import (
     build_effective_settings,
@@ -529,3 +537,57 @@ def mark_task_failed_by_id(db: Session, task_id: str, message: str, error_messag
     task.message = message
     task.error_message = error_message
     db.commit()
+
+
+# 进行中但可能已僵死的任务状态(worker 被 OOM/强杀时,异常处理不会触发,任务会一直卡 running)。
+STALE_REAP_STATUSES = (TaskStatus.running, TaskStatus.cancel_requested)
+STALE_FAIL_MESSAGE = (
+    "任务超过 {minutes} 分钟没有任何进展，多半是后台进程因服务器资源不足被中断；"
+    "已自动标记为失败。已完成的部分都已保存，可以重新发起（采集是增量的，会自动跳过已采集的内容）。"
+)
+
+
+def reap_stale_tasks_in_session(db: Session, now: datetime, stale_minutes: int) -> list[str]:
+    """把「进行中但超过 stale_minutes 没有新进展事件」的任务标记为失败,返回被回收的 task_id。
+
+    判活信号 = 该任务最近一条事件时间(没有事件则退回 updated_at/created_at)。只动 running/cancel_requested,
+    不碰 queued(可能只是在排队等单 worker,静默不代表死)。
+    """
+    cutoff = now - timedelta(minutes=stale_minutes)
+    reaped: list[str] = []
+    tasks = list(db.scalars(select(OperationTask).where(OperationTask.status.in_(STALE_REAP_STATUSES))))
+    for task in tasks:
+        last_event = db.scalar(
+            select(func.max(OperationTaskEvent.created_at)).where(OperationTaskEvent.task_id == task.id)
+        )
+        last_activity = last_event or task.updated_at or task.created_at
+        if last_activity is None:
+            continue
+        if last_activity.tzinfo is None:  # sqlite 等可能返回 naive,统一成 UTC 再比较
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if last_activity >= cutoff:
+            continue
+        msg = STALE_FAIL_MESSAGE.format(minutes=stale_minutes)
+        record_task_event(db, task.tenant_id, task.id, "任务中断", "failed", msg)
+        task.status = TaskStatus.failed
+        task.message = "任务已中断"
+        task.error_message = msg
+        db.commit()
+        reaped.append(task.id)
+        logger.warning("回收僵死任务：任务ID=%s，类型=%s，最后活动=%s", task.id, task.task_type, last_activity)
+    return reaped
+
+
+def reap_stale_tasks() -> None:
+    """定时入口(无参,自建 session):回收僵死任务。由调度器周期调用。"""
+    db = SessionLocal()
+    try:
+        minutes = int(getattr(get_settings(), "task_stale_minutes", 20) or 20)
+        reaped = reap_stale_tasks_in_session(db, datetime.now(timezone.utc), minutes)
+        if reaped:
+            logger.info("僵死任务看门狗：本轮回收 %s 个任务", len(reaped))
+    except Exception:  # noqa: BLE001 - 看门狗自身异常不应影响调度器
+        db.rollback()
+        logger.exception("僵死任务看门狗执行失败")
+    finally:
+        db.close()
