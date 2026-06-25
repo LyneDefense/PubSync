@@ -126,12 +126,21 @@ def _authors_from_notes(platform: str, payload: dict[str, Any]) -> list[BloggerS
     seen: set[str] = set()
     for note in _extract_note_items(payload):
         author = None
+        # 作者可能直接挂在 note 上,或挂在 note_card / noteCard(web_v3 搜索是 camelCase)下。
         for key in ("user", "author"):
             if isinstance(note.get(key), dict):
                 author = note[key]
                 break
-        if author is None and isinstance(note.get("note_card"), dict) and isinstance(note["note_card"].get("user"), dict):
-            author = note["note_card"]["user"]
+        if author is None:
+            for card_key in ("note_card", "noteCard", "card"):
+                card = note.get(card_key)
+                if isinstance(card, dict):
+                    for key in ("user", "author"):
+                        if isinstance(card.get(key), dict):
+                            author = card[key]
+                            break
+                if author is not None:
+                    break
         if not isinstance(author, dict):
             continue
         result = normalize_user(platform, author)
@@ -368,7 +377,7 @@ def normalize_user(platform: str, item: dict[str, Any]) -> BloggerSearchResult |
         external_id = first_str(item, ["id"]) or deep_first_str(item, ["sec_uid", "secUid", "sec_uid_str", "secUidStr", "uid", "user_id", "userId"])
     else:
         external_id = deep_first_str(item, ["user_id", "userId", "userid", "uid", "id"])
-    display_name = first_str(item, ["nickname"]) or deep_first_str(item, ["nick_name", "name", "display_name", "displayName"])
+    display_name = first_str(item, ["nickname"]) or deep_first_str(item, ["nick_name", "nickName", "name", "display_name", "displayName"])
     if not external_id or not display_name:
         return None
     homepage_url = deep_first_str(item, ["homepage_url", "share_url", "shareUrl", "url"])

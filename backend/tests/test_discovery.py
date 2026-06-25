@@ -121,10 +121,13 @@ def test_authors_from_notes_extracts_dedupes():
     payload = {"data": {"items": [
         {"note_card": {"user": {"user_id": "u1", "nickname": "保险经纪人娜姐", "fans": 12000}}},
         {"user": {"user_id": "u2", "nickname": "香港阿May"}},
+        # web_v3 搜索的真实结构:noteCard.user(camelCase 字段)
+        {"noteCard": {"user": {"userId": "u3", "nickName": "港险阿强", "avatar": "x"}}},
         {"note_card": {"user": {"user_id": "u1", "nickname": "保险经纪人娜姐"}}},  # 重复作者
         {"title": "无作者的笔记"},
     ]}}
     authors = _authors_from_notes("xhs", payload)
     ids = [a.external_id for a in authors]
-    assert ids == ["u1", "u2"]                       # 去重 + 跳过无作者
+    assert ids == ["u1", "u2", "u3"]                 # 去重 + 跳过无作者 + 认 camelCase
     assert authors[0].display_name == "保险经纪人娜姐"
+    assert authors[2].display_name == "港险阿强"
