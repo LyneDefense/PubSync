@@ -7,7 +7,6 @@ import { useRoute, useRouter } from 'vue-router'
 
 import NavIcon from '../components/NavIcon.vue'
 import {
-  currentSocialPlatformName,
   isSocialPlatform,
   currentSocialTab,
   myAccountsOnPlatform,
@@ -78,14 +77,6 @@ const steps = [
 
 <template>
   <section v-if="isSocialPlatform && currentSocialTab === 'overview'" class="overview">
-    <header class="ov-head">
-      <p class="ov-kicker">{{ currentSocialPlatformName }} 内容工作台</p>
-      <h1 class="ov-title">一个人，做出一个团队的内容产能</h1>
-      <p class="ov-lead">把你想学的{{ currentSocialPlatformName }}头部博主，变成你自己能日更的内容，还告诉你差在哪、怎么补。</p>
-    </header>
-
-    <p class="ov-sub">从录入账号到练成自己的产能 —— 顺着这条线走：</p>
-
     <ol class="ov-flow">
       <!-- 01 · 录入我的账号(可选):有→可展开列表;无→未录入 -->
       <li class="ov-step">
@@ -157,37 +148,7 @@ const steps = [
 .overview {
   max-width: 820px;
   margin: 0 auto;            /* 居中:不再贴左侧导航栏 */
-  padding: 8px 24px 48px;
-}
-.ov-head {
-  text-align: center;
-  max-width: 620px;
-  margin: 0 auto 26px;
-}
-.ov-kicker {
-  font-size: 0.78rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--color-accent, #2563eb);
-  margin: 0 0 10px;
-  font-weight: 600;
-}
-.ov-title {
-  font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.05rem);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  margin: 0 0 10px;
-  overflow-wrap: anywhere;
-}
-.ov-lead {
-  color: var(--color-ink-2, #6b7280);
-  line-height: 1.75;
-  margin: 0;
-}
-.ov-sub {
-  color: var(--color-ink-2, #6b7280);
-  font-size: 0.92rem;
-  margin: 0 0 18px;
+  padding: 28px 24px 48px;
 }
 
 /* 编号流程脊线:左侧大编号 + 贯穿竖线,区别于「同款圆角卡片」 */
