@@ -11,7 +11,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 
-from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, XHS_ENDPOINT_POOLS, EndpointRouter
+from app.blogger_distillation.endpoint_router import DOUYIN_ENDPOINT_POOLS, Endpoint, EndpointRouter
 from app.blogger_distillation.search import deep_first_str, fans_from_text
 from app.blogger_distillation.tikhub_client import TikHubBaseClient
 from app.config import Settings
@@ -19,10 +19,28 @@ from app.services.ai_service import create_json_response
 
 logger = logging.getLogger(__name__)
 
+# 核验专用的小红书端点池:只用 user_id 就能调的端点、app 优先。
+# (主池里 user_info 第一个是 app_v2_share,要 share_text,我们只有 user_id → 每次必 400 白等,这里剔掉。)
+_VET_XHS_POOLS: dict[str, list[Endpoint]] = {
+    "user_info": [
+        Endpoint("app", "/api/v1/xiaohongshu/app/get_user_info", {"user_id": "${user_id}"}),
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_user_info", {"user_id": "${user_id}"}),
+        Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_user_info", {"user_id": "${user_id}"}),
+    ],
+    "user_notes": [
+        Endpoint("app", "/api/v1/xiaohongshu/app/get_user_notes",
+                 {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"}),
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_user_notes",
+                 {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"}),
+        Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/get_user_posted_notes",
+                 {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"}),
+    ],
+}
+
 
 def _router(settings: Settings, platform: str) -> EndpointRouter:
     base = TikHubBaseClient(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法核验账号")
-    pools = DOUYIN_ENDPOINT_POOLS if platform == "douyin" else XHS_ENDPOINT_POOLS
+    pools = DOUYIN_ENDPOINT_POOLS if platform == "douyin" else _VET_XHS_POOLS
     return EndpointRouter(base._get, pools)
 
 
@@ -160,7 +178,10 @@ def _llm_relevance(settings: Settings, domains: list[str], items: list[dict], de
         return {}
     prompt = (
         f"用户要找「{('、'.join(domains))}」领域的对标博主。下面每个候选给了昵称、简介、IP、最近笔记标题。\n"
-        "判断每个账号**本身是不是真的在做这个领域**(只是偶尔提一句不算),给 0-100 相关度和一句理由。\n\n"
+        "判断每个账号**本身是不是持续在做这个领域**,给 0-100 相关度和一句理由。判分从严:\n"
+        "- 简介或大部分近期笔记都围绕该领域 → 高分(70+);\n"
+        "- 只是偶尔写过一两条沾边、主体是别的(生活/日常/情感/带娃/泛知识等)→ 低分(20 以下);\n"
+        "- 简介为空且笔记看不出做这个领域 → 给低分,别猜高。\n\n"
         + "\n".join(lines)
         + '\n\n只输出 JSON:{"scores":[{"i":0,"relevance":0-100,"reason":"一句话"}]}'
     )
