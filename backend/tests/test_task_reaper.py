@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - 注册所有表
 from app.database import Base
-from app.models import OperationTask, OperationTaskEvent, TaskStatus, Tenant
+from app.models import CostEvent, OperationTask, OperationTaskEvent, TaskStatus, Tenant
 from app.services.task_service import reap_stale_tasks_in_session
 
 NOW = datetime(2026, 6, 25, 12, 0, 0, tzinfo=timezone.utc)
@@ -81,3 +81,15 @@ def test_reaps_cancel_requested_too(db):
     _task(db, "cancelreq", TaskStatus.cancel_requested, age_minutes=40)
     reaped = reap_stale_tasks_in_session(db, NOW, stale_minutes=20)
     assert reaped == ["cancelreq"]
+
+
+def test_recent_cost_event_counts_as_heartbeat(db):
+    """Skill 优化训练:很久没有进度事件,但底层一直在调模型(CostEvent)→ 不应被回收。"""
+    _task(db, "training", TaskStatus.running, age_minutes=40)
+    _event(db, "training", age_minutes=30)  # 进度事件已 30 分钟前(超阈值)
+    db.add(CostEvent(tenant_id=1, task_id="training", provider="minimax", kind="text",
+                     created_at=NOW - timedelta(minutes=2)))  # 但 2 分钟前刚调过模型
+    db.commit()
+    reaped = reap_stale_tasks_in_session(db, NOW, stale_minutes=20)
+    assert reaped == []
+    assert db.get(OperationTask, "training").status == TaskStatus.running

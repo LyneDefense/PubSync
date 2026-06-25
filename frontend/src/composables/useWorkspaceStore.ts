@@ -1106,7 +1106,9 @@ async function pollTaskUntilDone(
   onSuccess: () => Promise<void>,
   timeoutMessage: string
 ) {
-  for (let attempt = 0; attempt < 180; attempt += 1) {
+  // 最多轮询 2 小时(1440 × 5s):采集/蒸馏/Skill优化等长任务动辄几十分钟,旧的 15 分钟上限会让
+  // 进度过早消失、让人误以为任务断了。真正卡死的任务由后端看门狗标记失败,这里轮询时会读到。
+  for (let attempt = 0; attempt < 1440; attempt += 1) {
     await wait(5000)
     const [latestTask, latestEvents] = await Promise.all([getTask(taskId), getTaskEvents(taskId)])
     taskEvents.value = latestEvents

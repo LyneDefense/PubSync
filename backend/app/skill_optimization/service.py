@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -166,6 +168,7 @@ def run_skill_optimization(
     configure_minimax_chat(
         base_url=settings.minimax_base_url, api_key=settings.minimax_api_key,
         max_tokens=8000, temperature=0.7, enable_thinking=False,
+        timeout_seconds=settings.skill_opt_llm_timeout_seconds,  # 单次调用超时,避免某次调用挂死整轮训练
     )
     set_target_backend("minimax_chat")
     set_optimizer_backend("minimax_chat")
@@ -224,7 +227,28 @@ def run_skill_optimization(
         "out_root": out_root, "skill_init": seed_path, "env": "pubsync_style", "seed": 42,
     })
     ev("优化训练", "running", f"开始 {epochs} 轮优化:每轮生成→对比真笔记找差距→改写 Skill→验证集严格变好才采纳…")
-    ReflACTTrainer(cfg, adapter).train()
+    # 训练总时长上限:超时即中止判失败(资源不足/卡死时不至于无限期挂着)。线程跑不下来无法强杀,
+    # 但配合单次 LLM 超时,僵尸线程的存活也被限制在一次调用内。
+    _train_timeout = max(60, settings.skill_opt_max_minutes * 60)
+    with ThreadPoolExecutor(max_workers=1) as _pool:
+        _fut = _pool.submit(lambda: ReflACTTrainer(cfg, adapter).train())
+        try:
+            _fut.result(timeout=_train_timeout)
+        except FuturesTimeout as exc:
+            msg = (
+                f"优化训练超过 {settings.skill_opt_max_minutes} 分钟仍未完成,已中止本次优化"
+                "(可能因服务器资源不足);请稍后重试,或减少笔记量/轮数。"
+            )
+            ev("优化训练", "failed", msg)
+            run.status = "failed"
+            run.error_message = msg
+            run.before_score = before
+            run.report_json = json.dumps(
+                {"anchors": {"floor": floor, "ceiling": ceiling}}, ensure_ascii=False
+            )
+            db.commit()
+            db.refresh(run)
+            raise AIServiceError(msg) from exc
     epochs_detail, changelog = _read_changelog(out_root)
     accepted = sum(1 for e in epochs_detail if str(e.get("action", "")).startswith("accept"))
     ev("优化训练", "succeeded", f"训练完成,共 {len(epochs_detail)} 步,门控采纳 {accepted} 处改写")

@@ -23,6 +23,7 @@ from app.pipeline import PubSyncPipeline
 from app.queue import enqueue
 from app.models import (
     AppSetting,
+    CostEvent,
     OperationTask,
     OperationTaskEvent,
     PublishingSettings,
@@ -557,15 +558,23 @@ def reap_stale_tasks_in_session(db: Session, now: datetime, stale_minutes: int) 
     reaped: list[str] = []
     tasks = list(db.scalars(select(OperationTask).where(OperationTask.status.in_(STALE_REAP_STATUSES))))
     for task in tasks:
+        # 判活信号取「最近进度事件」与「最近一次计费(LLM/TikHub 调用)」的较晚者。
+        # 计费事件每次调用都会写,所以 Skill 优化训练这种「很久不发进度事件、但底层一直在调模型」的
+        # 任务不会被误杀;真卡死(连模型都不再调用)时两个时间都旧,才回收。
         last_event = db.scalar(
             select(func.max(OperationTaskEvent.created_at)).where(OperationTaskEvent.task_id == task.id)
         )
-        last_activity = last_event or task.updated_at or task.created_at
-        if last_activity is None:
-            continue
-        if last_activity.tzinfo is None:  # sqlite 等可能返回 naive,统一成 UTC 再比较
-            last_activity = last_activity.replace(tzinfo=timezone.utc)
-        if last_activity >= cutoff:
+        last_cost = db.scalar(
+            select(func.max(CostEvent.created_at)).where(CostEvent.task_id == task.id)
+        )
+
+        def _aware(dt: datetime | None) -> datetime | None:  # sqlite 可能返回 naive,统一成 UTC 再比较
+            return None if dt is None else (dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt)
+
+        candidates = [c for c in (_aware(last_event), _aware(last_cost),
+                                  _aware(task.updated_at), _aware(task.created_at)) if c is not None]
+        last_activity = max(candidates) if candidates else None
+        if last_activity is None or last_activity >= cutoff:
             continue
         msg = STALE_FAIL_MESSAGE.format(minutes=stale_minutes)
         record_task_event(db, task.tenant_id, task.id, "任务中断", "failed", msg)
