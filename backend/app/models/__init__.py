@@ -31,6 +31,7 @@ from app.models.workspace import (
     PublishingSettings,
     WeChatAccount,
 )
+from app.models.benchmark_discovery import BenchmarkDiscoverySession
 from app.models.xhs import AccountMetricSnapshot, XhsPublishPackage
 
 __all__ = [
@@ -66,5 +67,6 @@ __all__ = [
     "AccountMetricSnapshot",
     "AccountAuditRun",
     "BenchmarkRecommendationRun",
+    "BenchmarkDiscoverySession",
     "SkillTrainingRun",
 ]

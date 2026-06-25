@@ -79,6 +79,12 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
         Endpoint("app", "/api/v1/xiaohongshu/app/search_users", {"keyword": "${keyword}", "page": "${page}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/search_users", {"keyword": "${keyword}", "page": "${page}"}),
     ],
+    # 搜索笔记(泛搜索 B 路:取笔记作者)。多端点兜底,取数失败由上层吞掉、退化成 A 路。
+    "search_notes": [
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_search_notes", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("app", "/api/v1/xiaohongshu/app/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
+    ],
 }
 
 

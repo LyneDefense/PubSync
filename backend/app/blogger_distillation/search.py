@@ -69,6 +69,68 @@ def search_bloggers(settings: Settings, platform: str, keyword: str, page: int =
     return TikHubUserSearchClient(settings, platform).search(keyword, page)
 
 
+class TikHubNoteSearchClient(TikHubBaseClient):
+    """搜笔记 → 取作者(泛搜索 B 路)。只小红书;失败/取不到一律返回空,由上层退化到 A 路。"""
+
+    def __init__(self, settings: Settings, platform: str) -> None:
+        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法搜索笔记")
+        self.platform = validate_platform(platform)
+        pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
+        self.router = EndpointRouter(self._get, pools)
+
+    def search_authors(self, keyword: str, page: int = 1) -> list[BloggerSearchResult]:
+        clean = keyword.strip()
+        if not clean or "search_notes" not in (DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS):
+            return []
+        try:
+            payload = self.router.call("search_notes", {"keyword": clean, "page": max(page, 1), "cursor": max(page - 1, 0)})
+        except RuntimeError as exc:
+            if "空数据" in str(exc):
+                return []
+            raise
+        return _authors_from_notes(self.platform, payload)
+
+
+def _extract_note_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """从笔记搜索响应里尽力取出笔记列表(跨端点字段不一,best-effort)。"""
+    for path in (("data", "items"), ("data", "notes"), ("data", "data", "items"), ("data", "data", "notes"), ("items",), ("notes",)):
+        node = dig(payload, *path, default=None)
+        if isinstance(node, list) and node:
+            return [x for x in node if isinstance(x, dict)]
+    node = dig(payload, "data", default=None)
+    return [x for x in node if isinstance(x, dict)] if isinstance(node, list) else []
+
+
+def _authors_from_notes(platform: str, payload: dict[str, Any]) -> list[BloggerSearchResult]:
+    """笔记列表 → 去重取作者。取不到作者的笔记跳过。"""
+    out: list[BloggerSearchResult] = []
+    seen: set[str] = set()
+    for note in _extract_note_items(payload):
+        author = None
+        for key in ("user", "author"):
+            if isinstance(note.get(key), dict):
+                author = note[key]
+                break
+        if author is None and isinstance(note.get("note_card"), dict) and isinstance(note["note_card"].get("user"), dict):
+            author = note["note_card"]["user"]
+        if not isinstance(author, dict):
+            continue
+        result = normalize_user(platform, author)
+        if result and result.external_id not in seen:
+            seen.add(result.external_id)
+            out.append(result)
+    return out
+
+
+def search_note_authors(settings: Settings, platform: str, keyword: str, page: int = 1) -> list[BloggerSearchResult]:
+    """泛搜索 B 路:搜该关键词的笔记,取作者。任何异常 → 空(不阻断召回)。"""
+    try:
+        return TikHubNoteSearchClient(settings, platform).search_authors(keyword, page)
+    except Exception as exc:  # noqa: BLE001 - B 路失败退化到 A 路
+        logger.warning("笔记搜索取作者失败(降级):平台=%s,关键词=%s,%s", platform, keyword, exc)
+        return []
+
+
 def adapt_douyin_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     endpoint = str(payload.get("_endpoint_group") or payload.get("_endpoint_used") or "")
     if "search_v2" in endpoint:

@@ -98,3 +98,18 @@ def test_expand_directions_falls_back_on_llm_failure(monkeypatch):
 
 def test_expand_directions_empty_domains():
     assert expand_directions(Settings(), ["  ", ""]) == []
+
+
+# ——— B 路:笔记搜索取作者解析 ———
+def test_authors_from_notes_extracts_dedupes():
+    from app.blogger_distillation.search import _authors_from_notes
+    payload = {"data": {"items": [
+        {"note_card": {"user": {"user_id": "u1", "nickname": "保险经纪人娜姐", "fans": 12000}}},
+        {"user": {"user_id": "u2", "nickname": "香港阿May"}},
+        {"note_card": {"user": {"user_id": "u1", "nickname": "保险经纪人娜姐"}}},  # 重复作者
+        {"title": "无作者的笔记"},
+    ]}}
+    authors = _authors_from_notes("xhs", payload)
+    ids = [a.external_id for a in authors]
+    assert ids == ["u1", "u2"]                       # 去重 + 跳过无作者
+    assert authors[0].display_name == "保险经纪人娜姐"
