@@ -434,12 +434,22 @@ export interface DiscoveryCandidate {
   homepage_url: string
   avatar_url: string
   description: string
+  // 硬数据(小红书本身)
+  bio: string
+  ip_location: string
   follower_count: number
   follower_known: boolean          // false → 显示「粉丝未知」
+  like_collect: number             // 获赞与收藏
+  recent_titles: string[]          // 近期笔记标题(核验时取)
+  hit_count: number                // 近期笔记里命中领域的条数
+  // 软数据(我们算的)
   is_personal: boolean
-  score: number
-  reason: string                   // 为什么推荐它(命中角度 + 发现渠道)
-  matched?: string[]
+  popularity: number               // 火爆度 0-100
+  relevance: number                // 相关度 0-100(LLM 判)
+  relevance_reason: string
+  score: number                    // 综合分
+  matched?: string[]               // 命中角度
+  reason: string                   // 命中角度 + 发现渠道
   existing_blogger_id: number | null
 }
 export interface DiscoveryWorkspace {

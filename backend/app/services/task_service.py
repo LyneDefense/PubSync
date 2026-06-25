@@ -622,8 +622,9 @@ def run_discovery_recall_task(task_id: str, session_id: int) -> None:
 
         record_task_event(db, task.tenant_id, task_id, "搜罗候选", "running", "开始")
         summary = flow.run_recall(db, get_settings(), session, on_progress=on_progress)
-        record_task_event(db, task.tenant_id, task_id, "汇总去重", "succeeded",
-                          f"新增 {summary.get('added', 0)} 个,候选池 {summary.get('pool', 0)} 个")
+        record_task_event(db, task.tenant_id, task_id, "核验+筛选", "succeeded",
+                          f"新增 {summary.get('added', 0)} 个相关候选" +
+                          (f",筛掉 {summary.get('dropped', 0)} 个不相关" if summary.get('dropped') else ""))
         mark_task_succeeded(db, task, session.message)
 
     execute_task(task_id, label=subject, fail_message=f"{subject}失败", work=work, expected=(ValueError,))

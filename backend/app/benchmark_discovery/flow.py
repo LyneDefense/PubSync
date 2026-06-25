@@ -20,10 +20,15 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.benchmark_discovery.engine import popularity_score
 from app.benchmark_discovery.querygen import suggest_subniches
-from app.benchmark_discovery.ranking import CandidateSignals, composite_score
 from app.benchmark_discovery.recall import RecalledCandidate, WeightedDomain, recall
-from app.blogger_distillation.search import BloggerSearchResult, search_bloggers, search_note_authors
+from app.blogger_distillation.search import (
+    BloggerSearchResult,
+    deep_first_str,
+    search_bloggers,
+    search_note_authors,
+)
 from app.config import Settings
 from app.models import BloggerPost, BloggerProfile
 from app.models.benchmark_discovery import BenchmarkDiscoverySession
@@ -55,18 +60,6 @@ def is_institution_account(platform: str, name: str, desc: str, raw: dict | None
     return any(h.lower() in blob for h in INSTITUTION_HINTS)
 
 
-def _signals(rc: RecalledCandidate, platform: str) -> CandidateSignals:
-    r = rc.result
-    return CandidateSignals(
-        external_id=r.external_id,
-        follower_count=r.follower_count or 0,
-        like_samples=[],
-        is_personal=not is_institution_account(platform, r.display_name, r.description, r.raw),
-        matched_weight=min(100.0, sum(w for _, w in rc.matched)),
-        popularity_known=bool(getattr(r, "follower_known", True)),
-    )
-
-
 def _reason_line(rc: RecalledCandidate) -> str:
     parts: list[str] = []
     if rc.matched:
@@ -78,24 +71,48 @@ def _reason_line(rc: RecalledCandidate) -> str:
     return " · ".join(parts) or "相关账号"
 
 
-def build_candidates(recalled: list[RecalledCandidate], existing_lookup: Callable[[str], int | None], platform: str) -> list[dict]:
-    """召回结果 → 候选 dict(数据/理由/匹配度),按综合分降序。"""
+def build_candidates(
+    recalled: list[RecalledCandidate], existing_lookup: Callable[[str], int | None], platform: str, vet_map: dict[str, dict]
+) -> list[dict]:
+    """召回结果 + 核验数据 → 候选卡片(硬数据 + 软数据),按综合分降序。
+
+    硬数据(小红书本身):粉丝/获赞收藏/简介/IP/近期标题。软数据(我们算的):火爆度/相关度/综合分。
+    """
     out: list[dict] = []
     for rc in recalled:
         r = rc.result
-        sig = _signals(rc, platform)
+        v = vet_map.get(r.external_id, {})
+        follower = int(v.get("follower") or r.follower_count or 0)
+        follower_known = bool(v.get("follower")) or bool(getattr(r, "follower_known", True) and (r.follower_count or 0) > 0)
+        bio = v.get("bio") or r.description or ""
+        is_personal = not is_institution_account(platform, r.display_name, bio, r.raw)
+        popularity = round(popularity_score(follower, []), 1)        # 火爆度(粉丝量纲)
+        relevance = int(v.get("relevance", 0))                       # 相关度(LLM 判)
+        overall = round(0.6 * relevance + 0.4 * popularity, 1)       # 综合分(相关为主)
+        if not is_personal:
+            overall = round(overall * 0.9, 1)                        # 机构号轻降(学打法优先个人号)
         out.append({
             "external_id": r.external_id,
             "display_name": r.display_name,
             "homepage_url": r.homepage_url,
             "avatar_url": r.avatar_url,
-            "description": r.description,
-            "follower_count": r.follower_count or 0,
-            "follower_known": bool(getattr(r, "follower_known", True)),
-            "is_personal": sig.is_personal,
-            "score": composite_score(sig),
-            "reason": _reason_line(rc),
+            # 硬数据
+            "description": bio,
+            "bio": bio,
+            "ip_location": v.get("ip_location", ""),
+            "follower_count": follower,
+            "follower_known": follower_known,
+            "like_collect": int(v.get("like_collect") or 0),
+            "recent_titles": v.get("titles", []),
+            "hit_count": int(v.get("hit_count") or 0),
+            # 软数据
+            "is_personal": is_personal,
+            "popularity": popularity,
+            "relevance": relevance,
+            "relevance_reason": v.get("relevance_reason", ""),
+            "score": overall,
             "matched": [lbl for lbl, _ in rc.matched],
+            "reason": _reason_line(rc),
             "existing_blogger_id": existing_lookup(r.external_id),
         })
     out.sort(key=lambda c: c["score"], reverse=True)
@@ -275,15 +292,18 @@ def _pages_for_weight(base_pages: int, weight: float) -> int:
 
 def run_recall(
     db: Session, settings: Settings, session: BenchmarkDiscoverySession, *,
-    users_fn=None, notes_fn=None, on_progress: Callable[[str, str], None] | None = None,
+    users_fn=None, notes_fn=None, vet_fn=None, on_progress: Callable[[str, str], None] | None = None,
 ) -> dict:
-    """按选中角度/关键词召回,**追加**到候选池(去重、新结果置顶)。"""
+    """三段:广召回(便宜) → 账号核验(逐个看主页判相关) → 筛掉不相关、按综合分排,追加到候选池。"""
     platform = session.platform
     base_pages = int(getattr(settings, "discovery_search_pages", 2) or 2)
     cap = int(getattr(settings, "discovery_candidate_cap", 12) or 12)
+    prevet_cap = int(getattr(settings, "discovery_prevet_cap", 15) or 15)
+    floor = int(getattr(settings, "discovery_relevance_floor", 30) or 30)
     pool_cap = int(getattr(settings, "discovery_pool_cap", 60) or 60)
     domains = selected_domains(session)
     weight_by = {d.label: d.weight for d in domains}
+    rel_domains = _intent(session).get("domains") or [d.label for d in domains]
 
     if users_fn is None:
         def users_fn(kw: str) -> list[BloggerSearchResult]:
@@ -295,6 +315,9 @@ def run_recall(
     if notes_fn is None:
         def notes_fn(kw: str) -> list[BloggerSearchResult]:
             return search_note_authors(settings, platform, kw)
+    if vet_fn is None:
+        from app.benchmark_discovery.vetting import vet_candidates
+        vet_fn = vet_candidates
 
     t0 = time.monotonic()
     logger.info("泛搜索·开跑召回 会话=%s 来源=%s 第%d轮 角度=%s",
@@ -304,26 +327,40 @@ def run_recall(
         if on_progress is not None:
             on_progress(f"搜「{label}」", f"用户 {n_users} · 笔记作者 {n_authors}")
 
+    # ① 广召回(多拉一些待核验)
     recalled = recall(domains, search_users_fn=users_fn, search_notes_authors_fn=notes_fn,
-                      cap=cap, exclude_ids=session.seen, on_domain=on_domain)
+                      cap=prevet_cap, exclude_ids=session.seen, on_domain=on_domain)
+    # ② 账号核验:逐个补取主页+近期笔记,判相关度
+    items = [{"external_id": rc.result.external_id, "display_name": rc.result.display_name,
+              "xsec_token": deep_first_str(rc.result.raw, ["xsec_token", "xsecToken"])} for rc in recalled]
+    vet_map = vet_fn(settings, platform, items, rel_domains, on_progress=on_progress) if items else {}
+    # ③ 组装 + 筛掉明显不相关 + 排序
     existing = _existing_lookup(db, session.tenant_id, platform, [rc.result.external_id for rc in recalled])
-    fresh = build_candidates(recalled, lambda i: existing.get(i), platform)
+    fresh = build_candidates(recalled, lambda i: existing.get(i), platform, vet_map)
+    kept = [c for c in fresh if c["relevance"] >= floor]
+    dropped = len(fresh) - len(kept)
 
     have = {c["external_id"] for c in session.candidates}
-    added = [c for c in fresh if c["external_id"] not in have]
+    added = [c for c in kept if c["external_id"] not in have][:cap]
     pool = (added + session.candidates)[:pool_cap]
 
     session.candidates_json = json.dumps(pool, ensure_ascii=False)
-    session.seen_json = json.dumps(sorted(set(session.seen) | {c["external_id"] for c in pool}), ensure_ascii=False)
+    # 看过的(含被筛掉的)都记进 seen,下轮不再重复召回/核验
+    session.seen_json = json.dumps(
+        sorted(set(session.seen) | {rc.result.external_id for rc in recalled} | {c["external_id"] for c in pool}),
+        ensure_ascii=False,
+    )
     session.round += 1
     dryup = len(added) < int(getattr(settings, "discovery_dryup_threshold", 3))
-    session.message = f"本次新增 {len(added)} 个候选" + ("，不多了，换/加角度试试" if dryup else "")
+    session.message = (f"本次新增 {len(added)} 个相关候选"
+                       + (f"(筛掉 {dropped} 个不相关)" if dropped else "")
+                       + ("，不多了，换/加角度试试" if dryup else ""))
     _touch(session, settings)
     db.commit()
-    top = "; ".join(f'{c["display_name"]}({c["score"]}分)' for c in added[:5])
-    logger.info("泛搜索·召回完成 会话=%s 新增=%d 候选池=%d 用时%.1fs;Top: %s",
-                session.id, len(added), len(pool), time.monotonic() - t0, top or "(无)")
-    return {"added": len(added), "pool": len(pool), "dryup": dryup}
+    top = "; ".join(f'{c["display_name"]}(相关{c["relevance"]}/综合{c["score"]})' for c in added[:5])
+    logger.info("泛搜索·召回完成 会话=%s 核验=%d 筛掉=%d 新增=%d 候选池=%d 用时%.1fs;Top: %s",
+                session.id, len(items), dropped, len(added), len(pool), time.monotonic() - t0, top or "(无)")
+    return {"added": len(added), "dropped": dropped, "pool": len(pool), "dryup": dryup}
 
 
 def adopt_candidates(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str]) -> None:

@@ -43,9 +43,14 @@ def _fake_llm(monkeypatch):
     ]})
 
 
+def _fake_vet(settings, platform, items, domains, on_progress=None):
+    # 测试里不打网络/不调 LLM:都判为相关(relevance 90),粉丝用召回里的值(不覆盖)。
+    return {it["external_id"]: {"relevance": 90, "relevance_reason": "ok"} for it in items}
+
+
 def _recall(db, settings, sess, users, notes=None):
     flow.run_recall(db, settings, sess, users_fn=lambda kw: users.get(kw, []),
-                    notes_fn=lambda kw: (notes or {}).get(kw, []))
+                    notes_fn=lambda kw: (notes or {}).get(kw, []), vet_fn=_fake_vet)
 
 
 def test_broad_angle_stage(db):
@@ -99,6 +104,22 @@ def test_recall_and_candidate_shape(db):
     ids = [c["external_id"] for c in sess.candidates]
     assert ids.index("p1") < ids.index("org1")           # 个人号在机构号前
     assert "储蓄险测评" in cands["na"]["matched"] and cands["na"]["score"] > 0
+
+
+def test_vetting_filters_irrelevant(db):
+    settings = Settings()
+    sess = flow.start_broad(db, settings, 1, "xhs", ["香港保险"])
+    flow.angle_op(db, settings, sess, "toggle", ["储蓄险测评"])
+    flow.angle_op(db, settings, sess, "begin", [])
+
+    def vet(settings, platform, items, domains, on_progress=None):
+        return {it["external_id"]: {"relevance": 90 if it["external_id"] != "off" else 5} for it in items}
+
+    flow.run_recall(db, settings, sess,
+                    users_fn=lambda kw: [_r("on", "对路号", 8000), _r("off", "跑题号", 90000)],
+                    notes_fn=lambda kw: [], vet_fn=vet)
+    ids = {c["external_id"] for c in sess.candidates}
+    assert "on" in ids and "off" not in ids   # 相关度 5 < floor(30) 被剔,哪怕它粉丝更多
 
 
 def test_adopt_dismiss_save(db):

@@ -71,7 +71,11 @@ class Settings(BaseSettings):
     benchmark_inactive_days: int = 60
     # 泛搜索(发现会话)：每次「找候选」追加上限(小批)、搜索翻页深度、「挖干」阈值、
     # 候选池累计上限、会话空闲过期小时数。
-    discovery_candidate_cap: int = 12
+    discovery_candidate_cap: int = 12        # 核验后展示上限
+    discovery_prevet_cap: int = 15           # 核验前的候选上限(广召回先拉这么多,再逐个核验)
+    discovery_recent_notes: int = 8          # 核验时取每个候选近期几条笔记标题
+    discovery_relevance_floor: int = 30      # LLM 相关度低于此 → 明显不相关,剔除
+    discovery_vet_concurrency: int = 5       # 核验时并发取数,别一个个串行等
     discovery_search_pages: int = 2
     discovery_dryup_threshold: int = 3
     discovery_pool_cap: int = 60
