@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
+from app.benchmark_discovery import flow
 from app.benchmark_discovery.engine import popularity_score
 from app.benchmark_discovery.service import evaluate_one
 from app.skill_optimization.service import confirm_skill_optimization
@@ -23,6 +24,7 @@ from app.blogger_distillation.service import (
 from app.blogger_distillation.tikhub_client import TikHubError
 from app.database import get_db
 from app.models import (
+    BenchmarkDiscoverySession,
     BenchmarkRecommendationRun,
     BloggerCollectionPost,
     BloggerCollectionRun,
@@ -57,6 +59,9 @@ from app.schemas import (
 )
 from app.schemas.benchmark import (
     BenchmarkRecommendationRunRead,
+    DiscoveryDirectionsRequest,
+    DiscoveryReviewRequest,
+    DiscoveryStartRequest,
     EvaluateRequest,
     EvaluateResult,
     RecommendRequest,
@@ -68,6 +73,7 @@ from app.services.task_service import (
     run_blogger_collection_task,
     run_blogger_distillation_task,
     run_blogger_url_collection_task,
+    run_discovery_recall_task,
     run_skill_optimization_task,
 )
 
@@ -199,6 +205,93 @@ def evaluate_blogger_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return EvaluateResult(candidate=score)
+
+
+# —— 泛搜索(发现会话)——
+def _discovery_or_404(db: Session, tenant_id: int, session_id: int) -> BenchmarkDiscoverySession:
+    sess = db.get(BenchmarkDiscoverySession, session_id)
+    if not sess or sess.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="发现会话不存在")
+    if sess.status == "expired":
+        raise HTTPException(status_code=410, detail="本次发现会话已过期，请重新开始")
+    return sess
+
+
+def _discovery_todo(sess: BenchmarkDiscoverySession) -> dict:
+    rec = flow.recommend_next(sess, has_seed_picks=bool(sess.seeds)) if sess.stage == "review_candidates" else None
+    return flow.build_todo(sess, recommended=rec)
+
+
+@router.post("/benchmark/discovery/start")
+def discovery_start_endpoint(
+    payload: DiscoveryStartRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        sess = flow.start_session(db, settings, tenant.id, payload.platform, payload.domains, payload.my_account_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _discovery_todo(sess)
+
+
+@router.get("/benchmark/discovery/{session_id}")
+def discovery_todo_endpoint(
+    session_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    return _discovery_todo(_discovery_or_404(db, tenant.id, session_id))
+
+
+@router.post("/benchmark/discovery/{session_id}/directions", response_model=OperationTaskRead)
+def discovery_directions_endpoint(
+    session_id: int,
+    payload: DiscoveryDirectionsRequest,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    sess = _discovery_or_404(db, tenant.id, session_id)
+    flow.submit_directions(db, settings, sess, [d.model_dump() for d in payload.directions])
+    task = create_operation_task(db, "discovery_recall", tenant_id=tenant.id)
+    sess.task_id = task.id
+    db.commit()
+    submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id)
+    return task
+
+
+@router.post("/benchmark/discovery/{session_id}/review")
+def discovery_review_endpoint(
+    session_id: int,
+    payload: DiscoveryReviewRequest,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    sess = _discovery_or_404(db, tenant.id, session_id)
+    choice = flow.submit_review(db, settings, sess, payload.adopt_ids, payload.seed_ids, payload.choice, payload.text)
+    if choice in ("more", "seed_more"):
+        task = create_operation_task(db, "discovery_recall", tenant_id=tenant.id)
+        sess.task_id = task.id
+        db.commit()
+        submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id)
+        return {"mode": "recall", "task_id": task.id}
+    if choice == "change_directions":
+        return {"mode": "todo", "todo": _discovery_todo(sess)}
+    created = flow.checkout(db, sess)
+    return {"mode": "done", "todo": flow.build_todo(sess), "created": len(created)}
+
+
+@router.post("/benchmark/discovery/{session_id}/checkout")
+def discovery_checkout_endpoint(
+    session_id: int,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    sess = _discovery_or_404(db, tenant.id, session_id)
+    created = flow.checkout(db, sess)
+    return {"mode": "done", "todo": flow.build_todo(sess), "created": len(created)}
 
 
 # —— Skill 优化(训练)——

@@ -56,6 +56,31 @@ class EvaluateResult(BaseModel):
     candidate: CandidateScore
 
 
+# —— 泛搜索(发现会话)请求体 ——
+class DiscoveryStartRequest(BaseModel):
+    platform: str = Field(default="xhs", pattern="^(xhs|douyin)$")
+    domains: list[str] = Field(min_length=1)        # 必填,可多个领域
+    my_account_id: int | None = None                 # 可选,初始种子账号
+
+
+class DiscoveryDirection(BaseModel):
+    label: str
+    weight: float = 50.0
+    reason: str = ""
+    selected: bool = True
+
+
+class DiscoveryDirectionsRequest(BaseModel):
+    directions: list[DiscoveryDirection] = Field(default_factory=list)
+
+
+class DiscoveryReviewRequest(BaseModel):
+    adopt_ids: list[str] = Field(default_factory=list)
+    seed_ids: list[str] = Field(default_factory=list)
+    choice: str = Field(default="more", pattern="^(more|seed_more|change_directions|finish)$")
+    text: str = Field(default="", max_length=300)
+
+
 class BenchmarkRecommendationRunRead(BaseModel):
     id: int
     platform: str
