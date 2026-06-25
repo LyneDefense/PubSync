@@ -1,7 +1,23 @@
 /* Hallmark · genre: editorial workbench · macrostructure: command workspace · anchor hue: teal */
+/* 自托管显示体(OFL,拉丁/数字),不依赖 Google Fonts —— 面向国内用户也能稳定加载。
+   中文回退到系统苹方/雅黑;Space Grotesk 只渲染拉丁字母和数字,给标题/编号一点设计感。 */
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/SpaceGrotesk-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/SpaceGrotesk-Bold.woff2") format("woff2");
+}
 :root {
   color-scheme: light;
-  --font-display: "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Code", "Fira Code", monospace;
 

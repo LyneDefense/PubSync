@@ -100,7 +100,6 @@ const steps = [
             <span class="ov-acct-empty">未录入</span>
             <span class="ov-step-go">去录入<NavIcon name="arrow-right" /></span>
           </button>
-          <p class="ov-step-desc">把你自己的账号放进来，对标更准，还能追踪成长；不想要也能跳过。</p>
 
           <ul v-if="myAccountsOnPlatform.length && accountExpanded" class="ov-acct-list">
             <li v-for="a in myAccountsOnPlatform" :key="a.id" class="ov-acct-row">
@@ -128,7 +127,6 @@ const steps = [
             <span class="ov-step-title">{{ step.title }}</span>
             <span class="ov-step-go">进入<NavIcon name="arrow-right" /></span>
           </button>
-          <p class="ov-step-desc">{{ step.desc }}</p>
           <ul class="ov-points">
             <li v-for="(p, j) in step.points" :key="j">{{ p }}</li>
           </ul>
@@ -178,8 +176,10 @@ const steps = [
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-family: var(--font-display);   /* Space Grotesk 数字,更有设计感 */
+  font-size: 1.55rem;
   font-weight: 700;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   color: var(--color-accent, #2563eb);
   background: color-mix(in srgb, var(--color-accent, #2563eb) 9%, var(--color-paper, #fff));
@@ -200,9 +200,10 @@ const steps = [
 }
 .ov-step-icon { color: var(--color-accent, #2563eb); flex: none; }
 .ov-step-title {
-  font-size: 1.12rem;
-  font-weight: 700;
-  letter-spacing: -0.005em;
+  font-family: var(--font-display);
+  font-size: 1.14rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
 }
 .ov-step-go {
   display: inline-flex;
@@ -227,12 +228,6 @@ const steps = [
   outline-offset: 3px;
   border-radius: 6px;
 }
-.ov-step-desc {
-  color: var(--color-ink-2, #4b5563);
-  line-height: 1.6;
-  margin: 4px 0 10px;
-}
-
 /* 账号步:计数 / 未录入 / 展开箭头 / 列表 */
 .ov-acct-count {
   font-size: 0.82rem;
@@ -301,7 +296,7 @@ const steps = [
 
 .ov-points {
   list-style: none;
-  margin: 0;
+  margin: 6px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
