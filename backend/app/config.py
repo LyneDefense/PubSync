@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     benchmark_list_sample: int = 12
     benchmark_search_terms_max: int = 5
     benchmark_inactive_days: int = 60
+    # 泛搜索(发现会话)：每轮候选上限、用户搜索翻页深度、扩展方向上限、种子上限、
+    # 「挖干」阈值(某轮新候选 < 此值就提示换思路)、会话空闲过期小时数。
+    discovery_candidate_cap: int = 30
+    discovery_search_pages: int = 2
+    discovery_directions_max: int = 10
+    discovery_seed_cap: int = 3
+    discovery_dryup_threshold: int = 3
+    discovery_session_ttl_hours: int = 2
     # AI 创作的合成循环参数（与蒸馏独立调参）。
     creation_max_revise_iterations: int = 1
     creation_min_quality_score: int = 80
