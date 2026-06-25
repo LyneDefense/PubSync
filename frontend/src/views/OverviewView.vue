@@ -91,14 +91,12 @@ const steps = [
           >
             <NavIcon name="user" class="ov-step-icon" />
             <span class="ov-step-title">我的账号</span>
-            <span class="ov-tag">可选</span>
             <span class="ov-acct-count">{{ myAccountsOnPlatform.length }} 个</span>
             <NavIcon name="chevron-down" class="ov-acct-chevron" :class="{ open: accountExpanded }" />
           </button>
           <button v-else type="button" class="ov-step-head" @click="openCreateMyAccountModal">
             <NavIcon name="user" class="ov-step-icon" />
             <span class="ov-step-title">录入我的账号</span>
-            <span class="ov-tag">可选</span>
             <span class="ov-acct-empty">未录入</span>
             <span class="ov-step-go">去录入<NavIcon name="arrow-right" /></span>
           </button>
@@ -205,15 +203,6 @@ const steps = [
   font-size: 1.12rem;
   font-weight: 700;
   letter-spacing: -0.005em;
-}
-.ov-tag {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--color-ink-3, #9aa0a6);
-  border: 1px solid var(--color-field-border, #d6dbe1);
-  border-radius: 999px;
-  padding: 1px 7px;
-  flex: none;
 }
 .ov-step-go {
   display: inline-flex;
