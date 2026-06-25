@@ -13,6 +13,7 @@ import {
 } from '../composables/useWorkspaceStore'
 
 const domainInput = ref('')
+const proposing = ref(false)   // 「再推几个」专用 loading(推角度要调 LLM,约 15s)
 const ws = computed(() => discoveryWorkspace.value)
 // 本 tab 只在「没有会话」或「会话是 broad」时接管;similar 会话归找相似 tab。
 const mine = computed(() => ws.value && ws.value.source === 'broad')
@@ -26,6 +27,14 @@ function addDomain() {
 function removeDomain(d: string) {
   discoveryDomains.value = discoveryDomains.value.filter((x) => x !== d)
 }
+async function propose() {
+  proposing.value = true
+  try {
+    await handleDiscoveryAngle('propose')
+  } finally {
+    proposing.value = false
+  }
+}
 </script>
 
 <template>
@@ -38,7 +47,7 @@ function removeDomain(d: string) {
       </div>
     </label>
     <button type="button" class="primary" :disabled="discoveryStarting || !discoveryDomains.length" @click="handleDiscoveryStart">
-      {{ discoveryStarting ? '准备中…' : '下一步：选细分角度' }}
+      {{ discoveryStarting ? 'AI 想角度中…' : '下一步：选细分角度' }}
     </button>
     <p class="ds-hint">不知道学谁？先选你想做的领域，下一步系统帮你把方向收窄到几个细分角度，再照着找号。</p>
   </div>
@@ -62,8 +71,8 @@ function removeDomain(d: string) {
       </button>
     </div>
     <div class="ds-angle-acts">
-      <button type="button" :disabled="discoveryOpPending" @click="handleDiscoveryAngle('propose')">
-        <i class="ti ti-refresh"></i> 再推几个
+      <button type="button" :disabled="discoveryOpPending" @click="propose">
+        <i class="ti ti-refresh"></i> {{ proposing ? 'AI 想角度中…' : '再推几个' }}
       </button>
       <button type="button" class="primary" :disabled="discoveryOpPending || !ws!.selected_angles" @click="handleDiscoveryAngle('begin')">
         就用选中的开始找 →

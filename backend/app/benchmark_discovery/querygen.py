@@ -106,7 +106,7 @@ def suggest_subniches(
         logger.info("泛搜索·推角度 LLM未给出新角度,走规则兜底 领域=%s", domains)
         return _rule_subniches(domains, shown_set, n)
     except Exception as exc:  # noqa: BLE001 - 超时/失败 → 规则兜底,绝不卡住
-        logger.warning("泛搜索·推角度失败,规则兜底:%s", exc)
+        logger.warning("泛搜索·推角度失败,规则兜底:%s(%s)", exc, type(exc).__name__)
         return _rule_subniches(domains, shown_set, n)
 
 

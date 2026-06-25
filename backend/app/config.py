@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     discovery_angle_target: int = 3          # 建议选几个细分角度
     discovery_angle_batch: int = 4           # agent 每轮出几个
     discovery_angle_max_rounds: int = 4      # agent 最多出几轮(防空转)
-    discovery_angle_timeout_seconds: int = 30
+    discovery_angle_timeout_seconds: int = 45  # MiniMax 推角度暖机后约 15s,冷启动更慢,留足别动不动退规则
     discovery_directions_max: int = 10       # 首批角度上限
     # AI 创作的合成循环参数（与蒸馏独立调参）。
     creation_max_revise_iterations: int = 1
