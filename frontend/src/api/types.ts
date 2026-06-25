@@ -421,13 +421,12 @@ export interface EvaluateResult {
   candidate: CandidateScore
 }
 
-// 找对标 · 泛搜索(三列工作台)
-export interface DiscoveryDirection {
-  id?: string
+// 找对标 · 泛搜索/找相似(漏斗式工作台)
+export interface DiscoveryAngle {
   label: string
-  weight: number
   reason: string
   selected: boolean
+  rejected: boolean
 }
 export interface DiscoveryCandidate {
   external_id: string
@@ -439,26 +438,26 @@ export interface DiscoveryCandidate {
   follower_known: boolean          // false → 显示「粉丝未知」
   is_personal: boolean
   score: number
-  reason: string                   // 为什么推荐它(命中方向 + 发现渠道)
-  matched?: string[]               // 命中的方向
-  from_seed?: boolean              // 来自种子关注
-  is_mine?: boolean                // 入口选的「我的账号」种子
+  reason: string                   // 为什么推荐它(命中角度 + 发现渠道)
+  matched?: string[]
   existing_blogger_id: number | null
 }
 export interface DiscoveryWorkspace {
   session_id: number
   platform: string
-  stage: string
+  source: 'broad' | 'similar'
+  stage: string                    // choose_angles | workspace
   status: string
   message: string
   round: number
-  directions: DiscoveryDirection[]
+  angle_target: number             // 建议选几个角度
+  selected_angles: number
+  angles: DiscoveryAngle[]
   candidates: DiscoveryCandidate[]
-  seeds: DiscoveryCandidate[]
   selected: DiscoveryCandidate[]
 }
-export type DiscoveryOp =
-  | 'to_seed' | 'to_selected' | 'seed_to_selected' | 'remove_seed' | 'remove_selected' | 'clear_candidates'
+export type DiscoveryAngleOp = 'toggle' | 'reject' | 'propose' | 'begin'
+export type DiscoveryCandOp = 'adopt' | 'dismiss' | 'remove_selected' | 'clear_candidates'
 export interface DiscoverySaveResult {
   created: number
   workspace: DiscoveryWorkspace

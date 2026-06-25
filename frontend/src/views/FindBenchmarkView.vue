@@ -4,6 +4,7 @@
 import { ref } from 'vue'
 
 import DiscoverySearch from './DiscoverySearch.vue'
+import SimilarSearch from './SimilarSearch.vue'
 import { searchBloggers } from '../api'
 import type { BloggerSearchResult } from '../api/types'
 import {
@@ -15,7 +16,7 @@ import {
   showMessage
 } from '../composables/useWorkspaceStore'
 
-const entry = ref<'discovery' | 'precise'>('discovery')
+const entry = ref<'discovery' | 'similar' | 'precise'>('discovery')
 
 // 精确搜索:关键词/姓名 → 平台搜索 → 采用(不评分)。
 const keyword = ref('')
@@ -41,7 +42,7 @@ async function doSearch() {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="panel find-benchmark" :class="{ wide: entry === 'discovery' }">
+  <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="panel find-benchmark" :class="{ wide: entry !== 'precise' }">
     <div class="section-header">
       <div>
         <h2>选对标</h2>
@@ -51,10 +52,12 @@ async function doSearch() {
 
     <div class="fb-entries" role="tablist">
       <button type="button" role="tab" :class="{ active: entry === 'discovery' }" @click="entry = 'discovery'">泛搜索</button>
+      <button type="button" role="tab" :class="{ active: entry === 'similar' }" @click="entry = 'similar'">找相似</button>
       <button type="button" role="tab" :class="{ active: entry === 'precise' }" @click="entry = 'precise'">精确搜索</button>
     </div>
 
     <DiscoverySearch v-if="entry === 'discovery'" />
+    <SimilarSearch v-else-if="entry === 'similar'" />
 
     <div v-else class="fb-precise">
       <div class="fb-search-row">

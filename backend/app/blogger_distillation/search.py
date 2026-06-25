@@ -159,49 +159,6 @@ def search_note_authors(settings: Settings, platform: str, keyword: str, page: i
         return []
 
 
-class TikHubFollowingClient(TikHubBaseClient):
-    """拉用户关注列表(泛搜索 C 路:种子→同类号)。取不到一律返回空,由上层退化。"""
-
-    def __init__(self, settings: Settings, platform: str) -> None:
-        super().__init__(settings, missing_key_message="未配置 TIKHUB_API_KEY，无法拉关注列表")
-        self.platform = validate_platform(platform)
-        pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
-        self.router = EndpointRouter(self._get, pools)
-
-    def following(self, user_id: str, xsec_token: str = "", limit: int = 60) -> list[BloggerSearchResult]:
-        uid = (user_id or "").strip()
-        pools = DOUYIN_ENDPOINT_POOLS if self.platform == "douyin" else XHS_ENDPOINT_POOLS
-        if not uid or "user_following" not in pools:
-            return []
-        try:
-            payload = self.router.call(
-                "user_following", {"user_id": uid, "cursor": 0, "num": max(limit, 20), "xsec_token": xsec_token}
-            )
-        except RuntimeError as exc:
-            if "空数据" in str(exc):
-                logger.warning("关注列表:全部端点返回空数据 user_id=%s", uid)
-                return []
-            raise
-        endpoint = payload.get("_endpoint_used", "?")
-        items = extract_user_items(payload)
-        results = [r for item in items if (r := normalize_user(self.platform, item))]
-        if not results:
-            logger.warning("关注列表:端点返回了数据但没解析出用户 user_id=%s 端点=%s 顶层字段=%s",
-                           uid, endpoint, ",".join(list(payload.keys())[:12]))
-        else:
-            logger.info("关注列表 user_id=%s 端点=%s → 用户=%d", uid, endpoint, len(results))
-        return results[:limit]
-
-
-def get_user_following(settings: Settings, platform: str, user_id: str, xsec_token: str = "", limit: int = 60) -> list[BloggerSearchResult]:
-    """泛搜索 C 路:拉某个种子账号的关注列表。任何异常 → 空(不阻断召回)。"""
-    try:
-        return TikHubFollowingClient(settings, platform).following(user_id, xsec_token, limit)
-    except Exception as exc:  # noqa: BLE001 - C 路失败不阻断
-        logger.warning("拉关注列表失败(降级):平台=%s,user_id=%s,%s", platform, user_id, exc)
-        return []
-
-
 def adapt_douyin_user_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     endpoint = str(payload.get("_endpoint_group") or payload.get("_endpoint_used") or "")
     if "search_v2" in endpoint:

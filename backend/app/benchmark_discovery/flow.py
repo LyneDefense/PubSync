@@ -1,11 +1,11 @@
-"""泛搜索（找对标）三列工作台：候选 / 种子 / 已选,持续存在的一个会话,东西只往前流。
+"""泛搜索（找对标）—— 漏斗式收窄。
 
-- 候选：召回来的号。每个号可「设为种子」或「选入对标」(移出候选,不再回候选)。
-- 种子：用来「按种子找候选」(拉其关注列表)。可移除、可「选入对标」(复制,种子保留)。
-- 已选：「保存到对标库」(幂等,可随时存、增量存)。
+两个入口都汇到同一个「候选 | 已选」工作台:
+- 泛搜索(source=broad):领域 → **agent 迭代推细分角度,用户选够 target** → 按选中角度搜候选。
+- 找相似(source=similar):从对标库挑 1+ 个博主 → 用其存量笔记取关键词 → 直接搜候选(无角度阶段)。
 
-确定性控制器,只在「扩展方向」节点借 LLM(失败走规则兜底);召回(打 TikHub)由调用方放进异步任务。
-等待用户发生在 HTTP 边界。空闲超过 expires_at 由清理任务标 expired。
+候选阶段只做「采用 / 不要」,不再有"种子"概念。等待用户发生在 HTTP 边界;空闲过期由清理任务标 expired。
+确定性控制器,只在「推角度」节点借 agent(超时/失败走规则兜底)。召回(打 TikHub)由调用方放进异步任务。
 """
 
 from __future__ import annotations
@@ -13,49 +13,36 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.benchmark_discovery.querygen import expand_directions
+from app.benchmark_discovery.querygen import suggest_subniches
 from app.benchmark_discovery.ranking import CandidateSignals, composite_score
 from app.benchmark_discovery.recall import RecalledCandidate, WeightedDomain, recall
-from app.blogger_distillation.search import (
-    BloggerSearchResult,
-    get_user_following,
-    search_bloggers,
-    search_note_authors,
-)
+from app.blogger_distillation.search import BloggerSearchResult, search_bloggers, search_note_authors
 from app.config import Settings
-from app.models import BloggerProfile
+from app.models import BloggerPost, BloggerProfile
 from app.models.benchmark_discovery import BenchmarkDiscoverySession
 
 logger = logging.getLogger(__name__)
 
-# 机构号关键词兜底(平台认证标识取不到时用)。
 INSTITUTION_HINTS = ("官方", "旗舰", "品牌", "有限公司", "集团", "机构", "客服", "商城", "专卖", "store", "official")
-# 平台认证文案里出现这些 → 判机构(企业认证)。
 ENTERPRISE_VERIFY_HINTS = ("企业", "公司", "品牌", "官方", "商家", "enterprise", "company", "brand")
-# 来自种子关注、又没命中具体方向时给的基础匹配权重(让"找相似"出来的号有个像样的分,不被火爆度淹没)。
-SEED_MATCH_WEIGHT = 65.0
-DEST_SEED = "seed"
-DEST_SELECTED = "selected"
+DEFAULT_ANGLE_WEIGHT = 80.0  # 选中的细分角度统一给这个权重(喂打分的命中相关度)
 
 
 def is_institution_account(platform: str, name: str, desc: str, raw: dict | None) -> bool:
-    """是不是机构/企业号。优先用平台认证标识(最准),取不到再退回关键词。
-
-    说明:TikHub 各端点的认证字段语义不完全统一,这里做 best-effort——
-    命中明确的企业认证标识就判机构,否则看名字/简介里的机构词。
-    """
+    """是不是机构/企业号。优先用平台认证标识(最准),取不到再退回关键词。"""
     raw = raw or {}
     if platform == "xhs":
         vt = raw.get("red_official_verify_type")
-        if isinstance(vt, (int, float)) and int(vt) >= 2:  # 2+ 常为企业认证(个人红V一般为 1)
+        if isinstance(vt, (int, float)) and int(vt) >= 2:
             return True
-    else:  # douyin
+    else:
         reason = str(raw.get("enterprise_verify_reason") or raw.get("custom_verify") or "")
         if reason.strip() and any(h in reason for h in ENTERPRISE_VERIFY_HINTS):
             return True
@@ -69,37 +56,30 @@ def is_institution_account(platform: str, name: str, desc: str, raw: dict | None
 
 
 def _signals(rc: RecalledCandidate, platform: str) -> CandidateSignals:
-    """从召回结果 + 溯源拿客观信号喂给打分。命中方向权重在这里真正赋值(修掉"权重不起作用")。"""
     r = rc.result
-    matched_weight = min(100.0, sum(w for _, w in rc.matched))
-    if rc.from_seed and matched_weight <= 0:
-        matched_weight = SEED_MATCH_WEIGHT
     return CandidateSignals(
         external_id=r.external_id,
         follower_count=r.follower_count or 0,
         like_samples=[],
         is_personal=not is_institution_account(platform, r.display_name, r.description, r.raw),
-        matched_weight=matched_weight,
+        matched_weight=min(100.0, sum(w for _, w in rc.matched)),
         popularity_known=bool(getattr(r, "follower_known", True)),
     )
 
 
 def _reason_line(rc: RecalledCandidate) -> str:
-    """为什么推荐它:命中方向 + 走哪条路发现的。数据(粉丝/号型)前端单独展示,这里不重复。"""
     parts: list[str] = []
     if rc.matched:
-        parts.append("命中方向" + "".join(f"「{lbl}」" for lbl, _ in rc.matched[:3]))
-    if rc.from_seed or "following" in rc.channels:
-        parts.append("种子的关注带出")
-    elif "authors" in rc.channels:
-        parts.append("发了相关笔记被发现")
+        parts.append("命中" + "".join(f"「{lbl}」" for lbl, _ in rc.matched[:3]))
+    if "authors" in rc.channels:
+        parts.append("发了相关笔记")
     elif "users" in rc.channels:
         parts.append("账号资料匹配")
     return " · ".join(parts) or "相关账号"
 
 
 def build_candidates(recalled: list[RecalledCandidate], existing_lookup: Callable[[str], int | None], platform: str) -> list[dict]:
-    """召回结果 → 候选 dict(三层信息:数据 / 理由 / 匹配度),按综合分降序。纯函数,可测。"""
+    """召回结果 → 候选 dict(数据/理由/匹配度),按综合分降序。"""
     out: list[dict] = []
     for rc in recalled:
         r = rc.result
@@ -116,7 +96,6 @@ def build_candidates(recalled: list[RecalledCandidate], existing_lookup: Callabl
             "score": composite_score(sig),
             "reason": _reason_line(rc),
             "matched": [lbl for lbl, _ in rc.matched],
-            "from_seed": rc.from_seed,
             "existing_blogger_id": existing_lookup(r.external_id),
         })
     out.sort(key=lambda c: c["score"], reverse=True)
@@ -124,11 +103,12 @@ def build_candidates(recalled: list[RecalledCandidate], existing_lookup: Callabl
 
 
 def selected_domains(session: BenchmarkDiscoverySession) -> list[WeightedDomain]:
-    dirs = [d for d in session.directions if d.get("selected")]
-    if not dirs:  # 没有选中的方向就退回原始领域
-        return [WeightedDomain(label=str(d), weight=60.0) for d in session.intent.get("domains", []) if str(d).strip()]
-    return [WeightedDomain(label=str(d.get("label", "")).strip(), weight=float(d.get("weight", 50)))
-            for d in dirs if str(d.get("label", "")).strip()]
+    """选中(且未被排除)的细分角度 → 搜索关键词。"""
+    out = []
+    for d in session.directions:
+        if d.get("selected") and not d.get("rejected") and str(d.get("label", "")).strip():
+            out.append(WeightedDomain(label=str(d["label"]).strip(), weight=DEFAULT_ANGLE_WEIGHT))
+    return out
 
 
 def _touch(session: BenchmarkDiscoverySession, settings: Settings) -> None:
@@ -148,114 +128,156 @@ def _existing_lookup(db: Session, tenant_id: int, platform: str, ext_ids: list[s
     return {b.external_id: b.id for b in rows if b.external_id}
 
 
-def _pages_for_weight(base_pages: int, weight: float) -> int:
-    """方向权重越高,翻得越深(让权重真影响召回深度)。weight 0→0.5×,100→1.5×。"""
-    return max(1, min(base_pages + 1, round(base_pages * (0.5 + weight / 100.0))))
+def _intent(session: BenchmarkDiscoverySession) -> dict:
+    return session.intent if isinstance(session.intent, dict) else {}
 
 
-def start_session(
-    db: Session, settings: Settings, tenant_id: int, platform: str, domains: list[str], my_account_id: int | None = None
-) -> BenchmarkDiscoverySession:
-    """入口:存意图、扩方向(LLM+兜底);可选「我的账号」直接进种子列。落在 workspace,候选先空。"""
+def _set_intent(session: BenchmarkDiscoverySession, **changes) -> None:
+    data = _intent(session)
+    data.update(changes)
+    session.intent_json = json.dumps(data, ensure_ascii=False)
+
+
+# —— 入口:泛搜索(broad) ——
+def start_broad(db: Session, settings: Settings, tenant_id: int, platform: str, domains: list[str]) -> BenchmarkDiscoverySession:
+    """领域 → 推第一批细分角度,停在 choose_angles 等用户选。"""
     clean = [d.strip() for d in domains if d.strip()]
     if not clean:
         raise ValueError("请至少填写一个领域")
-    dirs = expand_directions(settings, clean, max_directions=int(getattr(settings, "discovery_directions_max", 10)))
-
-    seeds: list[dict] = []
-    if my_account_id is not None:
-        acc = db.get(BloggerProfile, my_account_id)
-        if acc is not None and acc.tenant_id == tenant_id:
-            seeds = [{
-                "external_id": acc.external_id or f"acct-{acc.id}",
-                "display_name": acc.display_name or "我的账号",
-                "homepage_url": acc.homepage_url or "",
-                "avatar_url": acc.avatar_url or "",
-                "description": acc.description or "",
-                "follower_count": acc.follower_count or 0,
-                "follower_known": True, "is_personal": True, "is_mine": True,
-                "score": 0, "reason": "你选的种子账号", "matched": [], "from_seed": False,
-                "existing_blogger_id": acc.id,
-            }]
-
+    batch = int(getattr(settings, "discovery_angle_batch", 4) or 4)
+    subs = suggest_subniches(settings, clean, n=batch)
+    angles = [{"label": s.label, "reason": s.reason, "selected": False, "rejected": False} for s in subs]
     session = BenchmarkDiscoverySession(
-        tenant_id=tenant_id, platform=platform, stage="workspace", status="active", round=0,
-        my_account_id=my_account_id,
-        intent_json=json.dumps({"domains": clean, "my_account_id": my_account_id}, ensure_ascii=False),
-        directions_json=json.dumps([{"label": d.label, "weight": d.weight, "reason": d.reason, "selected": d.selected}
-                                    for d in dirs], ensure_ascii=False),
-        seeds_json=json.dumps(seeds, ensure_ascii=False),
-        message="方向已就绪，点「继续找候选」开始",
+        tenant_id=tenant_id, platform=platform, stage="choose_angles", status="active", round=0,
+        intent_json=json.dumps({"domains": clean, "source": "broad", "angle_rounds": 1}, ensure_ascii=False),
+        directions_json=json.dumps(angles, ensure_ascii=False),
+        message="先选几个细分角度,系统会照着找",
     )
     _touch(session, settings)
     db.add(session)
     db.commit()
     db.refresh(session)
-    logger.info("泛搜索·新会话 会话=%s 平台=%s 领域=%s 种子账号=%s 扩展出%d个方向",
-                session.id, platform, clean, my_account_id, len(dirs))
+    logger.info("泛搜索·新会话(broad) 会话=%s 领域=%s 首批角度=%d", session.id, clean, len(angles))
     return session
 
 
-def update_directions(
-    db: Session, settings: Settings, session: BenchmarkDiscoverySession,
-    directions: list[dict] | None = None, add_domains: list[str] | None = None,
-) -> None:
-    """调方向:应用勾选/权重 + 可选新增领域(LLM 顺手再扩)。不重置任何列表。"""
-    by_label = {d.get("label"): d for d in session.directions}
-    for d in directions or []:
-        label = str(d.get("label", "")).strip()
-        if not label:
-            continue
-        try:
-            weight = max(0.0, min(100.0, float(d.get("weight", 50))))
-        except (TypeError, ValueError):
-            weight = 50.0
-        cur = by_label.get(label, {"label": label, "reason": ""})
-        cur.update({"label": label, "weight": round(weight, 1),
-                    "reason": str(d.get("reason", cur.get("reason", ""))), "selected": bool(d.get("selected", True))})
-        by_label[label] = cur
+def angle_op(db: Session, settings: Settings, session: BenchmarkDiscoverySession, op: str, labels: list[str]) -> None:
+    """角度收窄:toggle 选/取消、reject 排除、propose 再推一批、begin 开始搜。"""
+    pool = session.directions
+    by_label = {d.get("label"): d for d in pool}
+    target = int(getattr(settings, "discovery_angle_target", 3) or 3)
 
-    for nd in add_domains or []:
-        nd = nd.strip()
-        if not nd:
-            continue
-        for ex in expand_directions(settings, [nd], max_directions=4):
-            if ex.label not in by_label:
-                by_label[ex.label] = {"label": ex.label, "weight": ex.weight, "reason": ex.reason, "selected": True}
+    if op == "toggle":
+        for lbl in labels:
+            d = by_label.get(lbl)
+            if d and not d.get("rejected"):
+                d["selected"] = not d.get("selected")
+    elif op == "reject":
+        for lbl in labels:
+            d = by_label.get(lbl)
+            if d:
+                d["rejected"] = True
+                d["selected"] = False
+    elif op == "propose":
+        rounds = int(_intent(session).get("angle_rounds", 1))
+        max_rounds = int(getattr(settings, "discovery_angle_max_rounds", 4) or 4)
+        if rounds >= max_rounds:
+            session.message = "角度差不多了,用选中的开始搜吧"
+        else:
+            selected = [d["label"] for d in pool if d.get("selected")]
+            rejected = [d["label"] for d in pool if d.get("rejected")]
+            shown = [d["label"] for d in pool]
+            subs = suggest_subniches(settings, _intent(session).get("domains", []),
+                                     selected=selected, rejected=rejected, shown=shown,
+                                     n=int(getattr(settings, "discovery_angle_batch", 4) or 4))
+            for s in subs:
+                if s.label not in by_label:
+                    pool.append({"label": s.label, "reason": s.reason, "selected": False, "rejected": False})
+            _set_intent(session, angle_rounds=rounds + 1)
+            session.message = "又推了几个角度,挑你想做的"
+        session.directions_json = json.dumps(pool, ensure_ascii=False)
+        _touch(session, settings)
+        db.commit()
+        return
+    elif op == "begin":
+        if not any(d.get("selected") and not d.get("rejected") for d in pool):
+            raise ValueError("先选至少一个细分角度")
+        session.stage = "workspace"
+        n_sel = sum(1 for d in pool if d.get("selected") and not d.get("rejected"))
+        session.message = (f"选多了({n_sel}个)可能搜得杂,但先按这些找" if n_sel > target
+                           else "开始按选中的角度找候选")
 
-    session.directions_json = json.dumps(list(by_label.values()), ensure_ascii=False)
+    session.directions_json = json.dumps(pool, ensure_ascii=False)
     _touch(session, settings)
     db.commit()
-    logger.info("泛搜索·调方向 会话=%s 现有方向%d个(新增领域=%s)", session.id, len(by_label), add_domains or [])
 
 
-def _gather_seed_following(
-    session: BenchmarkDiscoverySession, settings: Settings,
-    following_fn: Callable[[str], list[BloggerSearchResult]], on_progress: Callable[[str, str], None] | None,
-) -> list[BloggerSearchResult]:
-    """C 路:拉每个种子的关注列表,去掉机构号(找相似要的是同行个人号)。"""
-    platform = session.platform
-    seed_cap = int(getattr(settings, "discovery_seed_cap", 3) or 3)
-    out: list[BloggerSearchResult] = []
-    for seed in session.seeds[:seed_cap]:
-        uid = str(seed.get("external_id", "")).strip()
-        if not uid or uid.startswith("acct-"):  # 没有真实平台 id 的拉不了关注
-            continue
-        kept = [r for r in (following_fn(uid) or [])
-                if not is_institution_account(platform, r.display_name, r.description, r.raw)]
-        out.extend(kept)
-        logger.info("泛搜索·按种子找 种子=「%s」 关注里筛出%d个", seed.get("display_name", ""), len(kept))
-        if on_progress is not None:
-            on_progress(f"种子「{seed.get('display_name', '')}」", f"关注里筛出 {len(kept)} 个")
-    return out
+# —— 入口:找相似(similar) ——
+def derive_similar_keywords(db: Session, tenant_id: int, platform: str, blogger_ids: list[int]) -> tuple[list[str], list[str]]:
+    """从对标库博主的存量笔记取关键词(领域 + 高频话题标签)。返回 (关键词, 参照博主名)。"""
+    bloggers = list(db.scalars(select(BloggerProfile).where(
+        BloggerProfile.tenant_id == tenant_id, BloggerProfile.platform == platform,
+        BloggerProfile.id.in_(blogger_ids or []),
+    )))
+    names = [b.display_name for b in bloggers if b.display_name]
+    keywords: list[str] = []
+    for b in bloggers:
+        if b.niche and b.niche.strip():
+            keywords.append(b.niche.strip())
+    tag_counter: Counter[str] = Counter()
+    if bloggers:
+        posts = db.scalars(select(BloggerPost).where(
+            BloggerPost.tenant_id == tenant_id,
+            BloggerPost.blogger_id.in_([b.id for b in bloggers]),
+        ).limit(200))
+        for p in posts:
+            try:
+                tags = json.loads(p.hashtags_json or "[]")
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+            for t in tags:
+                if isinstance(t, str) and t.strip():
+                    tag_counter[t.strip().lstrip("#")] += 1
+    keywords.extend([t for t, _ in tag_counter.most_common(5)])
+    # 去重保序 + 兜底用博主名
+    seen, uniq = set(), []
+    for k in keywords + names:
+        if k and k not in seen:
+            seen.add(k)
+            uniq.append(k)
+    return uniq[:6], names
+
+
+def start_similar(db: Session, settings: Settings, tenant_id: int, platform: str, blogger_ids: list[int]) -> BenchmarkDiscoverySession:
+    """从对标库博主取关键词,直接进 workspace(无角度阶段)。"""
+    keywords, names = derive_similar_keywords(db, tenant_id, platform, blogger_ids)
+    if not keywords:
+        raise ValueError("选中的博主还没有可用的笔记/领域信息，先采集一下再找相似")
+    angles = [{"label": k, "reason": "来自你已有对标的内容", "selected": True, "rejected": False} for k in keywords]
+    session = BenchmarkDiscoverySession(
+        tenant_id=tenant_id, platform=platform, stage="workspace", status="active", round=0,
+        intent_json=json.dumps({"domains": keywords, "source": "similar", "basis_names": names,
+                                "basis_blogger_ids": blogger_ids}, ensure_ascii=False),
+        directions_json=json.dumps(angles, ensure_ascii=False),
+        message=f"按「{('、'.join(names))[:30]}」的内容找同类",
+    )
+    _touch(session, settings)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    logger.info("找相似·新会话 会话=%s 参照=%s 关键词=%s", session.id, names, keywords)
+    return session
+
+
+def _pages_for_weight(base_pages: int, weight: float) -> int:
+    return max(1, min(base_pages + 1, round(base_pages * (0.5 + weight / 100.0))))
 
 
 def run_recall(
     db: Session, settings: Settings, session: BenchmarkDiscoverySession, *,
-    mode: str = "directions", users_fn=None, notes_fn=None, following_fn=None,
-    on_progress: Callable[[str, str], None] | None = None,
+    users_fn=None, notes_fn=None, on_progress: Callable[[str, str], None] | None = None,
 ) -> dict:
-    """找候选:按方向(mode=directions)或按种子关注(mode=seed)召回,**追加**到候选池(去重),新结果置顶。"""
+    """按选中角度/关键词召回,**追加**到候选池(去重、新结果置顶)。"""
     platform = session.platform
     base_pages = int(getattr(settings, "discovery_search_pages", 2) or 2)
     cap = int(getattr(settings, "discovery_candidate_cap", 12) or 12)
@@ -273,112 +295,81 @@ def run_recall(
     if notes_fn is None:
         def notes_fn(kw: str) -> list[BloggerSearchResult]:
             return search_note_authors(settings, platform, kw)
-    if following_fn is None:
-        def following_fn(uid: str) -> list[BloggerSearchResult]:
-            return get_user_following(settings, platform, uid, limit=int(getattr(settings, "discovery_following_cap", 60)))
 
     t0 = time.monotonic()
-    logger.info("泛搜索·开跑召回 会话=%s 模式=%s 第%d轮 方向=%s cap=%d 已看过=%d",
-                session.id, mode, session.round + 1, [(d.label, round(d.weight)) for d in domains], cap, len(session.seen))
+    logger.info("泛搜索·开跑召回 会话=%s 来源=%s 第%d轮 角度=%s",
+                session.id, _intent(session).get("source"), session.round + 1, [d.label for d in domains])
 
-    if mode == "seed":
-        following = _gather_seed_following(session, settings, following_fn, on_progress)
-        recalled = recall([], search_users_fn=users_fn, search_notes_authors_fn=notes_fn,
-                          seed_following=following, cap=cap, exclude_ids=session.seen)
-    else:
-        def on_domain(label: str, n_users: int, n_authors: int) -> None:
-            if on_progress is not None:
-                on_progress(f"搜「{label}」", f"用户 {n_users} · 笔记作者 {n_authors}")
-        recalled = recall(domains, search_users_fn=users_fn, search_notes_authors_fn=notes_fn,
-                          seed_following=None, cap=cap, exclude_ids=session.seen, on_domain=on_domain)
+    def on_domain(label: str, n_users: int, n_authors: int) -> None:
+        if on_progress is not None:
+            on_progress(f"搜「{label}」", f"用户 {n_users} · 笔记作者 {n_authors}")
 
-    ext_ids = [rc.result.external_id for rc in recalled]
-    existing = _existing_lookup(db, session.tenant_id, platform, ext_ids)
+    recalled = recall(domains, search_users_fn=users_fn, search_notes_authors_fn=notes_fn,
+                      cap=cap, exclude_ids=session.seen, on_domain=on_domain)
+    existing = _existing_lookup(db, session.tenant_id, platform, [rc.result.external_id for rc in recalled])
     fresh = build_candidates(recalled, lambda i: existing.get(i), platform)
 
     have = {c["external_id"] for c in session.candidates}
     added = [c for c in fresh if c["external_id"] not in have]
-    pool = (added + session.candidates)[:pool_cap]  # 新结果置顶,池子封顶
+    pool = (added + session.candidates)[:pool_cap]
 
     session.candidates_json = json.dumps(pool, ensure_ascii=False)
     session.seen_json = json.dumps(sorted(set(session.seen) | {c["external_id"] for c in pool}), ensure_ascii=False)
     session.round += 1
     dryup = len(added) < int(getattr(settings, "discovery_dryup_threshold", 3))
-    session.message = f"本次新增 {len(added)} 个候选" + ("，不多了，换/加方向或换种子试试" if dryup else "")
+    session.message = f"本次新增 {len(added)} 个候选" + ("，不多了，换/加角度试试" if dryup else "")
     _touch(session, settings)
     db.commit()
-
-    personal = sum(1 for c in added if c["is_personal"])
-    top = "; ".join(f'{c["display_name"]}({c["score"]}分/{c["follower_count"]}粉)' for c in added[:5])
-    logger.info("泛搜索·召回完成 会话=%s 模式=%s 新增=%d(个人号%d) 候选池=%d 用时%.1fs;Top: %s",
-                session.id, mode, len(added), personal, len(pool), time.monotonic() - t0, top or "(无)")
-    return {"added": len(added), "pool": len(pool), "mode": mode, "dryup": dryup}
+    top = "; ".join(f'{c["display_name"]}({c["score"]}分)' for c in added[:5])
+    logger.info("泛搜索·召回完成 会话=%s 新增=%d 候选池=%d 用时%.1fs;Top: %s",
+                session.id, len(added), len(pool), time.monotonic() - t0, top or "(无)")
+    return {"added": len(added), "pool": len(pool), "dryup": dryup}
 
 
-def move_candidates(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str], dest: str) -> None:
-    """候选 → 种子 / 已选。移出候选(不再回候选);种子受 cap 限,放不下的留在候选。"""
+def adopt_candidates(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str]) -> None:
+    """采用:候选 → 已选(移出候选)。"""
     by_id = {c["external_id"]: c for c in session.candidates}
-    picked = [by_id[i] for i in ids if i in by_id]
-    moved: set[str] = set()
-    if dest == DEST_SEED:
-        seeds = {s["external_id"]: s for s in session.seeds}
-        cap = int(getattr(settings, "discovery_seed_cap", 3) or 3)
-        for c in picked:
-            if c["external_id"] in seeds or len(seeds) < cap:
-                seeds[c["external_id"]] = c
-                moved.add(c["external_id"])
-        session.seeds_json = json.dumps(list(seeds.values()), ensure_ascii=False)
-    else:  # DEST_SELECTED
-        basket = {b["external_id"]: b for b in session.basket}
-        for c in picked:
-            basket[c["external_id"]] = c
-            moved.add(c["external_id"])
-        session.basket_json = json.dumps(list(basket.values()), ensure_ascii=False)
-    session.candidates_json = json.dumps([c for c in session.candidates if c["external_id"] not in moved], ensure_ascii=False)
-    _touch(session, settings)
-    db.commit()
-    logger.info("泛搜索·移动 会话=%s %d个→%s (篮子%d 种子%d)",
-                session.id, len(moved), dest, len(session.basket), len(session.seeds))
-
-
-def seed_to_selected(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str]) -> None:
-    """种子 → 已选(复制,种子保留,因为它还要继续帮你找)。"""
-    by_id = {s["external_id"]: s for s in session.seeds}
     basket = {b["external_id"]: b for b in session.basket}
+    take = set()
     for i in ids:
         if i in by_id:
             basket[i] = by_id[i]
+            take.add(i)
     session.basket_json = json.dumps(list(basket.values()), ensure_ascii=False)
+    session.candidates_json = json.dumps([c for c in session.candidates if c["external_id"] not in take], ensure_ascii=False)
     _touch(session, settings)
     db.commit()
 
 
-def remove_from(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str], which: str) -> None:
-    """从种子/已选里移除(移除即没了,不回候选;external_id 留在 seen,不会再被翻出来烦你)。"""
+def dismiss_candidates(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str]) -> None:
+    """不要:从候选移除(已在 seen 里,不会再被翻出来)。"""
     drop = set(ids)
-    if which == DEST_SEED:
-        session.seeds_json = json.dumps([s for s in session.seeds if s["external_id"] not in drop], ensure_ascii=False)
-    else:
-        session.basket_json = json.dumps([b for b in session.basket if b["external_id"] not in drop], ensure_ascii=False)
+    session.candidates_json = json.dumps([c for c in session.candidates if c["external_id"] not in drop], ensure_ascii=False)
+    _touch(session, settings)
+    db.commit()
+
+
+def remove_selected(db: Session, settings: Settings, session: BenchmarkDiscoverySession, ids: list[str]) -> None:
+    drop = set(ids)
+    session.basket_json = json.dumps([b for b in session.basket if b["external_id"] not in drop], ensure_ascii=False)
     _touch(session, settings)
     db.commit()
 
 
 def clear_candidates(db: Session, settings: Settings, session: BenchmarkDiscoverySession) -> None:
-    """清空候选(只清候选,不动种子/已选)。"""
     session.candidates_json = "[]"
-    session.message = "候选已清空，点「继续找候选」或「按种子找候选」重新拉"
+    session.message = "候选已清空，点「再找一批」重新拉"
     _touch(session, settings)
     db.commit()
 
 
 def save_selected(db: Session, session: BenchmarkDiscoverySession) -> list[BloggerProfile]:
-    """把已选列表存进对标库(已有则复用,幂等)。可随时存、增量存;存完会话仍可继续用。"""
+    """把已选列表存进对标库(已有则复用,幂等)。可随时存、增量存。"""
     from app.blogger_distillation.service.crud import create_blogger
 
     created: list[BloggerProfile] = []
     new_basket: list[dict] = []
-    niche = (session.intent.get("domains") or [""])[0]
+    niche = (_intent(session).get("domains") or [""])[0]
     for c in session.basket:
         blogger = create_blogger(
             db, session.tenant_id, session.platform,
@@ -396,31 +387,33 @@ def save_selected(db: Session, session: BenchmarkDiscoverySession) -> list[Blogg
     session.basket_json = json.dumps(new_basket, ensure_ascii=False)
     session.message = f"已保存 {len(created)} 个到对标库"
     db.commit()
-    logger.info("泛搜索·保存 会话=%s 入库%d个对标博主", session.id, len(created))
+    logger.info("泛搜索·保存 会话=%s 入库%d个", session.id, len(created))
     return created
 
 
-def build_workspace(session: BenchmarkDiscoverySession) -> dict:
-    """三列工作台的前端契约:方向 + 候选 / 种子 / 已选。"""
+def build_workspace(session: BenchmarkDiscoverySession, settings: Settings | None = None) -> dict:
+    """前端契约。choose_angles 阶段渲染角度选择;workspace 阶段渲染候选|已选。"""
+    intent = _intent(session)
+    target = int(getattr(settings, "discovery_angle_target", 3) or 3) if settings else 3
+    selected_n = sum(1 for d in session.directions if d.get("selected") and not d.get("rejected"))
     return {
         "session_id": session.id,
         "platform": session.platform,
+        "source": intent.get("source", "broad"),
         "stage": session.stage,
         "status": session.status,
         "message": session.message,
         "round": session.round,
-        "directions": [{"id": d.get("label"), **d} for d in session.directions],
+        "angle_target": target,
+        "selected_angles": selected_n,
+        "angles": [d for d in session.directions if not d.get("rejected")],
         "candidates": session.candidates,
-        "seeds": session.seeds,
         "selected": session.basket,
     }
 
 
 def reap_expired_sessions(db: Session, now: datetime) -> int:
-    """空闲过期的会话标 expired(等待发生在客户端,这里只清记录)。"""
-    rows = list(db.scalars(
-        select(BenchmarkDiscoverySession).where(BenchmarkDiscoverySession.status == "active")
-    ))
+    rows = list(db.scalars(select(BenchmarkDiscoverySession).where(BenchmarkDiscoverySession.status == "active")))
     n = 0
     for s in rows:
         exp = s.expires_at

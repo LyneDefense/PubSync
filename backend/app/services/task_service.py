@@ -602,27 +602,26 @@ def reap_stale_tasks() -> None:
         db.close()
 
 
-def run_discovery_recall_task(task_id: str, session_id: int, mode: str = "directions") -> None:
-    """泛搜索「找候选」:异步按方向 or 按种子召回(打 TikHub 多次),逐步骤回报进度,写回会话。"""
+def run_discovery_recall_task(task_id: str, session_id: int) -> None:
+    """泛搜索/找相似「找候选」:异步按选中角度/关键词召回,逐角度回报进度,写回会话。"""
     from app.benchmark_discovery import flow
     from app.models import BenchmarkDiscoverySession
 
     subject = "搜罗候选博主"
-    head = "按种子找相似…" if mode == "seed" else "按方向搜罗候选…"
 
     def work(db: Session, task: OperationTask) -> None:
-        mark_task_running(db, task, head)
+        mark_task_running(db, task, "按角度搜罗候选…")
         session = db.get(BenchmarkDiscoverySession, session_id)
         if not session or session.tenant_id != task.tenant_id:
             mark_task_succeeded(db, task, "会话不存在或已过期")
             return
 
         def on_progress(label: str, detail: str) -> None:
-            # 每搜完一个方向/一个种子,写一条精确进度(前端 LiveProgress 能看见在动)。
+            # 每搜完一个角度,写一条精确进度(前端 LiveProgress 能看见在动)。
             record_task_event(db, task.tenant_id, task_id, label, "succeeded", detail)
 
-        record_task_event(db, task.tenant_id, task_id, head.rstrip("…"), "running", "开始")
-        summary = flow.run_recall(db, get_settings(), session, mode=mode, on_progress=on_progress)
+        record_task_event(db, task.tenant_id, task_id, "搜罗候选", "running", "开始")
+        summary = flow.run_recall(db, get_settings(), session, on_progress=on_progress)
         record_task_event(db, task.tenant_id, task_id, "汇总去重", "succeeded",
                           f"新增 {summary.get('added', 0)} 个,候选池 {summary.get('pool', 0)} 个")
         mark_task_succeeded(db, task, session.message)

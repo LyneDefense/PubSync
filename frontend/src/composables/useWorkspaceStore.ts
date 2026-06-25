@@ -45,8 +45,9 @@ import {
   getTenantId,
   getTask,
   discoveryStart,
+  discoverySimilar,
   discoveryGetWorkspace,
-  discoveryUpdateDirections,
+  discoveryAngles,
   discoveryRecall,
   discoveryOp,
   discoverySave,
@@ -111,8 +112,8 @@ import type {
   DashboardAccount,
   DashboardGrowth,
   DashboardOverview,
-  DiscoveryDirection,
-  DiscoveryOp,
+  DiscoveryAngleOp,
+  DiscoveryCandOp,
   DiscoveryWorkspace,
   SocialPlatform,
   SynthesisTrace,
@@ -1608,14 +1609,15 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
   showBloggerModal.value = true
 }
 
-// —— 找对标 · 泛搜索(三列工作台)——
+// —— 找对标 · 泛搜索 / 找相似(漏斗式工作台)——
 export const discoveryWorkspace = ref<DiscoveryWorkspace | null>(null)
-export const discoveryDomains = ref<string[]>([])          // 入口领域 chips
-export const discoverySeedAccountId = ref<number | null>(null)
+export const discoveryDomains = ref<string[]>([])          // 泛搜索入口领域 chips
+export const discoverySimilarIds = ref<number[]>([])       // 找相似:选中的对标库博主 id
 export const discoveryStarting = ref(false)
-export const discoveryOpPending = ref(false)               // 同步操作(移动/移除/保存)进行中
+export const discoveryOpPending = ref(false)               // 同步操作(角度/采用/移除/保存)进行中
 export const discoveryRecalling = computed(() => pendingAction.value === 'discovery')
 
+// 泛搜索:领域 → 进入「选角度」阶段。
 export async function handleDiscoveryStart() {
   const domains = discoveryDomains.value.map((d) => d.trim()).filter(Boolean)
   if (!domains.length) {
@@ -1624,44 +1626,62 @@ export async function handleDiscoveryStart() {
   }
   discoveryStarting.value = true
   try {
-    discoveryWorkspace.value = await discoveryStart(currentSocialPlatform.value, domains, discoverySeedAccountId.value)
+    discoveryWorkspace.value = await discoveryStart(currentSocialPlatform.value, domains)
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '发起失败', true)
+  } finally {
+    discoveryStarting.value = false
+  }
+}
+
+// 找相似:从对标库挑博主 → 直接进候选阶段 + 拉首批。
+export async function handleDiscoverySimilarStart() {
+  if (!discoverySimilarIds.value.length) {
+    showMessage('先选至少一个对标博主当参照', true)
+    return
+  }
+  discoveryStarting.value = true
+  try {
+    discoveryWorkspace.value = await discoverySimilar(currentSocialPlatform.value, discoverySimilarIds.value)
   } catch (error) {
     showMessage(error instanceof Error ? error.message : '发起失败', true)
     return
   } finally {
     discoveryStarting.value = false
   }
-  await handleDiscoveryRecall('directions')   // 进工作台即拉首批候选
+  await handleDiscoveryRecall()
 }
 
-// 找候选:按方向 / 按种子(异步任务,进度走 LiveProgress)。
-export async function handleDiscoveryRecall(mode: 'directions' | 'seed' = 'directions') {
+// 角度收窄(同步):toggle/reject/propose;begin 后自动拉首批候选。
+export async function handleDiscoveryAngle(op: DiscoveryAngleOp, labels: string[] = []) {
+  const sid = discoveryWorkspace.value?.session_id
+  if (!sid) return
+  discoveryOpPending.value = true
+  try {
+    discoveryWorkspace.value = await discoveryAngles(sid, op, labels)
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : '操作失败', true)
+    return
+  } finally {
+    discoveryOpPending.value = false
+  }
+  if (op === 'begin' && discoveryWorkspace.value?.stage === 'workspace') await handleDiscoveryRecall()
+}
+
+// 找候选(异步任务,进度走 LiveProgress)。
+export async function handleDiscoveryRecall() {
   const sid = discoveryWorkspace.value?.session_id
   if (!sid) return
   await runTaskAction(
-    'discovery', mode === 'seed' ? '正在按种子找相似' : '正在搜罗候选博主',
-    () => discoveryRecall(sid, mode),
+    'discovery', '正在搜罗候选博主',
+    () => discoveryRecall(sid),
     async () => { discoveryWorkspace.value = await discoveryGetWorkspace(sid) },
     '候选召回仍在后台执行，请稍后刷新'
   )
 }
 
-// 调方向(同步):应用勾选/权重 + 新增领域。
-export async function handleDiscoveryUpdateDirections(directions: DiscoveryDirection[], addDomains: string[] = []) {
-  const sid = discoveryWorkspace.value?.session_id
-  if (!sid) return
-  discoveryOpPending.value = true
-  try {
-    discoveryWorkspace.value = await discoveryUpdateDirections(sid, directions, addDomains)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '调整方向失败', true)
-  } finally {
-    discoveryOpPending.value = false
-  }
-}
-
-// 三列之间的移动/移除/清空(同步)。
-export async function handleDiscoveryOp(op: DiscoveryOp, ids: string[] = []) {
+// 候选阶段:采用 / 不要 / 移除已选 / 清空候选(同步)。
+export async function handleDiscoveryOp(op: DiscoveryCandOp, ids: string[] = []) {
   const sid = discoveryWorkspace.value?.session_id
   if (!sid) return
   discoveryOpPending.value = true
@@ -1694,7 +1714,7 @@ export async function handleDiscoverySave() {
 export function resetDiscovery() {
   discoveryWorkspace.value = null
   discoveryDomains.value = []
-  discoverySeedAccountId.value = null
+  discoverySimilarIds.value = []
 }
 
 // —— 对标博主搜寻:智能推荐 / 单博主评分(共用意图 + 可选「我的账号」)——

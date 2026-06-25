@@ -59,9 +59,9 @@ from app.schemas import (
 )
 from app.schemas.benchmark import (
     BenchmarkRecommendationRunRead,
-    DiscoveryDirectionsRequest,
+    DiscoveryAngleRequest,
     DiscoveryOpRequest,
-    DiscoveryRecallRequest,
+    DiscoverySimilarRequest,
     DiscoveryStartRequest,
     EvaluateRequest,
     EvaluateResult,
@@ -224,11 +224,26 @@ def discovery_start_endpoint(
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
+    """泛搜索:领域 → 进入「选细分角度」阶段。"""
     try:
-        sess = flow.start_session(db, settings, tenant.id, payload.platform, payload.domains, payload.my_account_id)
+        sess = flow.start_broad(db, settings, tenant.id, payload.platform, payload.domains)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return flow.build_workspace(sess)
+    return flow.build_workspace(sess, settings)
+
+
+@router.post("/benchmark/discovery/similar")
+def discovery_similar_endpoint(
+    payload: DiscoverySimilarRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    """找相似:从对标库挑博主 → 直接进候选阶段(关键词取自其存量笔记)。"""
+    try:
+        sess = flow.start_similar(db, settings, tenant.id, payload.platform, payload.blogger_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return flow.build_workspace(sess, settings)
 
 
 @router.get("/benchmark/discovery/{session_id}")
@@ -237,38 +252,40 @@ def discovery_workspace_endpoint(
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    return flow.build_workspace(_discovery_or_404(db, tenant.id, session_id))
+    return flow.build_workspace(_discovery_or_404(db, tenant.id, session_id), settings)
 
 
-@router.post("/benchmark/discovery/{session_id}/directions")
-def discovery_directions_endpoint(
+@router.post("/benchmark/discovery/{session_id}/angles")
+def discovery_angles_endpoint(
     session_id: int,
-    payload: DiscoveryDirectionsRequest,
+    payload: DiscoveryAngleRequest,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    """调方向(同步,不召回):应用勾选/权重 + 新增领域。"""
+    """角度收窄(同步):toggle 选/取消、reject 排除、propose 再推一批、begin 开始搜。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    flow.update_directions(db, settings, sess, [d.model_dump() for d in payload.directions], payload.add_domains)
-    return flow.build_workspace(sess)
+    try:
+        flow.angle_op(db, settings, sess, payload.op, payload.labels)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return flow.build_workspace(sess, settings)
 
 
 @router.post("/benchmark/discovery/{session_id}/recall", response_model=OperationTaskRead)
 def discovery_recall_endpoint(
     session_id: int,
-    payload: DiscoveryRecallRequest,
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> OperationTask:
-    """找候选(异步):按方向 or 按种子,追加到候选池。"""
+    """找候选(异步):按选中角度/关键词召回,追加到候选池。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    if payload.mode == "seed" and not sess.seeds:
-        raise HTTPException(status_code=400, detail="还没有种子，先从候选里「设为种子」")
+    if not flow.selected_domains(sess):
+        raise HTTPException(status_code=400, detail="还没有可搜的角度，先选/开始")
     task = create_operation_task(db, "discovery_recall", tenant_id=tenant.id)
     sess.task_id = task.id
     db.commit()
-    submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id, payload.mode)
+    submit_background(background_tasks, run_discovery_recall_task, task.id, sess.id)
     return task
 
 
@@ -279,21 +296,17 @@ def discovery_op_endpoint(
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    """三列之间的移动/移除/清空(同步)。"""
+    """候选阶段:采用 / 不要 / 移除已选 / 清空候选(同步)。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
-    if payload.op == "to_seed":
-        flow.move_candidates(db, settings, sess, payload.ids, flow.DEST_SEED)
-    elif payload.op == "to_selected":
-        flow.move_candidates(db, settings, sess, payload.ids, flow.DEST_SELECTED)
-    elif payload.op == "seed_to_selected":
-        flow.seed_to_selected(db, settings, sess, payload.ids)
-    elif payload.op == "remove_seed":
-        flow.remove_from(db, settings, sess, payload.ids, flow.DEST_SEED)
+    if payload.op == "adopt":
+        flow.adopt_candidates(db, settings, sess, payload.ids)
+    elif payload.op == "dismiss":
+        flow.dismiss_candidates(db, settings, sess, payload.ids)
     elif payload.op == "remove_selected":
-        flow.remove_from(db, settings, sess, payload.ids, flow.DEST_SELECTED)
+        flow.remove_selected(db, settings, sess, payload.ids)
     elif payload.op == "clear_candidates":
         flow.clear_candidates(db, settings, sess)
-    return flow.build_workspace(sess)
+    return flow.build_workspace(sess, settings)
 
 
 @router.post("/benchmark/discovery/{session_id}/save")
@@ -305,7 +318,7 @@ def discovery_save_endpoint(
     """把已选列表保存到对标库(幂等,可随时存)。"""
     sess = _discovery_or_404(db, tenant.id, session_id)
     created = flow.save_selected(db, sess)
-    return {"created": len(created), "workspace": flow.build_workspace(sess)}
+    return {"created": len(created), "workspace": flow.build_workspace(sess, settings)}
 
 
 # —— Skill 优化(训练)——

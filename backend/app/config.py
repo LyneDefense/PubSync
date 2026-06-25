@@ -69,17 +69,19 @@ class Settings(BaseSettings):
     benchmark_list_sample: int = 12
     benchmark_search_terms_max: int = 5
     benchmark_inactive_days: int = 60
-    # 泛搜索(发现会话)：每次「找候选」追加上限(小批)、用户搜索翻页深度(权重再放大)、
-    # 扩展方向上限、种子上限、每个种子拉关注列表上限、「挖干」阈值(本次新增 < 此值就提示)、
-    # 候选池累计上限(防止追加到无限大)、会话空闲过期小时数。
+    # 泛搜索(发现会话)：每次「找候选」追加上限(小批)、搜索翻页深度、「挖干」阈值、
+    # 候选池累计上限、会话空闲过期小时数。
     discovery_candidate_cap: int = 12
     discovery_search_pages: int = 2
-    discovery_directions_max: int = 10
-    discovery_seed_cap: int = 3
-    discovery_following_cap: int = 60
     discovery_dryup_threshold: int = 3
     discovery_pool_cap: int = 60
     discovery_session_ttl_hours: int = 2
+    # 角度收窄(领域 → 细分领域,agent 迭代推荐直到选够 target)。
+    discovery_angle_target: int = 3          # 建议选几个细分角度
+    discovery_angle_batch: int = 4           # agent 每轮出几个
+    discovery_angle_max_rounds: int = 4      # agent 最多出几轮(防空转)
+    discovery_angle_timeout_seconds: int = 30
+    discovery_directions_max: int = 10       # 首批角度上限
     # AI 创作的合成循环参数（与蒸馏独立调参）。
     creation_max_revise_iterations: int = 1
     creation_min_quality_score: int = 80
