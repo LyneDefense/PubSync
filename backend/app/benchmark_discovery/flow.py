@@ -80,6 +80,7 @@ def _signals(rc: RecalledCandidate, platform: str) -> CandidateSignals:
         like_samples=[],
         is_personal=not is_institution_account(platform, r.display_name, r.description, r.raw),
         matched_weight=matched_weight,
+        popularity_known=bool(getattr(r, "follower_known", True)),
     )
 
 

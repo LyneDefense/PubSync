@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 from app.benchmark_discovery.engine import popularity_score
@@ -24,13 +23,18 @@ class CandidateSignals:
     is_personal: bool = True          # 个人号 vs 机构/泛号(取不到默认 True)
     matched_weight: float = 0.0       # 命中的扩展方向的权重之和(0-100 量纲)
     similarity_to_seed: float | None = None  # 0-100,无种子时 None
+    popularity_known: bool = True     # 粉丝/互动是否拿得到(搜笔记取的作者拿不到 → False)
+
+
+# 粉丝数拿不到时给的中性火爆度:别把"内容出圈、粉丝数未知"的人名号按 0 粉打到垫底。
+NEUTRAL_POPULARITY = 45.0
 
 
 def composite_score(sig: CandidateSignals) -> float:
     """0-100 综合分。各信号归一后加权;不活跃/机构号降权;像种子加成。"""
-    popularity = popularity_score(sig.follower_count, sig.like_samples)
-    # 命中方向权重:多个方向命中累加,log 压一下再归一到 0-100。
-    match = min(100.0, 25.0 * math.log10(max(sig.matched_weight, 0) / 20.0 + 1)) if sig.matched_weight > 0 else 0.0
+    popularity = popularity_score(sig.follower_count, sig.like_samples) if sig.popularity_known else NEUTRAL_POPULARITY
+    # 命中方向权重直接当相关度(已是 0-100 量纲);不再 log 压到 ~20、让 45% 的相关度形同虚设。
+    match = min(100.0, max(0.0, sig.matched_weight))
 
     base = 0.55 * popularity + 0.45 * match
     if sig.similarity_to_seed is not None:
