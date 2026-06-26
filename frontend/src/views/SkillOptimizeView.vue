@@ -25,10 +25,18 @@ const platformBloggers = computed(() => benchmarkAccounts.value.filter((b) => b.
 const optimizing = computed(() => pendingAction.value === 'optimize')
 const run = currentTrainingRun
 
+// 语气 → Tabler 图标(全站统一图标系统,替代各处散落的 ✅⚠️⛔ emoji)。
+const TONE_ICON: Record<string, string> = {
+  ok: 'ti-circle-check',
+  warn: 'ti-alert-triangle',
+  bad: 'ti-circle-x',
+  mute: 'ti-circle-dashed'
+}
+
 const VERDICT: Record<string, { tone: string; text: string }> = {
-  improved: { tone: 'ok', text: '✅ 建议采纳:优化后明显更贴近该博主风格。' },
-  no_gain: { tone: 'warn', text: '⚠️ 建议不要采纳:本次没有明显提升(变化在噪声范围内),保留原 Skill 即可。' },
-  regressed: { tone: 'bad', text: '⛔ 建议不要采纳:优化后反而更不像,保留原 Skill。' }
+  improved: { tone: 'ok', text: '建议采纳:优化后明显更贴近该博主风格。' },
+  no_gain: { tone: 'warn', text: '建议不要采纳:本次没有明显提升(变化在噪声范围内),保留原 Skill 即可。' },
+  regressed: { tone: 'bad', text: '建议不要采纳:优化后反而更不像,保留原 Skill。' }
 }
 function verdictInfo(v: string) {
   return VERDICT[v] || { tone: 'warn', text: '请人工判断是否采纳。' }
@@ -36,14 +44,14 @@ function verdictInfo(v: string) {
 
 // 历史记录每条的标题:含「建议采纳/不建议采纳/未完成 + 是否已处理 + 时间」。
 function runTitle(run: SkillTrainingRun): { tone: string; label: string } {
-  if (run.status === 'failed') return { tone: 'bad', label: '⛔ 未完成（生成失败）' }
-  if (run.status === 'succeeded') return { tone: 'ok', label: '✅ 已采纳' }
-  if (run.status === 'abandoned') return { tone: 'mute', label: '⚪ 已放弃' }
-  if (run.status === 'running') return { tone: 'mute', label: '⏳ 优化中…' }
+  if (run.status === 'failed') return { tone: 'bad', label: '未完成（生成失败）' }
+  if (run.status === 'succeeded') return { tone: 'ok', label: '已采纳' }
+  if (run.status === 'abandoned') return { tone: 'mute', label: '已放弃' }
+  if (run.status === 'running') return { tone: 'mute', label: '优化中…' }
   // pending_confirmation:还没处理,显示系统建议
-  if (run.recommend_adopt) return { tone: 'ok', label: '✅ 建议采纳' }
-  if (run.verdict === 'regressed') return { tone: 'bad', label: '⛔ 不建议采纳' }
-  return { tone: 'warn', label: '⚠️ 不建议采纳' }
+  if (run.recommend_adopt) return { tone: 'ok', label: '建议采纳' }
+  if (run.verdict === 'regressed') return { tone: 'bad', label: '不建议采纳' }
+  return { tone: 'warn', label: '不建议采纳' }
 }
 
 function runTime(iso: string): string {
@@ -95,7 +103,7 @@ function runTime(iso: string): string {
             :class="{ active: currentTrainingRun && currentTrainingRun.id === r.id }"
             @click="selectTrainingRun(r)"
           >
-            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`">{{ runTitle(r).label }}</span>
+            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`"><i class="ti" :class="TONE_ICON[runTitle(r).tone]"></i> {{ runTitle(r).label }}</span>
             <span v-if="r.status !== 'failed' && r.status !== 'running'" class="so-history-delta">
               {{ Math.round(r.before_score) }} → {{ Math.round(r.after_score) }}（Δ {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}）
             </span>
@@ -108,7 +116,7 @@ function runTime(iso: string): string {
     <!-- 失败:生成全部失败时不展示误导性的 0→0,直接说明原因 -->
     <div v-if="run && run.status === 'failed'" class="so-result">
       <div class="so-verdict so-verdict--bad">
-        <strong>⛔ 本次优化未能完成</strong>
+        <strong><i class="ti ti-circle-x"></i> 本次优化未能完成</strong>
       </div>
       <p class="so-note">{{ run.error_message || '生成失败，请稍后重试。' }}</p>
       <p class="field-hint" v-if="run.report.anchors">
@@ -120,7 +128,7 @@ function runTime(iso: string): string {
     <div v-else-if="run && run.status !== 'running'" class="so-result">
       <!-- 建议横幅 -->
       <div class="so-verdict" :class="`so-verdict--${verdictInfo(run.verdict).tone}`">
-        <strong>{{ verdictInfo(run.verdict).text }}</strong>
+        <strong><i class="ti" :class="TONE_ICON[verdictInfo(run.verdict).tone]"></i> {{ verdictInfo(run.verdict).text }}</strong>
       </div>
 
       <!-- 前后对比 -->
@@ -205,7 +213,7 @@ function runTime(iso: string): string {
 .so-history-item:hover { border-color: var(--color-accent, #2563eb); }
 .so-history-item.active { border-color: var(--color-accent, #2563eb); box-shadow: 0 0 0 1px var(--color-accent, #2563eb) inset; }
 .so-history-badge { font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
-.so-history-badge--ok { color: #1f7a45; }
+.so-history-badge--ok { color: var(--color-ok); }
 .so-history-badge--warn { color: #9a6a12; }
 .so-history-badge--bad { color: #c0392b; }
 .so-history-badge--mute { color: var(--color-ink-2, #6b7280); }
@@ -213,7 +221,8 @@ function runTime(iso: string): string {
 .so-history-time { margin-left: auto; font-size: 0.8rem; color: var(--color-ink-3, #9aa0a6); white-space: nowrap; }
 .so-result { margin-top: 18px; display: flex; flex-direction: column; gap: 16px; }
 .so-verdict { padding: 12px 14px; border-radius: 12px; font-size: 1rem; }
-.so-verdict--ok { background: var(--color-ok-bg, #e8f5ec); color: #1f7a45; }
+.so-verdict strong i, .so-history-badge i { vertical-align: -1px; }
+.so-verdict--ok { background: var(--color-ok-bg, #e8f5ec); color: var(--color-ok); }
 .so-verdict--warn { background: #fdf3e2; color: #9a6a12; }
 .so-verdict--bad { background: #fdecec; color: #c0392b; }
 .so-scores { display: flex; align-items: center; gap: 18px; }
@@ -223,11 +232,11 @@ function runTime(iso: string): string {
 .so-score small { color: var(--color-ink-2, #6b7280); font-size: 0.75rem; }
 .so-arrow { font-size: 1.4rem; color: var(--color-ink-3, #9aa0a6); }
 .so-delta { font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--color-paper-3, #eef0f3); }
-.so-delta.pos { background: #e8f5ec; color: #1f7a45; }
+.so-delta.pos { background: var(--color-ok-bg); color: var(--color-ok); }
 .so-delta.neg { background: #fdecec; color: #c0392b; }
 .so-actions { display: flex; gap: 10px; }
 .so-done { font-weight: 600; }
-.so-done--ok { color: #1f7a45; }
+.so-done--ok { color: var(--color-ok); }
 .so-block { border-top: 1px solid var(--color-field-border, #c8ced4); padding-top: 14px; }
 .so-block h3 { margin: 0 0 8px; }
 .so-note { color: var(--color-ink-2, #6b7280); line-height: 1.6; margin: 0 0 8px; }

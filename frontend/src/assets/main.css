@@ -39,6 +39,9 @@
   --color-accent: #0d7361;
   --color-accent-soft: #eaf3ee;
   --color-accent-ink: #0d5a4a;
+  /* 正向结果绿(「已采纳/建议采纳/个人号/新」),区别于品牌墨绿;统一成一个 token,别再各处散落魔法值。 */
+  --color-ok: #1f7a45;
+  --color-ok-bg: #e8f5ec;
   /* 语义色（浅色可读微调） */
   --color-blue: #3a6ad6;
   --color-danger: #b4453a;
@@ -675,13 +678,17 @@ button.task-button.running span {
   text-align: left;
 }
 
+/* 下拉指示:CSS 画的小箭头(原来用字母 "v" 充当,像没做样式)。 */
 .user-menu-trigger::after {
-  content: "v";
+  content: "";
   position: absolute;
-  right: var(--space-xs);
+  right: var(--space-sm);
   top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-ink-3);
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--color-ink-3);
+  border-bottom: 1.5px solid var(--color-ink-3);
+  transform: translateY(-65%) rotate(45deg);
 }
 
 .user-menu-trigger span {
