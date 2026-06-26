@@ -1,68 +1,17 @@
-"""Pure parsing / normalization helpers for TikHub responses (no HTTP)."""
+"""小红书响应解析:主页 / 笔记链接、笔记列表分页(容器定位 / 游标 / xsec_token)、互动数提取、笔记类型判定。"""
 
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import parse_qs, urlparse
-
-from app.blogger_distillation.tikhub_client.base import TikHubError, XhsPostCandidate
-
-
-def unwrap_payload(data: Any) -> Any:
-    current = data
-    for _ in range(4):
-        if isinstance(current, dict):
-            for key in ("data", "result", "note", "notes", "items"):
-                value = current.get(key)
-                if value not in (None, "", []):
-                    current = value
-                    break
-            else:
-                return current
-        else:
-            return current
-    return current
-
-
-def first_str(data: dict[str, Any], keys: list[str]) -> str:
-    for key in keys:
-        value = data.get(key)
-        if value is None:
-            continue
-        if isinstance(value, (str, int)):
-            return str(value).strip()
-    return ""
-
-
-def first_int(data: dict[str, Any], keys: list[str]) -> int:
-    for key in keys:
-        value = data.get(key)
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            normalized = parse_count(value)
-            if normalized is not None:
-                return normalized
-    return 0
-
-
-def parse_count(value: str) -> int | None:
-    text = value.replace(",", "").strip()
-    if not text:
-        return None
-    multiplier = 1
-    if text.endswith("万"):
-        multiplier = 10_000
-        text = text[:-1]
-    elif text.endswith("亿"):
-        multiplier = 100_000_000
-        text = text[:-1]
-    try:
-        return int(float(text) * multiplier)
-    except ValueError:
-        return None
+from urllib.parse import parse_qs
+from urllib.parse import urlparse
+from app.blogger_distillation.tikhub_client.base import TikHubError
+from .common import first_bool
+from .common import first_bool_recursive
+from .common import first_int
+from .common import first_str
+from .common import recursive_find
 
 
 def parse_xhs_profile_link(homepage_url: str) -> dict[str, str]:
@@ -96,172 +45,6 @@ def parse_xhs_note_link(url: str) -> dict[str, str]:
     return {"note_id": match.group(1), "xsec_token": token}
 
 
-def parse_douyin_profile_link(homepage_url: str) -> str:
-    raw = homepage_url.strip().rstrip("。.,，；;")
-    parsed = urlparse(raw)
-    path = parsed.path or raw
-    match = re.search(r"/user/([^/?#]+)", path)
-    return match.group(1) if match else raw
-
-
-def normalize_douyin_user_info(payload: dict[str, Any]) -> dict[str, Any]:
-    data = dig(payload, "data", "data", default=None) or dig(payload, "data", default={})
-    if isinstance(data, dict):
-        user = data.get("user") or data.get("user_info") or data
-    else:
-        user = {}
-    if not isinstance(user, dict):
-        user = {}
-    avatar = user.get("avatar_thumb") or user.get("avatar_medium") or user.get("avatar") or ""
-    if isinstance(avatar, dict):
-        url_list = avatar.get("url_list") or []
-        avatar = url_list[0] if url_list else ""
-    return {
-        "id": first_str(user, ["sec_uid", "secUid", "uid", "user_id", "userId"]),
-        "nickname": first_str(user, ["nickname", "name"]),
-        "avatar": avatar if isinstance(avatar, str) else "",
-        "fans": str(first_int(user, ["follower_count", "fans_count", "fansCount"])),
-        "description": first_str(user, ["signature", "bio", "desc"]),
-        "unique_id": first_str(user, ["unique_id", "short_id"]),
-    }
-
-
-def extract_douyin_video_page(payload: dict[str, Any]) -> dict[str, Any]:
-    data = dig(payload, "data", default={})
-    if not isinstance(data, dict):
-        data = {}
-    raw_items = data.get("aweme_list") or data.get("list") or []
-    items = [normalize_douyin_video_item(item) for item in raw_items if isinstance(item, dict)]
-    items = [item for item in items if item.get("id")]
-    return {
-        "items": items,
-        "has_more": bool(data.get("has_more", False)),
-        "next_cursor": str(data.get("max_cursor", data.get("cursor", "")) or ""),
-    }
-
-
-def normalize_douyin_video_item(value: dict[str, Any]) -> dict[str, Any]:
-    item = value.get("aweme_detail") if isinstance(value.get("aweme_detail"), dict) else value
-    stat = item.get("statistics") or {}
-    video = item.get("video") or {}
-    author = item.get("author") or {}
-    music = item.get("music") or {}
-    cover_url = ""
-    video_url = ""
-    if isinstance(video, dict):
-        cover_url = first_url_from_douyin_url_model(video.get("origin_cover")) or first_url_from_douyin_url_model(video.get("cover"))
-        if not cover_url:
-            cover_url = first_url_from_douyin_url_model(video.get("dynamic_cover"))
-        video_url = first_url_from_douyin_url_model(video.get("play_addr_h264")) or first_url_from_douyin_url_model(video.get("play_addr"))
-    tags = []
-    for tag in item.get("text_extra") or []:
-        if isinstance(tag, dict) and tag.get("hashtag_name"):
-            tags.append(str(tag["hashtag_name"]))
-    return {
-        "id": first_str(item, ["aweme_id", "video_id", "id"]),
-        "title": first_str(item, ["desc", "title"]),
-        "cover": cover_url,
-        "type": "video",
-        "likes": str(first_int(stat, ["digg_count"])),
-        "comments": str(first_int(stat, ["comment_count"])),
-        "collects": str(first_int(stat, ["collect_count"])),
-        "shares": str(first_int(stat, ["share_count"])),
-        "plays": str(first_int(stat, ["play_count"])),
-        "author_id": first_str(author, ["sec_uid", "uid"]),
-        "author_name": first_str(author, ["nickname", "name"]),
-        "create_time": str(item.get("create_time", "")),
-        "video_url": video_url,
-        "duration": str(video.get("duration", "")) if isinstance(video, dict) else "",
-        "music_title": first_str(music, ["title"]) if isinstance(music, dict) else "",
-        "tags": tags,
-        "_raw_platform": "douyin",
-        "_raw": item,
-    }
-
-
-def normalize_douyin_video_obj(item: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "desc": item.get("title", ""),
-        "title": item.get("title", ""),
-        "time": item.get("create_time", ""),
-        "interactInfo": {
-            "likedCount": item.get("likes", "0"),
-            "commentCount": item.get("comments", "0"),
-            "shareCount": item.get("shares", "0"),
-            "collectedCount": item.get("collects", "0"),
-            "playCount": item.get("plays", "0"),
-        },
-        "type": "video",
-        "cover": item.get("cover", ""),
-        "coverUrl": item.get("cover", ""),
-        "videoUrl": item.get("video_url", ""),
-        "video": {"play_url": item.get("video_url", "")},
-        "imageList": [{"url": item.get("cover", "")}] if item.get("cover") else [],
-        "tagList": [{"name": tag} for tag in item.get("tags", [])],
-        "duration": item.get("duration", ""),
-        "authorId": item.get("author_id", ""),
-        "authorName": item.get("author_name", ""),
-        "musicTitle": item.get("music_title", ""),
-        "_raw": item.get("_raw", item),
-    }
-
-
-def normalize_douyin_detail_payload(payload: dict[str, Any], candidate: XhsPostCandidate) -> dict[str, Any]:
-    data = dig(payload, "data", default={})
-    if isinstance(data, dict):
-        raw_item = data.get("aweme_detail") or data.get("data") or data
-    else:
-        raw_item = {}
-    if not isinstance(raw_item, dict) or not first_str(raw_item, ["aweme_id", "video_id", "id", "desc", "title"]):
-        raw_item = candidate.raw
-    item = normalize_douyin_video_item(raw_item)
-    if not item.get("id"):
-        item["id"] = candidate.external_id
-    if not item.get("title"):
-        item["title"] = first_str(candidate.raw, ["title", "desc"])
-    normalized = normalize_douyin_video_obj(item)
-    normalized["_endpoint_used"] = payload.get("_endpoint_used", "")
-    normalized["_endpoint_group"] = payload.get("_endpoint_group", "")
-    normalized["_raw_detail"] = payload
-    return normalized
-
-
-def extract_douyin_comments(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = payload.get("data", payload)
-    if isinstance(data, dict) and isinstance(data.get("data"), dict):
-        data = data["data"]
-    if not isinstance(data, dict):
-        return []
-    comments = data.get("comments") or data.get("comment_list") or data.get("list") or data.get("items") or []
-    if isinstance(comments, dict):
-        comments = comments.get("list") or comments.get("comments") or []
-    return comments if isinstance(comments, list) else []
-
-
-def first_url_from_douyin_url_model(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, dict):
-        return ""
-    url_list = value.get("url_list") or value.get("urlList") or []
-    if isinstance(url_list, list):
-        for item in url_list:
-            if isinstance(item, str) and item.startswith("http"):
-                return item
-    return first_str(value, ["url", "uri"])
-
-
-def dig(data: dict[str, Any], *path: str, default: Any = None) -> Any:
-    current: Any = data
-    for key in path:
-        if not isinstance(current, dict):
-            return default
-        current = current.get(key)
-        if current is None:
-            return default
-    return current
-
-
 def extract_note_page(payload: dict[str, Any]) -> dict[str, Any]:
     page = find_best_note_container(payload)
     if page is None:
@@ -277,6 +60,8 @@ def extract_note_page(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 HAS_MORE_KEYS = ("has_more", "hasMore", "has_more_note", "hasMoreNote", "has_next", "hasNext")
+
+
 CURSOR_KEYS = (
     "next_cursor",
     "nextCursor",
@@ -288,6 +73,8 @@ CURSOR_KEYS = (
     "cursor_id",
     "cursorId",
 )
+
+
 PAGE_CURSOR_KEYS = tuple(key for key in CURSOR_KEYS if key != "cursor")
 
 
@@ -473,34 +260,6 @@ def first_count(sources: list[dict[str, Any]], keys: list[str]) -> int:
     return 0
 
 
-def first_bool(data: dict[str, Any], keys: list[str]) -> bool:
-    for key in keys:
-        value = data.get(key)
-        if value in (None, ""):
-            continue
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int):
-            return value != 0
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "1", "yes", "y"}:
-                return True
-            if normalized in {"false", "0", "no", "n", ""}:
-                return False
-    return False
-
-
-def first_bool_recursive(data: Any, keys: tuple[str, ...]) -> bool:
-    if isinstance(data, dict):
-        if first_bool(data, list(keys)):
-            return True
-        return any(first_bool_recursive(child, keys) for child in data.values())
-    if isinstance(data, list):
-        return any(first_bool_recursive(child, keys) for child in data)
-    return False
-
-
 def find_note_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return extract_note_page(payload)["notes"]
 
@@ -557,22 +316,6 @@ def find_page_area(payload: dict[str, Any]) -> str:
     return ""
 
 
-def recursive_find(value: Any, target_key: str) -> Any:
-    if isinstance(value, dict):
-        if target_key in value:
-            return value[target_key]
-        for child in value.values():
-            result = recursive_find(child, target_key)
-            if result not in (None, "", []):
-                return result
-    elif isinstance(value, list):
-        for child in value:
-            result = recursive_find(child, target_key)
-            if result not in (None, "", []):
-                return result
-    return None
-
-
 def find_user_id(payload: dict[str, Any]) -> str:
     for key in ("user_id", "userId", "userid", "id"):
         value = recursive_find(payload, key)
@@ -589,21 +332,3 @@ def detect_note_type(note: dict[str, Any]) -> str:
     if isinstance(nested, str) and "video" in nested.lower():
         return "video"
     return "image"
-
-
-def parse_timestamp(value: Any) -> datetime | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, str) and value.isdigit():
-        value = int(value)
-    if isinstance(value, int):
-        if value > 10_000_000_000:
-            value = value / 1000
-        return datetime.fromtimestamp(value, tz=timezone.utc)
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            return None
-    return None
