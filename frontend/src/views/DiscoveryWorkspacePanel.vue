@@ -2,6 +2,7 @@
 // 候选 | 已选 两列,泛搜索与找相似共用。候选卡展示硬数据(粉丝/获赞收藏/简介/IP/近期命中)+ 软数据(相关度/火爆度/综合分),
 // 点「看依据」展开。采用→进已选 / 不要→剔除;已选→保存进对标库。
 import { computed, reactive } from 'vue'
+import TIcon from '../components/TIcon.vue'
 import {
   discoveryOpPending,
   discoveryRecalling,
@@ -36,7 +37,7 @@ function fmtFans(c: DiscoveryCandidate): string {
       <!-- 候选 -->
       <section class="dw-col">
         <header>
-          <span class="dw-h"><i class="ti ti-users"></i> 候选 <b>{{ ws.candidates.length }}</b></span>
+          <span class="dw-h"><TIcon name="users" /> 候选 <b>{{ ws.candidates.length }}</b></span>
           <div class="dw-acts">
             <button type="button" class="sm primary" :disabled="busy" @click="handleDiscoveryRecall()">
               {{ discoveryRecalling ? '搜罗核验中…' : '再找一批' }}
@@ -59,7 +60,7 @@ function fmtFans(c: DiscoveryCandidate): string {
               </div>
               <div class="dw-sub">{{ c.reason }} · 火爆 {{ Math.round(c.popularity) }} · 综合 {{ Math.round(c.score) }}</div>
               <button type="button" class="dw-why" @click="open[c.external_id] = !open[c.external_id]">
-                <i class="ti" :class="open[c.external_id] ? 'ti-chevron-up' : 'ti-chevron-down'"></i>
+                <TIcon :name="open[c.external_id] ? 'chevron-up' : 'chevron-down'" />
                 {{ open[c.external_id] ? '收起' : '看依据' }}
               </button>
               <div v-if="open[c.external_id]" class="dw-detail">
@@ -68,8 +69,8 @@ function fmtFans(c: DiscoveryCandidate): string {
                 <p v-if="c.relevance_reason"><b>相关度判断</b>：{{ c.relevance_reason }}</p>
               </div>
               <div class="dw-card-acts">
-                <button type="button" class="adopt" :disabled="busy" @click="handleDiscoveryOp('adopt', [c.external_id])"><i class="ti ti-check"></i> 采用</button>
-                <button type="button" :disabled="busy" @click="handleDiscoveryOp('dismiss', [c.external_id])"><i class="ti ti-x"></i> 不要</button>
+                <button type="button" class="adopt" :disabled="busy" @click="handleDiscoveryOp('adopt', [c.external_id])"><TIcon name="check" /> 采用</button>
+                <button type="button" :disabled="busy" @click="handleDiscoveryOp('dismiss', [c.external_id])"><TIcon name="x" /> 不要</button>
               </div>
             </div>
           </article>
@@ -80,7 +81,7 @@ function fmtFans(c: DiscoveryCandidate): string {
       <!-- 已选 -->
       <section class="dw-col">
         <header>
-          <span class="dw-h"><i class="ti ti-star"></i> 已选对标 <b>{{ ws.selected.length }}</b></span>
+          <span class="dw-h"><TIcon name="star" /> 已选对标 <b>{{ ws.selected.length }}</b></span>
           <button type="button" class="sm save" :disabled="busy || !ws.selected.length" @click="handleDiscoverySave">保存到对标库</button>
         </header>
         <div class="dw-body">
@@ -89,7 +90,7 @@ function fmtFans(c: DiscoveryCandidate): string {
               <div class="dw-card-top"><strong>{{ b.display_name }}</strong><span v-if="b.existing_blogger_id" class="dw-tag">已在库</span></div>
               <div class="dw-data">{{ fmtFans(b) }} · 相关 {{ Math.round(b.relevance) }} · <span :class="b.is_personal ? 'ok' : 'muted'">{{ b.is_personal ? '个人号' : '机构号' }}</span></div>
               <div class="dw-card-acts">
-                <button type="button" :disabled="busy" @click="handleDiscoveryOp('remove_selected', [b.external_id])"><i class="ti ti-x"></i> 移除</button>
+                <button type="button" :disabled="busy" @click="handleDiscoveryOp('remove_selected', [b.external_id])"><TIcon name="x" /> 移除</button>
               </div>
             </div>
           </article>

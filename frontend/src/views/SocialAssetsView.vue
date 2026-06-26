@@ -3,6 +3,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { bloggerCommentLabel } from '../utils/format'
+import TIcon from '../components/TIcon.vue'
 import {
   activeNotePost,
   benchmarkAccounts,
@@ -246,7 +247,7 @@ async function deleteDetailSnapshot() {
       <div class="modal-card picker-modal">
         <div class="modal-head">
           <strong>{{ pickerSnapshotId ? '重新选取笔记' : '新建快照' }}</strong>
-          <button type="button" class="modal-close" aria-label="关闭" @click="closePicker"><i class="ti ti-x"></i></button>
+          <button type="button" class="modal-close" aria-label="关闭" @click="closePicker"><TIcon name="x" /></button>
         </div>
         <div class="modal-body">
           <label class="modal-field">
@@ -288,7 +289,7 @@ async function deleteDetailSnapshot() {
       <div class="modal-card snapshot-detail-modal">
         <div class="modal-head">
           <strong>快照详情</strong>
-          <button type="button" class="modal-close" aria-label="关闭" @click="detailOpen = false"><i class="ti ti-x"></i></button>
+          <button type="button" class="modal-close" aria-label="关闭" @click="detailOpen = false"><TIcon name="x" /></button>
         </div>
         <div class="modal-body">
           <label class="modal-field">
@@ -321,7 +322,7 @@ async function deleteDetailSnapshot() {
       <aside class="note-drawer">
         <div class="note-drawer-head">
           <strong>笔记详情</strong>
-          <button type="button" class="note-drawer-close" aria-label="关闭" @click="closeNote"><i class="ti ti-x"></i></button>
+          <button type="button" class="note-drawer-close" aria-label="关闭" @click="closeNote"><TIcon name="x" /></button>
         </div>
         <div class="note-drawer-body">
           <img v-if="activeNotePost.cover_url" :src="activeNotePost.cover_url" alt="封面" class="note-drawer-cover" referrerpolicy="no-referrer" />
@@ -331,7 +332,7 @@ async function deleteDetailSnapshot() {
             · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}
             <template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
           </p>
-          <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="note-drawer-link">打开原帖 <i class="ti ti-external-link"></i></a>
+          <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="note-drawer-link">打开原帖 <TIcon name="external-link" /></a>
 
           <div class="note-drawer-section">
             <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
@@ -350,7 +351,7 @@ async function deleteDetailSnapshot() {
             <h4>热门评论 TOP{{ noteTopComments(activeNotePost).length }}</h4>
             <ul class="note-comments">
               <li v-for="(c, i) in noteTopComments(activeNotePost)" :key="i">
-                <span class="note-comment-like"><i class="ti ti-heart"></i> {{ c.like_count }}</span>
+                <span class="note-comment-like"><TIcon name="heart" /> {{ c.like_count }}</span>
                 <span>{{ c.content }}</span>
               </li>
             </ul>

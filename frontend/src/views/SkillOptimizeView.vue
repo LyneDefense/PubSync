@@ -2,6 +2,7 @@
 // Skill 优化:选对标博主 → 发起优化(进度走顶部 LiveProgress)→ 看完整结果
 // (优化前后对比 + 优化器改了什么 + 样例三栏 + 明确建议;没提升就劝退)→ 采纳/放弃。
 import { computed } from 'vue'
+import TIcon from '../components/TIcon.vue'
 import {
   benchmarkAccounts,
   currentSocialPlatform,
@@ -27,10 +28,10 @@ const run = currentTrainingRun
 
 // 语气 → Tabler 图标(全站统一图标系统,替代各处散落的 ✅⚠️⛔ emoji)。
 const TONE_ICON: Record<string, string> = {
-  ok: 'ti-circle-check',
-  warn: 'ti-alert-triangle',
-  bad: 'ti-circle-x',
-  mute: 'ti-circle-dashed'
+  ok: 'circle-check',
+  warn: 'alert-triangle',
+  bad: 'circle-x',
+  mute: 'circle-dashed'
 }
 
 const VERDICT: Record<string, { tone: string; text: string }> = {
@@ -103,7 +104,7 @@ function runTime(iso: string): string {
             :class="{ active: currentTrainingRun && currentTrainingRun.id === r.id }"
             @click="selectTrainingRun(r)"
           >
-            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`"><i class="ti" :class="TONE_ICON[runTitle(r).tone]"></i> {{ runTitle(r).label }}</span>
+            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`"><TIcon :name="TONE_ICON[runTitle(r).tone]" /> {{ runTitle(r).label }}</span>
             <span v-if="r.status !== 'failed' && r.status !== 'running'" class="so-history-delta">
               {{ Math.round(r.before_score) }} → {{ Math.round(r.after_score) }}（Δ {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}）
             </span>
@@ -116,7 +117,7 @@ function runTime(iso: string): string {
     <!-- 失败:生成全部失败时不展示误导性的 0→0,直接说明原因 -->
     <div v-if="run && run.status === 'failed'" class="so-result">
       <div class="so-verdict so-verdict--bad">
-        <strong><i class="ti ti-circle-x"></i> 本次优化未能完成</strong>
+        <strong><TIcon name="circle-x" /> 本次优化未能完成</strong>
       </div>
       <p class="so-note">{{ run.error_message || '生成失败，请稍后重试。' }}</p>
       <p class="field-hint" v-if="run.report.anchors">
@@ -128,7 +129,7 @@ function runTime(iso: string): string {
     <div v-else-if="run && run.status !== 'running'" class="so-result">
       <!-- 建议横幅 -->
       <div class="so-verdict" :class="`so-verdict--${verdictInfo(run.verdict).tone}`">
-        <strong><i class="ti" :class="TONE_ICON[verdictInfo(run.verdict).tone]"></i> {{ verdictInfo(run.verdict).text }}</strong>
+        <strong><TIcon :name="TONE_ICON[verdictInfo(run.verdict).tone]" /> {{ verdictInfo(run.verdict).text }}</strong>
       </div>
 
       <!-- 前后对比 -->

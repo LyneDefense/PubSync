@@ -2,6 +2,7 @@
 // 泛搜索:领域 → agent 推细分角度(选/排除/再推,建议选 X 个)→ 候选工作台。
 import { computed, ref } from 'vue'
 import DiscoveryWorkspacePanel from './DiscoveryWorkspacePanel.vue'
+import TIcon from '../components/TIcon.vue'
 import {
   discoveryDomains,
   discoveryOpPending,
@@ -66,13 +67,13 @@ async function propose() {
         @click="handleDiscoveryAngle('toggle', [a.label])"
         :title="a.reason"
       >
-        <i class="ti" :class="a.selected ? 'ti-check' : 'ti-plus'"></i> {{ a.label }}
+        <TIcon :name="a.selected ? 'check' : 'plus'" /> {{ a.label }}
         <span class="ds-x" :title="'不想要这个方向'" @click.stop="handleDiscoveryAngle('reject', [a.label])">×</span>
       </button>
     </div>
     <div class="ds-angle-acts">
       <button type="button" :disabled="discoveryOpPending" @click="propose">
-        <i class="ti ti-refresh"></i> {{ proposing ? 'AI 想角度中…' : '再推几个' }}
+        <TIcon name="refresh" /> {{ proposing ? 'AI 想角度中…' : '再推几个' }}
       </button>
       <button type="button" class="primary" :disabled="discoveryOpPending || !ws!.selected_angles" @click="handleDiscoveryAngle('begin')">
         就用选中的开始找 →

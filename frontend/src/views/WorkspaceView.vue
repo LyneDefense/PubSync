@@ -174,7 +174,7 @@ import {
       <p v-if="editingBlogger" class="field-hint">昵称 / 主页 / 平台ID / 头像 / 粉丝数 不可手动修改；如需更新,到「博主资产」点「刷新博主」重新拉取。</p>
       <label>
         领域/赛道
-        <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具..." />
+        <input v-model="bloggerForm.niche" type="text" placeholder="宠物、母婴、美妆、AI工具…" />
       </label>
       <label v-if="editingBlogger">
         手动标签

@@ -1,4 +1,6 @@
 /* Hallmark · genre: editorial workbench · macrostructure: command workspace · anchor hue: teal */
+/* 图标:内联 SVG(components/TIcon.vue + icons.ts,只含用到的 16 个 Tabler outline),
+   不引整套图标 webfont(~900KB),也不走 CDN —— 轻量且国内可稳定加载。 */
 /* 自托管显示体(OFL,拉丁/数字),不依赖 Google Fonts —— 面向国内用户也能稳定加载。
    中文回退到系统苹方/雅黑;Space Grotesk 只渲染拉丁字母和数字,给标题/编号一点设计感。 */
 @font-face {

@@ -2,6 +2,7 @@
 // 找相似:从对标库挑 1+ 个博主当参照 → 用其存量笔记取关键词找同类号 → 采用进对标库。
 import { computed } from 'vue'
 import DiscoveryWorkspacePanel from './DiscoveryWorkspacePanel.vue'
+import TIcon from '../components/TIcon.vue'
 import {
   bloggers,
   currentSocialPlatform,
@@ -41,7 +42,7 @@ function toggle(id: number) {
           <strong>{{ b.display_name }}</strong>
           <small>{{ b.niche || '未填领域' }} · {{ b.follower_count }} 粉</small>
         </span>
-        <i class="ti" :class="discoverySimilarIds.includes(b.id) ? 'ti-checkbox' : 'ti-square'"></i>
+        <TIcon :name="discoverySimilarIds.includes(b.id) ? 'checkbox' : 'square'" />
       </li>
     </ul>
     <p v-else class="sim-empty">对标库还没有博主。先用「泛搜索」或「精确搜索」收几个，再来找相似。</p>
