@@ -6,8 +6,8 @@ from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tena
 from app.database import get_db
 from app.models import AccountAuditRun, BloggerProfile, Tenant
 from app.queue import submit_background
-from app.schemas import AccountAuditCreate, AccountAuditRunRead, OperationTaskRead, SelfDiagnoseCreate
-from app.services.task_service import create_operation_task, run_account_audit_task
+from app.schemas import AccountAuditCreate, AccountAuditRunRead, AppraiseCreate, OperationTaskRead, SelfDiagnoseCreate
+from app.services.task_service import create_operation_task, run_account_audit_task, run_appraisal_task
 
 router = APIRouter()
 
@@ -45,6 +45,25 @@ def start_self_diagnose_endpoint(
     _require_account(db, tenant.id, payload.platform, payload.my_blogger_id, "我的账号")
     task = create_operation_task(db, "account_audit", tenant_id=tenant.id)
     submit_background(background_tasks, run_account_audit_task, task.id, {"kind": "self", **payload.model_dump()})
+    return task
+
+
+@router.post("/account-audit/appraise", response_model=OperationTaskRead)
+def start_appraisal_endpoint(
+    payload: AppraiseCreate,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+):
+    """博主诊断(对标分析):诊断一个号(对标库博主或我的账号)→ 硬/软/合规 三区报告。
+
+    诊断前自动确保 ≥N 条笔记(不够补采);结果落 AccountAuditRun,用 /account-audit/runs 读取。
+    """
+    blogger = db.get(BloggerProfile, payload.blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    task = create_operation_task(db, "account_audit", tenant_id=tenant.id)
+    submit_background(background_tasks, run_appraisal_task, task.id, payload.model_dump())
     return task
 
 

@@ -29,6 +29,7 @@ from .maintenance import (
 from .runners import (
     build_pipeline,
     run_account_audit_task,
+    run_appraisal_task,
     run_article_generation_task,
     run_benchmark_recommend_task,
     run_blogger_collection_task,
@@ -53,6 +54,7 @@ __all__ = [
     "request_task_cancel",
     "build_pipeline",
     "run_account_audit_task",
+    "run_appraisal_task",
     "run_article_generation_task",
     "run_benchmark_recommend_task",
     "run_blogger_collection_task",

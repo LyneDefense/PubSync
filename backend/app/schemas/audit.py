@@ -22,6 +22,15 @@ class SelfDiagnoseCreate(BaseModel):
     my_post_ids: list[int] = Field(default_factory=list)
 
 
+class AppraiseCreate(BaseModel):
+    """博主诊断:诊断一个号(对标库博主或我的账号)。诊断前自动确保 ≥N 条笔记。"""
+
+    blogger_id: int
+    kind: str = Field(default="benchmark", pattern="^(benchmark|self)$")
+    intent: str = Field(default="", max_length=500)  # 对标意图(诊断别人时用,诊断自己忽略)
+    industry: str | None = Field(default=None, max_length=50)  # 品类(触发合规红线,如「香港保险」)
+
+
 class AccountAuditRunRead(BaseModel):
     id: int
     tenant_id: int

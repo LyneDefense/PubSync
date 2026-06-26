@@ -342,3 +342,28 @@ def run_daily_publish_task(task_id: str) -> None:
         work=work,
         expected=(ValueError, AIServiceError, WeChatAPIError),
     )
+
+
+def run_appraisal_task(task_id: str, payload: dict) -> None:
+    """博主诊断(对标分析):诊断一个号(对标库博主 / 我的账号)→ 硬/软/合规 三区报告。"""
+    kind = "self" if str(payload.get("kind") or "").strip().lower() == "self" else "benchmark"
+    subject = "诊断我的账号" if kind == "self" else "对标诊断"
+
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, f"正在{subject}…")
+        from app.appraisal import run_appraisal
+        run = run_appraisal(
+            db=db, settings=get_settings(), task_id=task_id, tenant_id=task.tenant_id,
+            blogger_id=int(payload["blogger_id"]), kind=kind,
+            intent=str(payload.get("intent") or ""), industry=payload.get("industry"),
+        )
+        mark_task_succeeded(db, task, f"{subject}完成")
+        logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)
+
+    def record_failure(db: Session, task_id: str, exc: Exception) -> None:
+        task = get_task(db, task_id)
+        if task:
+            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
+
+    execute_task(task_id, label=subject, fail_message=f"{subject}失败", work=work,
+                 expected=(ValueError, AIServiceError), on_unexpected=record_failure)

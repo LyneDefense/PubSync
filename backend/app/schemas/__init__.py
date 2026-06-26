@@ -18,7 +18,13 @@ from app.schemas.admin import (
     QueueHealth,
 )
 from app.schemas.article import ArticleRead, ArticleUpdate, DashboardRead
-from app.schemas.audit import AccountAuditCreate, AccountAuditReport, AccountAuditRunRead, SelfDiagnoseCreate
+from app.schemas.audit import (
+    AccountAuditCreate,
+    AccountAuditReport,
+    AccountAuditRunRead,
+    AppraiseCreate,
+    SelfDiagnoseCreate,
+)
 from app.schemas.benchmark import (
     BenchmarkIntent,
     BenchmarkRecommendationRunRead,
@@ -114,6 +120,7 @@ __all__ = [
     "AccountAuditCreate",
     "AccountAuditReport",
     "AccountAuditRunRead",
+    "AppraiseCreate",
     "SelfDiagnoseCreate",
     "BenchmarkIntent",
     "CandidateScore",

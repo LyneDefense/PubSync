@@ -107,3 +107,48 @@ def test_judge_soft_parses_three_dims(monkeypatch):
 def test_judge_soft_fallback_on_empty_intent():
     dims = judge_soft("", "notes", settings=None)
     assert all(d.score == 50 for d in dims.values())
+
+
+# —— 编排:_verdict 象限 + _diagnose self 模式 ——
+
+def test_verdict_benchmark_quadrants():
+    from app.appraisal import service
+    clean = {"has_ban": False, "score": 100, "grade": "干净"}
+    ban = {"has_ban": True, "score": 40, "grade": "高危(含封号级违规)"}
+    assert service._verdict("benchmark", 80, 80, clean)["level"] == "ok"
+    assert service._verdict("benchmark", 80, 80, ban)["level"] == "danger"  # 合规否决
+    assert service._verdict("benchmark", 80, 50, clean)["level"] == "warn"
+    assert service._verdict("benchmark", 50, 80, clean)["level"] == "warn"
+    assert service._verdict("benchmark", 50, 50, clean)["level"] == "muted"
+
+
+def test_verdict_self_uses_hard_and_compliance():
+    from app.appraisal import service
+    clean = {"has_ban": False, "score": 100, "grade": "干净"}
+    ban = {"has_ban": True, "score": 40, "grade": "高危"}
+    assert service._verdict("self", 80, None, clean)["level"] == "ok"
+    assert service._verdict("self", 50, None, clean)["level"] == "warn"
+    assert service._verdict("self", 80, None, ban)["level"] == "danger"
+
+
+class _Obj:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_diagnose_self_skips_soft(monkeypatch):
+    from app.appraisal import service
+    from app.appraisal.judge import JudgedDim
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "compliance_scan",
+                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
+                  published_at=NOW, content_type="image", title="港险科普", body_text="正文")
+             for i in range(10)]
+    rep = service._diagnose(None, blogger, posts, kind="self", intent="", industry=None, db=None, tenant_id=0)
+    assert rep["kind"] == "self"
+    assert rep["soft"] == [] and rep["soft_score"] is None  # 自己模式无软实力
+    assert len(rep["hard"]) == 5  # 4 算 + 垂直度
+    assert rep["compliance"]["has_ban"] is False
+    assert rep["verdict"]["level"] in {"ok", "warn", "danger"}
