@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,11 +38,16 @@ from app.services.task_service import reap_discovery_sessions, reap_stale_tasks,
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
 configure_logging()
+logger = logging.getLogger("app.main")
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # uvicorn 在 import 之后才初始化它自己的日志,import 期的 configure_logging 可能被其 root 配置压住;
+    # 这里在 lifespan 启动期(uvicorn 日志已就绪后)再调一次,确保应用层 INFO 能打到 stdout。
+    configure_logging()
+    logger.info("PubSync 后端启动:应用层日志已就位(INFO 可见)")
     # 启动时把数据库迁移到最新版本（Alembic 是 schema 的唯一来源）。
     run_migrations()
     # 迁移完成后,把后台运行时配置覆盖项叠加到 settings 单例。
