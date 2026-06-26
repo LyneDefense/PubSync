@@ -189,6 +189,7 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="goTab('freecreate')"><NavIcon name="edit" />自由创作</button>
           <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="goTab('history')"><NavIcon name="send" />发布草稿</button>
           <p class="side-group">评估与提升</p>
+          <button type="button" :class="{ active: currentSocialTab === 'analysis' }" @click="goTab('analysis')"><NavIcon name="target" />对标分析<span class="side-tag side-tag-new">新</span></button>
           <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="goTab('audit')"><NavIcon name="target" />对标诊断</button>
           <button type="button" :class="{ active: currentSocialTab === 'self-diagnosis' }" @click="goTab('self-diagnosis')"><NavIcon name="pulse" />诊断我的</button>
           <button type="button" :class="{ active: currentSocialTab === 'effects' }" @click="goTab('effects')"><NavIcon name="chart" />效果看板<span class="side-tag side-tag-new">新</span></button>

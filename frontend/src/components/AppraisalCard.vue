@@ -1,40 +1,9 @@
 <script setup lang="ts">
 // 博主诊断·三区决策卡:渲染后端 run_appraisal 的报告(硬实力 / 软实力 / 合规)。
 // 纯展示组件,只吃一个 report 对象(AccountAuditRun.report_json 解析后);无 store/api 依赖。
-interface Dim {
-  key: string
-  label: string
-  score: number
-  detail: string
-}
-interface ComplianceHit {
-  category: string
-  matched: string
-  severity: string
-  basis: string
-  suggestion: string
-  quote: string
-}
-interface ComplianceResult {
-  score: number
-  grade: string
-  hits: ComplianceHit[]
-  has_ban: boolean
-}
-interface AppraisalReport {
-  kind: string
-  intent?: string
-  industry?: string | null
-  sample_count: number
-  hard: Dim[]
-  hard_score: number
-  soft: Dim[]
-  soft_score: number | null
-  compliance: ComplianceResult
-  verdict: { level: string; text: string }
-}
+import type { AppraisalReport } from '../api/types'
 
-const props = defineProps<{ report: AppraisalReport }>()
+defineProps<{ report: AppraisalReport }>()
 
 function scoreColor(score: number): string {
   if (score >= 75) return 'var(--color-ok, #1f7a45)'

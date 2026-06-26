@@ -861,3 +861,43 @@ export interface DashboardGrowth {
   }
   disclaimer: string
 }
+
+// —— 博主诊断·三区报告(后端 run_appraisal 的 report_json 结构)——
+export interface AppraisalDim {
+  key: string
+  label: string
+  score: number
+  detail: string
+  metric?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  evidence?: string[]
+}
+export interface AppraisalComplianceHit {
+  category: string
+  matched: string
+  severity: string
+  basis: string
+  suggestion: string
+  layer?: string
+  quote: string
+}
+export interface AppraisalComplianceResult {
+  score: number
+  grade: string
+  hits: AppraisalComplianceHit[]
+  by_severity?: Record<string, number>
+  has_ban: boolean
+}
+export interface AppraisalReport {
+  kind: string
+  intent?: string
+  industry?: string | null
+  sample_count: number
+  hard: AppraisalDim[]
+  hard_score: number
+  soft: AppraisalDim[]
+  soft_score: number | null
+  compliance: AppraisalComplianceResult
+  verdict: { level: string; text: string }
+  score?: number
+}

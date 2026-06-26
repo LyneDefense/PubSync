@@ -18,6 +18,7 @@ import SocialAssetsView from './SocialAssetsView.vue'
 import MyAccountsView from './MyAccountsView.vue'
 import SocialAuditView from './SocialAuditView.vue'
 import SelfDiagnosisView from './SelfDiagnosisView.vue'
+import BenchmarkAnalysisView from './BenchmarkAnalysisView.vue'
 import SocialPackagesView from './SocialPackagesView.vue'
 import SocialHistoryView from './SocialHistoryView.vue'
 import XhsRecordsView from './XhsRecordsView.vue'
@@ -80,6 +81,8 @@ import {
   <SocialAuditView />
 
   <SelfDiagnosisView />
+
+  <BenchmarkAnalysisView />
 
   <SocialPackagesView />
 

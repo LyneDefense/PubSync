@@ -29,6 +29,7 @@ import {
   clearTenantId,
   collectBlogger,
   collectBloggerByUrls,
+  appraiseBlogger,
   listAccountAuditRuns,
   startAccountAuditTask,
   startSelfDiagnoseTask,
@@ -91,6 +92,7 @@ import {
 } from '../api'
 import type {
   AccountAuditRun,
+  AppraisalReport,
   Article,
   ArticleUpdate,
   BenchmarkIntent,
@@ -134,7 +136,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -176,6 +178,14 @@ export const auditForm = reactive<{
 }>({ my_blogger_id: 0, my_post_ids: [], benchmark_blogger_id: 0, benchmark_post_ids: [] })
 // 诊断我的:只选我的账号 + 勾选内容。
 export const selfForm = reactive<{ my_blogger_id: number; my_post_ids: number[] }>({ my_blogger_id: 0, my_post_ids: [] })
+// 博主诊断(对标分析):诊断一个号(对标库博主或我的账号)→ 硬/软/合规 三区报告。
+export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark' | 'self'; intent: string; industry: string }>({
+  blogger_id: 0,
+  kind: 'benchmark',
+  intent: '',
+  industry: ''
+})
+export const appraisalRun = ref<AccountAuditRun | null>(null)
 // 我的账号(account_type=mine)与对标账号拆分。
 export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
 export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
@@ -2301,6 +2311,42 @@ export async function handleRunAccountAudit() {
       selectedAuditRunId.value = accountAuditRuns.value[0]?.id ?? null
     },
     '对标诊断仍在后台执行，请稍后刷新页面查看结果'
+  )
+}
+
+// 博主诊断(对标分析):新版三区报告。诊断 runs 与旧对标诊断同表(AccountAuditRun),按 report 形状区分。
+export function parseAppraisalReport(run: AccountAuditRun | null): AppraisalReport | null {
+  if (!run?.report_json) return null
+  try {
+    const p = JSON.parse(run.report_json)
+    if (!Array.isArray(p?.hard) || typeof p?.hard_score !== 'number') return null
+    return p as AppraisalReport
+  } catch {
+    return null
+  }
+}
+
+export async function handleRunAppraisal() {
+  if (!appraiseForm.blogger_id) {
+    showMessage('请先选择要诊断的账号', true)
+    return
+  }
+  appraisalRun.value = null
+  await runTaskAction(
+    'audit',
+    '已提交博主诊断任务（会自动确保 ≥20 篇笔记）',
+    () =>
+      appraiseBlogger({
+        blogger_id: appraiseForm.blogger_id,
+        kind: appraiseForm.kind,
+        intent: appraiseForm.intent,
+        industry: appraiseForm.industry || null
+      }),
+    async () => {
+      const runs = await listAccountAuditRuns(currentSocialPlatform.value, appraiseForm.kind)
+      appraisalRun.value = runs[0] ?? null
+    },
+    '博主诊断仍在后台执行，请稍后刷新页面查看结果'
   )
 }
 
