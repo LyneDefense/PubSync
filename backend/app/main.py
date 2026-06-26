@@ -33,7 +33,7 @@ from app.db.migrate import run_migrations
 from app.logging_config import configure_logging
 from app.services.auth_service import verify_token
 from app.dashboard.service import capture_daily_snapshots
-from app.services.task_service import reap_discovery_sessions, reap_stale_tasks, scheduled_workspace_publish
+from app.services.task_service import reap_stale_tasks, scheduled_workspace_publish
 
 settings = get_settings()
 Path(settings.static_dir).mkdir(parents=True, exist_ok=True)
@@ -77,14 +77,6 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=5,
         id="reap_stale_tasks",
-        replace_existing=True,
-    )
-    # 泛搜索发现会话:每 30 分钟清一次过期(空闲)会话。
-    scheduler.add_job(
-        reap_discovery_sessions,
-        "interval",
-        minutes=30,
-        id="reap_discovery_sessions",
         replace_existing=True,
     )
     scheduler.start()

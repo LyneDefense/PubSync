@@ -2,7 +2,7 @@
 
 - :mod:`.core`        —— 任务生命周期原语(建任务 / execute_task 执行壳 / 状态流转)。
 - :mod:`.runners`     —— 各业务的 ``run_*_task`` 入口 + 公众号流水线装配 ``build_pipeline``。
-- :mod:`.maintenance` —— 调度器周期任务:定时发布 + 僵死任务看门狗 + 发现会话清理。
+- :mod:`.maintenance` —— 调度器周期任务:定时发布 + 僵死任务看门狗。
 
 这里把对外公开的名字原样再导出,调用方仍可 ``from app.services.task_service import xxx``(保持兼容)。
 """
@@ -20,7 +20,6 @@ from .core import (
     request_task_cancel,
 )
 from .maintenance import (
-    reap_discovery_sessions,
     reap_stale_tasks,
     reap_stale_tasks_in_session,
     schedule_marker_value,
@@ -36,7 +35,6 @@ from .runners import (
     run_blogger_distillation_task,
     run_blogger_url_collection_task,
     run_daily_publish_task,
-    run_discovery_recall_task,
     run_news_fetch_task,
     run_skill_optimization_task,
     run_xhs_package_draft_task,
@@ -61,11 +59,9 @@ __all__ = [
     "run_blogger_distillation_task",
     "run_blogger_url_collection_task",
     "run_daily_publish_task",
-    "run_discovery_recall_task",
     "run_news_fetch_task",
     "run_skill_optimization_task",
     "run_xhs_package_draft_task",
-    "reap_discovery_sessions",
     "reap_stale_tasks",
     "reap_stale_tasks_in_session",
     "schedule_marker_value",

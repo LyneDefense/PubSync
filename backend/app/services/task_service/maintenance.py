@@ -146,19 +146,3 @@ def reap_stale_tasks() -> None:
         logger.exception("僵死任务看门狗执行失败")
     finally:
         db.close()
-
-
-def reap_discovery_sessions() -> None:
-    """定时入口(无参):把空闲过期的发现会话标 expired。"""
-    from app.benchmark_discovery.flow import reap_expired_sessions
-
-    db = SessionLocal()
-    try:
-        n = reap_expired_sessions(db, datetime.now(timezone.utc))
-        if n:
-            logger.info("发现会话清理：本轮过期 %s 个", n)
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        logger.exception("发现会话清理失败")
-    finally:
-        db.close()
