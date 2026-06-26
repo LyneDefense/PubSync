@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.compliance.wordlists import build_blocklist, flatten_blocklist
+from app.compliance.wordlists import build_blocklist, category_severity, flatten_blocklist
 
 
 def _iter_fields(result: dict[str, Any]) -> list[tuple[str, str]]:
@@ -49,5 +49,7 @@ def scan_creation_output(
         for word in kept:
             if (word, field_label) not in seen:
                 seen.add((word, field_label))
-                hits.append({"word": word, "field": field_label, "category": word_to_category[word]})
+                category = word_to_category[word]
+                hits.append({"word": word, "field": field_label, "category": category,
+                             "severity": category_severity(category)})
     return hits

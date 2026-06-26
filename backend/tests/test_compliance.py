@@ -1,4 +1,13 @@
-from app.compliance import build_blocklist, scan_creation_output
+from app.compliance import (
+    SEVERITY_BAN,
+    SEVERITY_THROTTLE,
+    build_blocklist,
+    compliance_scan,
+    compliance_score,
+    scan_creation_output,
+    scan_l1,
+)
+from app.compliance.wordlists import CATEGORY_EXTREME, CATEGORY_FINANCE
 from app.xhs_creation.agent.context import CreationContext
 from app.xhs_creation.agent.sensors import CreationComplianceSensor
 
@@ -77,3 +86,45 @@ def test_scan_scripts_voiceover():
     hits = scan_creation_output(result, "douyin")
     words = {h["word"] for h in hits}
     assert "全网第一" in words and "秒杀" in words
+
+
+# —— P2 合规引擎(scan_l1 / compliance_scan / 品类红线 / 分级 / 分)——
+
+def test_l1_extreme_word_is_throttle():
+    hits = scan_l1(["这是全网第一的好物"], "xhs")
+    cats = {h["category"]: h for h in hits}
+    assert CATEGORY_EXTREME in cats
+    assert cats[CATEGORY_EXTREME]["severity"] == SEVERITY_THROTTLE
+
+
+def test_l1_diversion_is_ban_level():
+    hits = scan_l1(["有需要加微信详聊"], "xhs")
+    assert any(h["severity"] == SEVERITY_BAN and "微信" in h["matched"] for h in hits)
+
+
+def test_finance_redline_only_when_industry_insurance():
+    text = ["这款产品保本稳赚,承诺年化收益"]
+    assert not any(h["category"] == CATEGORY_FINANCE for h in scan_l1(text, "xhs"))
+    fin = [h for h in scan_l1(text, "xhs", industry="香港保险") if h["category"] == CATEGORY_FINANCE]
+    assert fin and all(h["severity"] == SEVERITY_BAN for h in fin)
+
+
+def test_clean_text_scores_100():
+    res = compliance_scan(["今天分享一个我自己用着还不错的小方法"], "xhs")
+    assert res["score"] == 100 and res["grade"] == "干净" and res["has_ban"] is False
+
+
+def test_ban_hit_flags_high_risk():
+    res = compliance_scan(["保本稳赚,加微信领取"], "xhs", industry="保险")
+    assert res["has_ban"] is True and res["grade"].startswith("高危") and res["score"] < 100
+
+
+def test_score_caps_per_category():
+    hits = scan_l1(["最佳最好最强最优最低价最高级"], "xhs")
+    assert len([h for h in hits if h["category"] == CATEGORY_EXTREME]) >= 4
+    assert compliance_score(hits) >= 60  # 单类封顶 40 → 至少剩 60
+
+
+def test_scan_creation_output_now_has_severity():
+    out = scan_creation_output({"title": "全网第一", "body_text": "加微信"}, "xhs")
+    assert out and all({"word", "field", "category", "severity"} <= set(h) for h in out)
