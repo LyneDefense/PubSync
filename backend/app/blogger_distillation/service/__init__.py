@@ -24,11 +24,11 @@ from app.blogger_distillation.service.crud import (
     update_snapshot,
     update_blogger,
 )
+from app.blogger_distillation.service.distill_engine import distill_with_llm
 from app.blogger_distillation.service.distillation import (
     DistillationResult,
     abandon_blogger_distillation,
     confirm_blogger_distillation,
-    distill_with_llm,
     run_blogger_distillation,
 )
 from app.blogger_distillation.service.extract import (
