@@ -47,9 +47,11 @@ class Settings(BaseSettings):
     # 蒸馏选材:最低样本硬下限(<此值拒绝)、软建议值(界面提示)、自动蒸馏取高赞 top-N。
     distill_min_samples: int = 8
     distill_recommend_samples: int = 15
-    # 博主诊断:诊断前确保的最少笔记数(不够自动补采)+ 打分采样篇数。
+    # 博主诊断:取最近 sample_size 条 → 判相关性 → 相关 < target_relevant 则续采下一轮(最多 max_rounds 轮)。
     appraisal_min_samples: int = 20
     appraisal_sample_size: int = 30
+    appraisal_target_relevant: int = 10
+    appraisal_max_rounds: int = 2
     blogger_auto_distill_top_n: int = 30
     # 候选翻页:动态翻页的安全上限(最多翻这么多条候选,防超大号无限翻);只翻列表不抓详情,成本低。
     # 最新优先:翻到"没采过的够 N 条"就停;高赞优先:翻到底或到此上限再排序。系统决定,用户端不暴露。

@@ -30,6 +30,17 @@ function sevColor(sev: string): string {
 
 <template>
   <div class="appraisal-card">
+    <!-- 醒目:采集 / 相关总览(诊断别人时) -->
+    <div
+      v-if="report.examined_count && report.kind === 'benchmark' && report.intent"
+      class="sample-summary"
+      :class="{ low: report.low_relevance }"
+    >
+      采集 <b>{{ report.examined_count }}</b> 篇 · 与你意图相关 <b>{{ report.relevant_count }}</b> 篇<template
+        v-if="report.low_relevance"
+      > — 相关内容很少,这号大概率不对你的路</template>
+    </div>
+
     <!-- 结论 -->
     <div class="verdict" :style="{ borderColor: levelColor(report.verdict.level) }">
       <strong :style="{ color: levelColor(report.verdict.level) }">{{ report.verdict.text }}</strong>
@@ -79,6 +90,18 @@ function sevColor(sev: string): string {
         </li>
       </ul>
     </section>
+
+    <!-- 相关性明细:哪些笔记纳入了诊断,哪些被排除 -->
+    <section v-if="report.notes_relevance && report.notes_relevance.length" class="zone">
+      <h4>笔记相关性 · 哪些纳入了诊断</h4>
+      <ul class="rel-list">
+        <li v-for="(n, i) in report.notes_relevance" :key="i" :class="{ off: !n.relevant }">
+          <span class="rel-mark">{{ n.relevant ? '✓ 纳入' : '✕ 排除' }}</span>
+          <span class="rel-title">{{ n.title }}</span>
+          <span v-if="n.reason" class="rel-reason">{{ n.reason }}</span>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 
@@ -108,6 +131,61 @@ function sevColor(sev: string): string {
 .scores b {
   font-size: 15px;
   color: var(--color-text, inherit);
+}
+.sample-summary {
+  background: var(--color-surface-2, #f3f4f6);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 14px;
+  font-size: var(--text-sm, 14px);
+}
+.sample-summary.low {
+  background: var(--color-warn-bg, #fdf3e7);
+  color: var(--color-warn, #b7791f);
+}
+.sample-summary b {
+  font-size: 16px;
+}
+.rel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.rel-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: var(--text-sm, 13px);
+}
+.rel-list li.off {
+  opacity: 0.55;
+}
+.rel-mark {
+  flex: none;
+  font-size: 12px;
+  color: var(--color-ok, #1f7a45);
+}
+.rel-list li.off .rel-mark {
+  color: var(--color-text-soft, #999);
+}
+.rel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rel-reason {
+  color: var(--color-text-soft, #888);
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .zone h4 {
   margin: 0 0 10px;

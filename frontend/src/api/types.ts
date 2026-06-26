@@ -849,4 +849,8 @@ export interface AppraisalReport {
   compliance: AppraisalComplianceResult
   verdict: { level: string; text: string }
   score?: number
+  examined_count?: number
+  relevant_count?: number
+  low_relevance?: boolean
+  notes_relevance?: { title: string; relevant: boolean; reason: string }[]
 }

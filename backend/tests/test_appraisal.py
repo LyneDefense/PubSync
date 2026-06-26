@@ -12,7 +12,7 @@ from app.appraisal.hard import (
     score_reach,
     score_viral,
 )
-from app.appraisal.judge import judge_soft, judge_vertical
+from app.appraisal.judge import judge_note_relevance, judge_soft, judge_vertical
 
 NOW = datetime(2026, 6, 26, tzinfo=timezone.utc)
 
@@ -152,3 +152,47 @@ def test_diagnose_self_skips_soft(monkeypatch):
     assert len(rep["hard"]) == 5  # 4 算 + 垂直度
     assert rep["compliance"]["has_ban"] is False
     assert rep["verdict"]["level"] in {"ok", "warn", "danger"}
+
+
+# —— 相关性判定 + 对路=相关占比 ——
+
+def test_judge_note_relevance_marks_each(monkeypatch):
+    canned = {"items": [{"i": 0, "relevant": True, "reason": ""}, {"i": 1, "relevant": False, "reason": "偏生活"}]}
+    monkeypatch.setattr("app.appraisal.judge.create_json_response", lambda *a, **k: canned)
+    out = judge_note_relevance("学香港保险", ["港险科普", "今天吃了火锅"], settings=None)
+    assert out[0]["relevant"] is True
+    assert out[1]["relevant"] is False and "偏生活" in out[1]["reason"]
+
+
+def test_judge_note_relevance_fallback_all_relevant(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr("app.appraisal.judge.create_json_response", boom)
+    out = judge_note_relevance("x", ["a", "b", "c"], settings=None)
+    assert len(out) == 3 and all(o["relevant"] for o in out)
+
+
+def test_judge_note_relevance_empty_intent_all_relevant():
+    assert all(o["relevant"] for o in judge_note_relevance("", ["a", "b"], settings=None))
+
+
+def test_diagnose_benchmark_fit_uses_relevance_ratio(monkeypatch):
+    from app.appraisal import service
+    from app.appraisal.judge import JudgedDim
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "compliance_scan",
+                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    monkeypatch.setattr(service, "build_account_content", lambda *a, **k: "brief")
+    monkeypatch.setattr(service, "judge_soft", lambda intent, brief, s: {
+        "fit": JudgedDim("fit", "对路", 50, "原始理由"),
+        "learnable": JudgedDim("learnable", "可学", 70, ""),
+        "distillable": JudgedDim("distillable", "可蒸馏", 60, ""),
+    })
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
+                  published_at=NOW, content_type="image", title="t", body_text="b") for i in range(10)]
+    rep = service._diagnose(None, blogger, posts, kind="benchmark", intent="学保险", industry=None,
+                            db=None, tenant_id=0, relevance_ratio=80.0)
+    fit = next(d for d in rep["soft"] if d["key"] == "fit")
+    assert fit["score"] == 80  # 对路被相关占比覆盖
+    assert "80%" in fit["detail"]

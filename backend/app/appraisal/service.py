@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.account_audit.service import build_account_content
 from app.appraisal.hard import AccountStat, PostStat, hard_dimensions
-from app.appraisal.judge import judge_soft, judge_vertical
+from app.appraisal.judge import judge_note_relevance, judge_soft, judge_vertical
 from app.blogger_distillation.service import record_task_event, run_blogger_collection
 from app.compliance import compliance_scan
 from app.config import Settings
@@ -50,8 +50,10 @@ def run_appraisal(
     if not blogger or blogger.tenant_id != tenant_id:
         raise ValueError("账号不存在或不属于当前工作空间")
     platform = blogger.platform
-    min_n = int(getattr(settings, "appraisal_min_samples", 20) or 20)
-    sample_n = int(getattr(settings, "appraisal_sample_size", 30) or 30)
+    per_round = int(getattr(settings, "appraisal_sample_size", 30) or 30)
+    target_relevant = int(getattr(settings, "appraisal_target_relevant", 10) or 10)
+    max_rounds = int(getattr(settings, "appraisal_max_rounds", 2) or 2)
+    use_relevance = kind == "benchmark" and bool(intent.strip())
 
     run = AccountAuditRun(
         tenant_id=tenant_id,
@@ -68,31 +70,55 @@ def run_appraisal(
     db.commit()
     db.refresh(run)
     try:
-        have = _active_count(db, tenant_id, blogger_id)
-        if have < min_n:
-            record_task_event(db, tenant_id, task_id, "采集样本", "running",
-                              f"已有 {have} 篇,自动补采到约 {min_n} 篇再诊断…")
-            run_blogger_collection(
-                db=db, settings=settings, task_id=task_id, tenant_id=tenant_id, blogger_id=blogger_id,
-                sample_limit=min_n, comments_per_post=0, asr_enabled=False, content_types=None,
-                order="top_liked", fetch_all=False,
-            )
+        # 取最近 N 条 → 逐条判相关 → 相关不够则续采下一轮(最多 max_rounds 轮,每轮 +per_round,按发布时间往前)。
+        examined: list[tuple[BloggerPost, dict]] = []
+        for rnd in range(max_rounds if use_relevance else 1):
+            need = per_round * (rnd + 1)
+            if _active_count(db, tenant_id, blogger_id) < need:
+                record_task_event(db, tenant_id, task_id, "采集样本", "running", f"采集最近 {need} 篇笔记…")
+                run_blogger_collection(
+                    db=db, settings=settings, task_id=task_id, tenant_id=tenant_id, blogger_id=blogger_id,
+                    sample_limit=need, comments_per_post=0, asr_enabled=False, content_types=None,
+                    order="latest", fetch_all=False,
+                )
+            fetched = list(db.scalars(
+                select(BloggerPost)
+                .where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
+                       BloggerPost.status != "delisted")
+                .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
+                .limit(need)
+            ))
+            new_posts = fetched[len(examined):]
+            if not new_posts:
+                break
+            rel = (judge_note_relevance(intent, [p.title or "" for p in new_posts], settings)
+                   if use_relevance else [{"relevant": True, "reason": ""} for _ in new_posts])
+            examined.extend(zip(new_posts, rel))
+            if not use_relevance or sum(1 for _, r in examined if r.get("relevant", True)) >= target_relevant:
+                break
 
-        posts = list(db.scalars(
-            select(BloggerPost)
-            .where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
-                   BloggerPost.status != "delisted")
-            .order_by(BloggerPost.score.desc(), BloggerPost.id.desc())
-            .limit(sample_n)
-        ))
-        if len(posts) < MIN_DIAGNOSABLE:
-            raise ValueError(f"可用笔记仅 {len(posts)} 篇,不足以诊断(至少 {MIN_DIAGNOSABLE} 篇);请先在博主资产里多采集一些。")
+        if len(examined) < MIN_DIAGNOSABLE:
+            raise ValueError(f"可用笔记仅 {len(examined)} 篇,不足以诊断(至少 {MIN_DIAGNOSABLE} 篇);请先在博主资产里多采集一些。")
+
+        used = [p for p, r in examined if r.get("relevant", True)]
+        notes_relevance = [
+            {"title": p.title or "(无标题)", "relevant": bool(r.get("relevant", True)), "reason": str(r.get("reason") or "")}
+            for p, r in examined
+        ]
+        low_relevance = use_relevance and len(used) < MIN_DIAGNOSABLE
+        diagnose_posts = used if len(used) >= MIN_DIAGNOSABLE else [p for p, _ in examined]
+        ratio = (100.0 * len(used) / len(examined)) if (use_relevance and examined) else None
 
         subject = "对标诊断" if kind == "benchmark" else "诊断我的账号"
-        record_task_event(db, tenant_id, task_id, subject, "running", f"基于 {len(posts)} 篇笔记打分…")
+        record_task_event(db, tenant_id, task_id, subject, "running",
+                          f"采集 {len(examined)} 篇,相关 {len(used)} 篇,打分中…")
 
-        report = _diagnose(settings, blogger, posts, kind=kind, intent=intent, industry=industry,
-                           db=db, tenant_id=tenant_id)
+        report = _diagnose(settings, blogger, diagnose_posts, kind=kind, intent=intent, industry=industry,
+                           db=db, tenant_id=tenant_id, relevance_ratio=ratio)
+        report["examined_count"] = len(examined)
+        report["relevant_count"] = len(used)
+        report["low_relevance"] = low_relevance
+        report["notes_relevance"] = notes_relevance
 
         run.status = "succeeded"
         run.score = report["hard_score"]
@@ -122,7 +148,7 @@ def _active_count(db: Session, tenant_id: int, blogger_id: int) -> int:
     ) or 0
 
 
-def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id) -> dict[str, Any]:
+def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id, relevance_ratio=None) -> dict[str, Any]:
     """把硬实力(算)+ 垂直度/软实力(模型)+ 合规 串成三区报告。"""
     post_stats = [
         PostStat(likes=p.like_count or 0, collects=p.favorite_count or 0, comments=p.comment_count or 0,
@@ -141,6 +167,11 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
     if kind == "benchmark":
         brief = build_account_content(db, tenant_id, blogger.id, [p.id for p in posts])
         soft_dims = judge_soft(intent, brief, settings)
+        # 对路改用「相关占比」(数据驱动):他最近内容有多少落在你的方向上;避免"过滤后再判对路"的循环。
+        if relevance_ratio is not None and "fit" in soft_dims:
+            soft_dims["fit"].score = max(0, min(100, round(relevance_ratio)))
+            soft_dims["fit"].detail = (f"最近内容里约 {round(relevance_ratio)}% 落在你想学的方向上。"
+                                       + (soft_dims["fit"].detail or ""))
         soft_score = round(mean(d.score for d in soft_dims.values())) if soft_dims else None
 
     texts = [((p.title or "") + " " + (p.body_text or "")).strip() for p in posts]

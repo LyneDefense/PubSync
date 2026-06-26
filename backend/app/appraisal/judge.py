@@ -113,3 +113,40 @@ def judge_soft(intent: str, notes_brief: str, settings: Settings) -> dict[str, J
         "learnable": _dim_from(data.get("可学"), "learnable", "可学"),
         "distillable": _dim_from(data.get("可蒸馏"), "distillable", "可蒸馏"),
     }
+
+
+_RELEVANCE_PROMPT = """你在帮一个博主判断「另一个账号的哪些笔记,跟他想学的方向相关」。
+他想学 / 想对标的方向:{intent}
+
+下面是被评估账号的笔记标题(带序号)。逐条判断:这条**是不是跟他想学的方向相关**——
+相关 = 可以拿来当诊断/学习样本;不相关 = 偏离方向、不该纳入。宁可放过、不要误杀;实在判不准算相关。
+{titles}
+只输出 JSON:{{"items":[{{"i":序号, "relevant":true/false, "reason":"一句话(不相关时说为什么)"}}]}}"""
+
+
+def judge_note_relevance(intent: str, titles: list[str], settings: Settings) -> list[dict[str, Any]]:
+    """逐条判断笔记标题是否与对标意图相关。返回与 titles 等长、对齐的 [{relevant, reason}]。
+
+    失败 / 坏格式 / 无意图 → 全部按「相关」(不误杀,流程不断)。
+    """
+    n = len(titles)
+    default = [{"relevant": True, "reason": ""} for _ in range(n)]
+    if not (intent or "").strip() or not n:
+        return default
+    listed = "\n".join(f"{i}. {t or '(无标题)'}" for i, t in enumerate(titles))[:5000]
+    try:
+        data = create_json_response(settings, _RELEVANCE_PROMPT.format(intent=intent.strip(), titles=listed))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("笔记相关性判断失败,默认全部相关:%s", exc)
+        return default
+    out = [dict(d) for d in default]
+    for item in (data.get("items") if isinstance(data, dict) else None) or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            idx = int(item.get("i"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < n:
+            out[idx] = {"relevant": bool(item.get("relevant", True)), "reason": str(item.get("reason") or "").strip()}
+    return out
