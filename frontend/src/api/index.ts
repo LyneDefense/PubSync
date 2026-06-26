@@ -44,10 +44,6 @@ import type {
   DashboardAccount,
   DashboardGrowth,
   DashboardOverview,
-  DiscoveryAngleOp,
-  DiscoveryCandOp,
-  DiscoverySaveResult,
-  DiscoveryWorkspace,
   XhsPublishPackage,
   XhsPublishPackageCreate,
   XhsPublishPackageDraft,
@@ -481,46 +477,6 @@ export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
   })
 }
 
-// —— 找对标 · 泛搜索 / 找相似(漏斗式工作台)——
-export function discoveryStart(platform: SocialPlatform, domains: string[]) {
-  return request<DiscoveryWorkspace>('/benchmark/discovery/start', {
-    method: 'POST',
-    body: JSON.stringify({ platform, domains })
-  })
-}
-
-export function discoverySimilar(platform: SocialPlatform, bloggerIds: number[]) {
-  return request<DiscoveryWorkspace>('/benchmark/discovery/similar', {
-    method: 'POST',
-    body: JSON.stringify({ platform, blogger_ids: bloggerIds })
-  })
-}
-
-export function discoveryGetWorkspace(sessionId: number) {
-  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}`)
-}
-
-export function discoveryAngles(sessionId: number, op: DiscoveryAngleOp, labels: string[] = []) {
-  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}/angles`, {
-    method: 'POST',
-    body: JSON.stringify({ op, labels })
-  })
-}
-
-export function discoveryRecall(sessionId: number) {
-  return request<OperationTask>(`/benchmark/discovery/${sessionId}/recall`, { method: 'POST' })
-}
-
-export function discoveryOp(sessionId: number, op: DiscoveryCandOp, ids: string[] = []) {
-  return request<DiscoveryWorkspace>(`/benchmark/discovery/${sessionId}/op`, {
-    method: 'POST',
-    body: JSON.stringify({ op, ids })
-  })
-}
-
-export function discoverySave(sessionId: number) {
-  return request<DiscoverySaveResult>(`/benchmark/discovery/${sessionId}/save`, { method: 'POST' })
-}
 
 export function recommendBloggers(payload: {
   platform: SocialPlatform

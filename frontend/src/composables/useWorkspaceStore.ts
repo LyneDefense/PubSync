@@ -45,13 +45,6 @@ import {
   getLatestArticle,
   getTenantId,
   getTask,
-  discoveryStart,
-  discoverySimilar,
-  discoveryGetWorkspace,
-  discoveryAngles,
-  discoveryRecall,
-  discoveryOp,
-  discoverySave,
   getTaskEvents,
   getWorkspaceConfig,
   listBloggerCollectionPosts,
@@ -114,9 +107,6 @@ import type {
   DashboardAccount,
   DashboardGrowth,
   DashboardOverview,
-  DiscoveryAngleOp,
-  DiscoveryCandOp,
-  DiscoveryWorkspace,
   SocialPlatform,
   SynthesisTrace,
   Tenant,
@@ -128,7 +118,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize' | 'discovery'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -265,7 +255,6 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   'self-diagnose': 0,
   recommend: 0,
   optimize: 0,
-  discovery: 0
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 
@@ -816,7 +805,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize', 'discovery'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 // 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
 export const isOnTaskHome = computed(
@@ -848,7 +837,6 @@ const TASK_NAME_MAP: Record<string, string> = {
   'self-diagnose': '诊断我的账号',
   recommend: '智能找对标',
   optimize: '优化 Skill',
-  discovery: '搜罗候选博主'
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
@@ -1619,113 +1607,6 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
   showBloggerModal.value = true
 }
 
-// —— 找对标 · 泛搜索 / 找相似(漏斗式工作台)——
-export const discoveryWorkspace = ref<DiscoveryWorkspace | null>(null)
-export const discoveryDomains = ref<string[]>([])          // 泛搜索入口领域 chips
-export const discoverySimilarIds = ref<number[]>([])       // 找相似:选中的对标库博主 id
-export const discoveryStarting = ref(false)
-export const discoveryOpPending = ref(false)               // 同步操作(角度/采用/移除/保存)进行中
-export const discoveryRecalling = computed(() => pendingAction.value === 'discovery')
-
-// 泛搜索:领域 → 进入「选角度」阶段。
-export async function handleDiscoveryStart() {
-  const domains = discoveryDomains.value.map((d) => d.trim()).filter(Boolean)
-  if (!domains.length) {
-    showMessage('请至少填写一个领域', true)
-    return
-  }
-  discoveryStarting.value = true
-  try {
-    discoveryWorkspace.value = await discoveryStart(currentSocialPlatform.value, domains)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '发起失败', true)
-  } finally {
-    discoveryStarting.value = false
-  }
-}
-
-// 找相似:从对标库挑博主 → 直接进候选阶段 + 拉首批。
-export async function handleDiscoverySimilarStart() {
-  if (!discoverySimilarIds.value.length) {
-    showMessage('先选至少一个对标博主当参照', true)
-    return
-  }
-  discoveryStarting.value = true
-  try {
-    discoveryWorkspace.value = await discoverySimilar(currentSocialPlatform.value, discoverySimilarIds.value)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '发起失败', true)
-    return
-  } finally {
-    discoveryStarting.value = false
-  }
-  await handleDiscoveryRecall()
-}
-
-// 角度收窄(同步):toggle/reject/propose;begin 后自动拉首批候选。
-export async function handleDiscoveryAngle(op: DiscoveryAngleOp, labels: string[] = []) {
-  const sid = discoveryWorkspace.value?.session_id
-  if (!sid) return
-  discoveryOpPending.value = true
-  try {
-    discoveryWorkspace.value = await discoveryAngles(sid, op, labels)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '操作失败', true)
-    return
-  } finally {
-    discoveryOpPending.value = false
-  }
-  if (op === 'begin' && discoveryWorkspace.value?.stage === 'workspace') await handleDiscoveryRecall()
-}
-
-// 找候选(异步任务,进度走 LiveProgress)。
-export async function handleDiscoveryRecall() {
-  const sid = discoveryWorkspace.value?.session_id
-  if (!sid) return
-  await runTaskAction(
-    'discovery', '正在搜罗候选博主',
-    () => discoveryRecall(sid),
-    async () => { discoveryWorkspace.value = await discoveryGetWorkspace(sid) },
-    '候选召回仍在后台执行，请稍后刷新'
-  )
-}
-
-// 候选阶段:采用 / 不要 / 移除已选 / 清空候选(同步)。
-export async function handleDiscoveryOp(op: DiscoveryCandOp, ids: string[] = []) {
-  const sid = discoveryWorkspace.value?.session_id
-  if (!sid) return
-  discoveryOpPending.value = true
-  try {
-    discoveryWorkspace.value = await discoveryOp(sid, op, ids)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '操作失败', true)
-  } finally {
-    discoveryOpPending.value = false
-  }
-}
-
-// 保存已选到对标库(幂等,可随时存)。
-export async function handleDiscoverySave() {
-  const sid = discoveryWorkspace.value?.session_id
-  if (!sid) return
-  discoveryOpPending.value = true
-  try {
-    const res = await discoverySave(sid)
-    discoveryWorkspace.value = res.workspace
-    showMessage(`已保存 ${res.created} 个到对标库`)
-    bloggers.value = await listBloggers(currentSocialPlatform.value)
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '保存失败', true)
-  } finally {
-    discoveryOpPending.value = false
-  }
-}
-
-export function resetDiscovery() {
-  discoveryWorkspace.value = null
-  discoveryDomains.value = []
-  discoverySimilarIds.value = []
-}
 
 // —— 对标博主搜寻:智能推荐 / 单博主评分(共用意图 + 可选「我的账号」)——
 export const benchmarkIntent = reactive<BenchmarkIntent>({ niche: '', audience: '', goal: '', content_form: 'any' })

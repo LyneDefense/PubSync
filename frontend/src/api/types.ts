@@ -421,57 +421,6 @@ export interface EvaluateResult {
   candidate: CandidateScore
 }
 
-// 找对标 · 泛搜索/找相似(漏斗式工作台)
-export interface DiscoveryAngle {
-  label: string
-  reason: string
-  selected: boolean
-  rejected: boolean
-}
-export interface DiscoveryCandidate {
-  external_id: string
-  display_name: string
-  homepage_url: string
-  avatar_url: string
-  description: string
-  // 硬数据(小红书本身)
-  bio: string
-  ip_location: string
-  follower_count: number
-  follower_known: boolean          // false → 显示「粉丝未知」
-  like_collect: number             // 获赞与收藏
-  recent_titles: string[]          // 近期笔记标题(核验时取)
-  hit_count: number                // 近期笔记里命中领域的条数
-  // 软数据(我们算的)
-  is_personal: boolean
-  popularity: number               // 火爆度 0-100
-  relevance: number                // 相关度 0-100(LLM 判)
-  relevance_reason: string
-  score: number                    // 综合分
-  matched?: string[]               // 命中角度
-  reason: string                   // 命中角度 + 发现渠道
-  existing_blogger_id: number | null
-}
-export interface DiscoveryWorkspace {
-  session_id: number
-  platform: string
-  source: 'broad' | 'similar'
-  stage: string                    // choose_angles | workspace
-  status: string
-  message: string
-  round: number
-  angle_target: number             // 建议选几个角度
-  selected_angles: number
-  angles: DiscoveryAngle[]
-  candidates: DiscoveryCandidate[]
-  selected: DiscoveryCandidate[]
-}
-export type DiscoveryAngleOp = 'toggle' | 'reject' | 'propose' | 'begin'
-export type DiscoveryCandOp = 'adopt' | 'dismiss' | 'remove_selected' | 'clear_candidates'
-export interface DiscoverySaveResult {
-  created: number
-  workspace: DiscoveryWorkspace
-}
 
 // Skill 优化(训练)
 export interface SkillTrainingSample {
