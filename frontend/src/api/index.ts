@@ -594,3 +594,21 @@ export function listAccountAuditRuns(platform: SocialPlatform = 'xhs', kind?: 'b
   const qs = kind ? `&kind=${kind}` : ''
   return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}${qs}`)
 }
+
+export function getAccountAuditRun(runId: number) {
+  return request<AccountAuditRun>(`/account-audit/runs/${runId}`)
+}
+
+// 博主诊断(对标分析):诊断一个号(对标库博主或我的账号)→ 硬/软/合规 三区报告。
+// 诊断前后端会自动确保 ≥N 条笔记(不够补采)。结果落 AccountAuditRun,用 getAccountAuditRun 读。
+export function appraiseBlogger(payload: {
+  blogger_id: number
+  kind: 'benchmark' | 'self'
+  intent?: string
+  industry?: string | null
+}) {
+  return request<OperationTask>('/account-audit/appraise', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}

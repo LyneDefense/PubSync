@@ -1,0 +1,215 @@
+<script setup lang="ts">
+// 博主诊断·三区决策卡:渲染后端 run_appraisal 的报告(硬实力 / 软实力 / 合规)。
+// 纯展示组件,只吃一个 report 对象(AccountAuditRun.report_json 解析后);无 store/api 依赖。
+interface Dim {
+  key: string
+  label: string
+  score: number
+  detail: string
+}
+interface ComplianceHit {
+  category: string
+  matched: string
+  severity: string
+  basis: string
+  suggestion: string
+  quote: string
+}
+interface ComplianceResult {
+  score: number
+  grade: string
+  hits: ComplianceHit[]
+  has_ban: boolean
+}
+interface AppraisalReport {
+  kind: string
+  intent?: string
+  industry?: string | null
+  sample_count: number
+  hard: Dim[]
+  hard_score: number
+  soft: Dim[]
+  soft_score: number | null
+  compliance: ComplianceResult
+  verdict: { level: string; text: string }
+}
+
+const props = defineProps<{ report: AppraisalReport }>()
+
+function scoreColor(score: number): string {
+  if (score >= 75) return 'var(--color-ok, #1f7a45)'
+  if (score >= 60) return 'var(--color-warn, #b7791f)'
+  return 'var(--color-danger, #c0392b)'
+}
+function levelColor(level: string): string {
+  return level === 'ok'
+    ? 'var(--color-ok, #1f7a45)'
+    : level === 'danger'
+      ? 'var(--color-danger, #c0392b)'
+      : level === 'warn'
+        ? 'var(--color-warn, #b7791f)'
+        : 'var(--color-text-soft, #888)'
+}
+function sevColor(sev: string): string {
+  return sev === '封号级'
+    ? 'var(--color-danger, #c0392b)'
+    : sev === '限流级'
+      ? 'var(--color-warn, #b7791f)'
+      : 'var(--color-text-soft, #888)'
+}
+</script>
+
+<template>
+  <div class="appraisal-card">
+    <!-- 结论 -->
+    <div class="verdict" :style="{ borderColor: levelColor(report.verdict.level) }">
+      <strong :style="{ color: levelColor(report.verdict.level) }">{{ report.verdict.text }}</strong>
+      <div class="scores">
+        <span>硬实力 <b>{{ report.hard_score }}</b></span>
+        <span v-if="report.soft_score !== null">软实力 <b>{{ report.soft_score }}</b></span>
+        <span>合规 <b :style="{ color: scoreColor(report.compliance.score) }">{{ report.compliance.score }}</b></span>
+        <em>· 基于 {{ report.sample_count }} 篇笔记</em>
+      </div>
+    </div>
+
+    <!-- 硬实力 -->
+    <section class="zone">
+      <h4>硬实力 · 这号本身牛不牛</h4>
+      <div v-for="d in report.hard" :key="d.key" class="dim">
+        <div class="dim-head"><span>{{ d.label }}</span><b :style="{ color: scoreColor(d.score) }">{{ d.score }}</b></div>
+        <div class="track"><div class="fill" :style="{ width: d.score + '%', background: scoreColor(d.score) }"></div></div>
+        <p class="detail">{{ d.detail }}</p>
+      </div>
+    </section>
+
+    <!-- 软实力(诊断别人才有) -->
+    <section v-if="report.soft.length" class="zone">
+      <h4>软实力 · 你能不能学 TA</h4>
+      <div v-for="d in report.soft" :key="d.key" class="dim">
+        <div class="dim-head"><span>{{ d.label }}</span><b :style="{ color: scoreColor(d.score) }">{{ d.score }}</b></div>
+        <div class="track"><div class="fill" :style="{ width: d.score + '%', background: scoreColor(d.score) }"></div></div>
+        <p class="detail">{{ d.detail }}</p>
+      </div>
+    </section>
+
+    <!-- 合规 -->
+    <section class="zone">
+      <h4>
+        合规 · 干不干净
+        <span class="grade" :style="{ color: scoreColor(report.compliance.score) }">{{ report.compliance.grade }}</span>
+      </h4>
+      <p v-if="!report.compliance.hits.length" class="detail clean">未发现违规打法,内容干净 ✓</p>
+      <ul v-else class="hits">
+        <li v-for="(h, i) in report.compliance.hits" :key="i">
+          <span class="sev" :style="{ background: sevColor(h.severity) }">{{ h.severity }}</span>
+          <div class="hit-body">
+            <b>{{ h.category }}</b>
+            <span v-if="h.quote" class="quote">「{{ h.quote }}」</span>
+            <span v-if="h.suggestion" class="sugg">→ {{ h.suggestion }}</span>
+          </div>
+        </li>
+      </ul>
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.appraisal-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md, 16px);
+}
+.verdict {
+  border: 1px solid;
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-sm, 12px) var(--space-md, 16px);
+}
+.verdict strong {
+  display: block;
+  font-size: var(--text-md, 15px);
+}
+.scores {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: var(--text-sm, 13px);
+  color: var(--color-text-soft, #666);
+}
+.scores b {
+  font-size: 15px;
+  color: var(--color-text, inherit);
+}
+.zone h4 {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.grade {
+  font-size: var(--text-sm, 13px);
+  font-weight: 500;
+}
+.dim {
+  margin-bottom: 12px;
+}
+.dim-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-sm, 14px);
+  margin-bottom: 4px;
+}
+.track {
+  height: 7px;
+  border-radius: 99px;
+  background: var(--color-surface-2, #eee);
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  border-radius: 99px;
+}
+.detail {
+  margin: 5px 0 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--color-text-soft, #666);
+  line-height: 1.5;
+}
+.detail.clean {
+  color: var(--color-ok, #1f7a45);
+}
+.hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hits li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.sev {
+  flex: none;
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm, 4px);
+  white-space: nowrap;
+}
+.hit-body {
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+}
+.quote {
+  color: var(--color-text-soft, #888);
+  margin-left: 6px;
+}
+.sugg {
+  display: block;
+  color: var(--color-accent, #0d7361);
+  margin-top: 2px;
+}
+</style>
