@@ -1,36 +1,24 @@
-import logging
-from calendar import monthrange
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+"""各业务的后台任务入口(``run_*_task``):每个都用 :func:`execute_task` 包一层,
+只在 ``work`` 回调里写自己的步骤(标 running → 调对应 service → 标 succeeded)。
 
-from sqlalchemy import func, select
+``build_pipeline`` 装配公众号那条流水线(抓取/生成/发布),供新闻/文章/每日发布三个任务复用。
+"""
+
+import logging
+
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.admin.runtime_config import apply_overrides
-from app.cost.context import cost_capture
 from app.blogger_distillation.service import (
-    DistillationCancelled,
     record_task_event,
     run_blogger_collection,
     run_blogger_distillation,
     run_blogger_url_collection,
 )
 from app.blogger_distillation.tikhub_client import TikHubError
-from app.database import SessionLocal
+from app.config import get_settings
+from app.models import OperationTask
 from app.pipeline import PubSyncPipeline
-from app.queue import enqueue
-from app.models import (
-    AppSetting,
-    CostEvent,
-    OperationTask,
-    OperationTaskEvent,
-    PublishingSettings,
-    TaskStatus,
-    Tenant,
-    TenantStatus,
-)
+from app.schemas import XhsPublishPackageCreate
 from app.services.ai_service import AIServiceError
 from app.services.tenant_service import (
     build_effective_settings,
@@ -45,88 +33,29 @@ from app.services.wechat_service import WeChatAPIError
 from app.account_audit.service import run_account_audit
 from app.benchmark_discovery.service import run_recommendation
 from app.skill_optimization.service import run_skill_optimization
-from app.schemas import XhsPublishPackageCreate
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
+from .core import execute_task, get_task, mark_task_running, mark_task_succeeded
 
 logger = logging.getLogger(__name__)
 
-TASK_MESSAGES = {
-    "news_fetch": "已加入后台抓取任务",
-    "article_generation": "已加入后台生成任务",
-    "daily_publish": "已加入定时发布任务",
-    "blogger_collection": "已加入博主样本采集任务",
-    "blogger_distillation": "已加入博主蒸馏任务",
-    "xhs_package_draft": "已加入小红书发布包生成任务",
-    "account_audit": "已加入账号体检任务",
-}
 
-
-def create_operation_task(db: Session, task_type: str, tenant_id: int, message: str | None = None) -> OperationTask:
-    task = OperationTask(
-        id=str(uuid4()),
-        tenant_id=tenant_id,
+def build_pipeline(db: Session, task_id: str, task_type: str, tenant_id: int) -> PubSyncPipeline:
+    tenant = get_tenant(db, tenant_id)
+    settings = get_settings()
+    publishing = get_publishing_settings(db, tenant)
+    return PubSyncPipeline(
+        db=db,
+        settings=build_effective_settings(settings, publishing),
+        task_id=task_id,
         task_type=task_type,
-        status=TaskStatus.queued,
-        message=message or TASK_MESSAGES.get(task_type, "已加入后台任务"),
+        tenant=tenant,
+        profile=get_profile(db, tenant),
+        wechat_account=get_wechat_account(db, tenant),
+        layout_settings=get_layout_settings(db, tenant),
+        publishing_settings=publishing,
+        content_groups=get_content_groups(db, tenant, enabled_only=True),
     )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return task
-
-
-def execute_task(
-    task_id: str,
-    *,
-    label: str,
-    fail_message: str,
-    work: Callable[[Session, OperationTask], None],
-    expected: tuple[type[BaseException], ...] = (),
-    cancellable: bool = False,
-    on_unexpected: Callable[[Session, str, Exception], None] | None = None,
-) -> None:
-    """Shared lifecycle for background tasks.
-
-    Handles the boilerplate every ``run_*_task`` previously duplicated: opening a
-    session, looking up the task, an optional cancel check, and uniform
-    success/expected-failure/unexpected-exception bookkeeping plus session cleanup.
-    ``work`` performs the task-specific steps; ``expected`` exceptions are recorded
-    as a normal failure, while anything else is logged at exception level and
-    re-raised after being marked failed.
-    """
-    db = SessionLocal()
-    try:
-        logger.info("任务开始：任务ID=%s，类型=%s", task_id, label)
-        # worker 进程在每个任务开跑前刷新一次后台运行时配置(模型/ASR/密钥等),
-        # 这样管理员在后台改的配置无需重启 worker 即可生效。
-        apply_overrides(get_settings(), db)
-        task = get_task(db, task_id)
-        if not task:
-            return
-        if cancellable and task.status == TaskStatus.cancel_requested:
-            mark_task_cancelled(db, task, f"{label}已停止")
-            return
-        # 包裹任务执行:期间所有 TikHub/LLM 调用的费用归属到该 task/tenant,结束统一落库。
-        with cost_capture(tenant_id=task.tenant_id, task_id=task_id):
-            work(db, task)
-    except DistillationCancelled as exc:
-        logger.info("任务停止：任务ID=%s，类型=%s，原因=%s", task_id, label, exc)
-        mark_task_cancelled_by_id(db, task_id, f"{label}已停止", str(exc))
-    except expected as exc:
-        logger.warning("任务失败：任务ID=%s，类型=%s，错误=%s", task_id, label, exc)
-        mark_task_failed_by_id(db, task_id, fail_message, str(exc))
-    except Exception as exc:
-        logger.exception("任务异常：任务ID=%s，类型=%s", task_id, label)
-        if on_unexpected is not None:
-            try:
-                on_unexpected(db, task_id, exc)
-            except Exception:
-                logger.exception("记录任务失败事件失败：任务ID=%s", task_id)
-        mark_task_failed_by_id(db, task_id, fail_message, f"{type(exc).__name__}: {exc}")
-        raise
-    finally:
-        db.close()
 
 
 def run_news_fetch_task(task_id: str) -> None:
@@ -415,193 +344,6 @@ def run_daily_publish_task(task_id: str) -> None:
     )
 
 
-def scheduled_workspace_publish() -> None:
-    db = SessionLocal()
-    try:
-        now = datetime.now()
-        task_ids: list[str] = []
-        rows = db.execute(
-            select(Tenant, PublishingSettings)
-            .join(PublishingSettings, PublishingSettings.tenant_id == Tenant.id)
-            .where(Tenant.status == TenantStatus.active, PublishingSettings.daily_publish_enabled.is_(True))
-        ).all()
-        for tenant, publishing in rows:
-            if not should_run_schedule(publishing, now):
-                continue
-            marker_key = f"tenant:{tenant.id}:last_scheduled_publish_at"
-            schedule_key = schedule_marker_value(publishing, now)
-            marker = db.get(AppSetting, marker_key)
-            if marker and marker.value == schedule_key:
-                continue
-            task = create_operation_task(db, "daily_publish", tenant_id=tenant.id)
-            db.merge(AppSetting(key=marker_key, tenant_id=tenant.id, value=schedule_key))
-            db.commit()
-            task_ids.append(task.id)
-    finally:
-        db.close()
-    use_queue = get_settings().use_task_queue
-    for task_id in task_ids:
-        if use_queue:
-            enqueue(run_daily_publish_task, task_id)
-        else:
-            run_daily_publish_task(task_id)
-
-
-def should_run_schedule(publishing: PublishingSettings, now: datetime) -> bool:
-    if publishing.publish_time_hour != now.hour or publishing.publish_time_minute != now.minute:
-        return False
-    frequency = publishing.publish_frequency or "daily"
-    if frequency == "weekly":
-        return publishing.publish_weekday == now.isoweekday()
-    if frequency == "monthly":
-        target_day = min(publishing.publish_month_day, monthrange(now.year, now.month)[1])
-        return now.day == target_day
-    return True
-
-
-def schedule_marker_value(publishing: PublishingSettings, now: datetime) -> str:
-    frequency = publishing.publish_frequency or "daily"
-    if frequency == "weekly":
-        year, week, _ = now.isocalendar()
-        return f"weekly:{year}-{week:02d}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
-    if frequency == "monthly":
-        return f"monthly:{now.year}-{now.month:02d}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
-    return f"daily:{now.strftime('%Y-%m-%d')}:{publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}"
-
-
-def build_pipeline(db: Session, task_id: str, task_type: str, tenant_id: int) -> PubSyncPipeline:
-    tenant = get_tenant(db, tenant_id)
-    settings = get_settings()
-    publishing = get_publishing_settings(db, tenant)
-    return PubSyncPipeline(
-        db=db,
-        settings=build_effective_settings(settings, publishing),
-        task_id=task_id,
-        task_type=task_type,
-        tenant=tenant,
-        profile=get_profile(db, tenant),
-        wechat_account=get_wechat_account(db, tenant),
-        layout_settings=get_layout_settings(db, tenant),
-        publishing_settings=publishing,
-        content_groups=get_content_groups(db, tenant, enabled_only=True),
-    )
-
-
-def get_task(db: Session, task_id: str) -> OperationTask | None:
-    return db.get(OperationTask, task_id)
-
-
-def mark_task_running(db: Session, task: OperationTask, message: str) -> None:
-    task.status = TaskStatus.running
-    task.message = message
-    task.error_message = None
-    db.commit()
-
-
-def mark_task_succeeded(db: Session, task: OperationTask, message: str, article_id: int | None = None) -> None:
-    task.status = TaskStatus.succeeded
-    task.message = message
-    task.article_id = article_id
-    task.error_message = None
-    db.commit()
-
-
-def request_task_cancel(db: Session, task: OperationTask) -> None:
-    if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.cancelled}:
-        return
-    task.status = TaskStatus.cancel_requested
-    task.message = "正在请求停止任务，当前步骤结束后会安全退出"
-    db.commit()
-
-
-def mark_task_cancelled(db: Session, task: OperationTask, message: str, error_message: str | None = None) -> None:
-    task.status = TaskStatus.cancelled
-    task.message = message
-    task.error_message = error_message
-    db.commit()
-
-
-def mark_task_cancelled_by_id(db: Session, task_id: str, message: str, error_message: str | None = None) -> None:
-    db.rollback()
-    task = get_task(db, task_id)
-    if not task:
-        return
-    mark_task_cancelled(db, task, message, error_message)
-
-
-def mark_task_failed_by_id(db: Session, task_id: str, message: str, error_message: str) -> None:
-    db.rollback()
-    task = get_task(db, task_id)
-    if not task:
-        return
-    task.status = TaskStatus.failed
-    task.message = message
-    task.error_message = error_message
-    db.commit()
-
-
-# 进行中但可能已僵死的任务状态(worker 被 OOM/强杀时,异常处理不会触发,任务会一直卡 running)。
-STALE_REAP_STATUSES = (TaskStatus.running, TaskStatus.cancel_requested)
-STALE_FAIL_MESSAGE = (
-    "任务超过 {minutes} 分钟没有任何进展，多半是后台进程因服务器资源不足被中断；"
-    "已自动标记为失败。已完成的部分都已保存，可以重新发起（采集是增量的，会自动跳过已采集的内容）。"
-)
-
-
-def reap_stale_tasks_in_session(db: Session, now: datetime, stale_minutes: int) -> list[str]:
-    """把「进行中但超过 stale_minutes 没有新进展事件」的任务标记为失败,返回被回收的 task_id。
-
-    判活信号 = 该任务最近一条事件时间(没有事件则退回 updated_at/created_at)。只动 running/cancel_requested,
-    不碰 queued(可能只是在排队等单 worker,静默不代表死)。
-    """
-    cutoff = now - timedelta(minutes=stale_minutes)
-    reaped: list[str] = []
-    tasks = list(db.scalars(select(OperationTask).where(OperationTask.status.in_(STALE_REAP_STATUSES))))
-    for task in tasks:
-        # 判活信号取「最近进度事件」与「最近一次计费(LLM/TikHub 调用)」的较晚者。
-        # 计费事件每次调用都会写,所以 Skill 优化训练这种「很久不发进度事件、但底层一直在调模型」的
-        # 任务不会被误杀;真卡死(连模型都不再调用)时两个时间都旧,才回收。
-        last_event = db.scalar(
-            select(func.max(OperationTaskEvent.created_at)).where(OperationTaskEvent.task_id == task.id)
-        )
-        last_cost = db.scalar(
-            select(func.max(CostEvent.created_at)).where(CostEvent.task_id == task.id)
-        )
-
-        def _aware(dt: datetime | None) -> datetime | None:  # sqlite 可能返回 naive,统一成 UTC 再比较
-            return None if dt is None else (dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt)
-
-        candidates = [c for c in (_aware(last_event), _aware(last_cost),
-                                  _aware(task.updated_at), _aware(task.created_at)) if c is not None]
-        last_activity = max(candidates) if candidates else None
-        if last_activity is None or last_activity >= cutoff:
-            continue
-        msg = STALE_FAIL_MESSAGE.format(minutes=stale_minutes)
-        record_task_event(db, task.tenant_id, task.id, "任务中断", "failed", msg)
-        task.status = TaskStatus.failed
-        task.message = "任务已中断"
-        task.error_message = msg
-        db.commit()
-        reaped.append(task.id)
-        logger.warning("回收僵死任务：任务ID=%s，类型=%s，最后活动=%s", task.id, task.task_type, last_activity)
-    return reaped
-
-
-def reap_stale_tasks() -> None:
-    """定时入口(无参,自建 session):回收僵死任务。由调度器周期调用。"""
-    db = SessionLocal()
-    try:
-        minutes = int(getattr(get_settings(), "task_stale_minutes", 20) or 20)
-        reaped = reap_stale_tasks_in_session(db, datetime.now(timezone.utc), minutes)
-        if reaped:
-            logger.info("僵死任务看门狗：本轮回收 %s 个任务", len(reaped))
-    except Exception:  # noqa: BLE001 - 看门狗自身异常不应影响调度器
-        db.rollback()
-        logger.exception("僵死任务看门狗执行失败")
-    finally:
-        db.close()
-
-
 def run_discovery_recall_task(task_id: str, session_id: int) -> None:
     """泛搜索/找相似「找候选」:异步按选中角度/关键词召回,逐角度回报进度,写回会话。"""
     from app.benchmark_discovery import flow
@@ -628,19 +370,3 @@ def run_discovery_recall_task(task_id: str, session_id: int) -> None:
         mark_task_succeeded(db, task, session.message)
 
     execute_task(task_id, label=subject, fail_message=f"{subject}失败", work=work, expected=(ValueError,))
-
-
-def reap_discovery_sessions() -> None:
-    """定时入口(无参):把空闲过期的发现会话标 expired。"""
-    from app.benchmark_discovery.flow import reap_expired_sessions
-
-    db = SessionLocal()
-    try:
-        n = reap_expired_sessions(db, datetime.now(timezone.utc))
-        if n:
-            logger.info("发现会话清理：本轮过期 %s 个", n)
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        logger.exception("发现会话清理失败")
-    finally:
-        db.close()
