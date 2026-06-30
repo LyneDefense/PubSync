@@ -178,7 +178,7 @@ onUnmounted(() => {
         </template>
         <template v-else-if="isSocialPlatform">
           <button type="button" :class="{ active: currentSocialTab === 'overview' }" @click="goTab('overview')"><NavIcon name="list" />概览</button>
-          <button type="button" :class="{ active: currentSocialTab === 'my-accounts' }" @click="goTab('my-accounts')"><NavIcon name="user" />我的账号<span class="side-tag">可选</span></button>
+          <button type="button" :class="{ active: currentSocialTab === 'my-accounts' }" @click="goTab('my-accounts')"><NavIcon name="user" />我的账号</button>
           <p class="side-group">对标蒸馏</p>
           <button type="button" :class="{ active: currentSocialTab === 'find' }" @click="goTab('find')"><NavIcon name="search" />找对标博主</button>
           <button type="button" :class="{ active: currentSocialTab === 'analysis' }" @click="goTab('analysis')"><NavIcon name="target" />对标分析<span class="side-tag side-tag-new">新</span></button>
