@@ -1,15 +1,20 @@
 <script setup lang="ts">
 // 对标分析(诊断别人):三步向导 —— ① 选对标博主 ② 明确意图(看 TA 在做什么 + 引导问题) ③ 诊断报告。
 // 同一时间只显示一步;顶部 stepper 贯穿三步。状态机:step(1|2|3) 本地;意图/问题/报告复用 store。
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
+import type { AccountAuditRun } from '../api/types'
 import {
   appraiseForm,
+  appraisalHistory,
   appraisalRun,
   benchmarkAccounts,
+  bloggers,
   currentSocialPlatformName,
   currentSocialTab,
   fetchIntentSuggestions,
+  formatDate,
   handleRunAppraisal,
   intentChecked,
   intentClear,
@@ -20,6 +25,7 @@ import {
   isSocialPlatform,
   parseAppraisalReport,
   pendingAction,
+  refreshAppraisalHistory,
   resetIntentGuide,
   showMessage
 } from '../composables/useWorkspaceStore'
@@ -28,11 +34,38 @@ const STEP_LABELS = ['选择对标博主', '明确意图', '诊断报告']
 
 const report = computed(() => parseAppraisalReport(appraisalRun.value))
 const step = ref<1 | 2 | 3>(report.value ? 3 : 1)
+const reportEl = ref<HTMLElement | null>(null) // 导出图片的截取范围
+const exporting = ref(false)
 
 const selectedBlogger = computed(() => benchmarkAccounts.value.find((b) => b.id === appraiseForm.blogger_id) || null)
 const selectedName = computed(() => selectedBlogger.value?.display_name || '')
 const diagnosing = computed(() => pendingAction.value === 'audit')
 
+function bloggerNameById(id: number | null | undefined): string {
+  if (!id) return ''
+  return bloggers.value.find((b) => b.id === id)?.display_name || '已删除的博主'
+}
+// 报告署名:用 run 自带的 blogger_id 解析(历史报告 / 新报告都对得上,不依赖当前选择)。
+const reportBloggerName = computed(() =>
+  bloggerNameById(appraisalRun.value?.benchmark_blogger_id || appraisalRun.value?.my_blogger_id)
+)
+const reportDate = computed(() => (appraisalRun.value ? formatDate(appraisalRun.value.created_at) : ''))
+
+// 历史诊断:解析一次,带博主名 + 日期(最新在前)。
+const historyItems = computed(() =>
+  appraisalHistory.value
+    .map((run) => ({
+      run,
+      report: parseAppraisalReport(run),
+      name: bloggerNameById(run.benchmark_blogger_id) || '对标博主',
+      date: formatDate(run.created_at)
+    }))
+    .filter((it) => it.report)
+)
+
+function scoreBand(n: number): string {
+  return n >= 75 ? 's-ok' : n >= 60 ? 's-warn' : 's-danger'
+}
 function stepState(n: number): 'cur' | 'done' | 'todo' {
   return n === step.value ? 'cur' : n < step.value ? 'done' : 'todo'
 }
@@ -62,37 +95,40 @@ function isPicked(qi: number, opt: string): boolean {
 async function startDiagnose() {
   step.value = 3
   await handleRunAppraisal()
+  refreshAppraisalHistory() // 新报告进历史
 }
 function restart() {
   resetIntentGuide()
   step.value = 1
 }
+// 查看一条历史报告:直接载入到第 3 步。
+function viewHistoryRun(run: AccountAuditRun) {
+  appraisalRun.value = run
+  step.value = 3
+}
 
-function exportReport() {
-  const r = report.value
-  if (!r) return
-  const lines: string[] = [`# 对标分析报告${selectedName.value ? ' · ' + selectedName.value : ''}`]
-  lines.push(`结论:${r.verdict.text}`)
-  lines.push(`硬实力 ${r.hard_score}${r.soft_score != null ? ` · 软实力 ${r.soft_score}` : ''} · 合规 ${r.compliance.score}（${r.compliance.grade}）`)
-  lines.push('', '## 硬实力')
-  r.hard.forEach((d) => lines.push(`- ${d.label} ${d.score}：${d.detail}`))
-  if (r.soft.length) {
-    lines.push('', '## 软实力')
-    r.soft.forEach((d) => lines.push(`- ${d.label} ${d.score}：${d.detail}`))
-  }
-  lines.push('', '## 合规')
-  if (!r.compliance.hits.length) lines.push('- 未发现违规打法,内容干净')
-  else r.compliance.hits.forEach((h) => lines.push(`- [${h.severity}] ${h.category}${h.quote ? ` 「${h.quote}」` : ''}${h.suggestion ? ` → ${h.suggestion}` : ''}`))
-  const text = lines.join('\n')
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(
-      () => showMessage('已复制报告到剪贴板'),
-      () => showMessage('复制失败,请手动选择', true)
-    )
-  } else {
-    showMessage('当前环境不支持一键复制', true)
+// 把报告区域导出成一张 PNG 图片(含署名头 + 三区报告)。
+async function exportImage() {
+  const el = reportEl.value
+  if (!el || !report.value) return
+  exporting.value = true
+  try {
+    const dataUrl = await toPng(el, { pixelRatio: 2, backgroundColor: '#eef0f2', cacheBust: true })
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `${reportBloggerName.value || '对标分析'}-对标分析报告.png`
+    a.click()
+    showMessage('已导出报告图片')
+  } catch (err) {
+    showMessage(err instanceof Error ? err.message : '导出图片失败,请重试', true)
+  } finally {
+    exporting.value = false
   }
 }
+
+onMounted(() => {
+  refreshAppraisalHistory()
+})
 </script>
 
 <template>
@@ -113,8 +149,9 @@ function exportReport() {
       </template>
     </div>
 
-    <!-- ===== Step 1 · 选择对标博主 ===== -->
-    <section v-if="step === 1" class="card">
+    <!-- ===== Step 1 · 选择对标博主 (+ 历史诊断) ===== -->
+    <template v-if="step === 1">
+      <section class="card">
       <div class="card-head">
         <div>
           <p class="kicker">第 1 步 / 共 3 步</p>
@@ -146,7 +183,36 @@ function exportReport() {
       <div class="card-foot">
         <button type="button" class="btn-primary" :disabled="!appraiseForm.blogger_id" @click="step = 2">下一步 →</button>
       </div>
-    </section>
+      </section>
+
+      <!-- 历史诊断:已诊断过的报告,点一条查看 -->
+      <section v-if="historyItems.length" class="card history">
+        <div class="card-head">
+          <div>
+            <p class="kicker">历史诊断</p>
+            <h2>之前诊断过的报告</h2>
+          </div>
+          <span class="head-hint">点一条查看</span>
+        </div>
+        <div class="hist-list">
+          <button
+            v-for="it in historyItems"
+            :key="it.run.id"
+            type="button"
+            class="hist-row"
+            @click="viewHistoryRun(it.run)"
+          >
+            <span class="hist-name">{{ it.name }}</span>
+            <span class="hist-scores">
+              <em :class="scoreBand(it.report!.hard_score)">硬 {{ it.report!.hard_score }}</em>
+              <em v-if="it.report!.soft_score != null" :class="scoreBand(it.report!.soft_score ?? 0)">软 {{ it.report!.soft_score }}</em>
+              <em :class="scoreBand(it.report!.compliance.score)">合规 {{ it.report!.compliance.score }}</em>
+            </span>
+            <span class="hist-date">{{ it.date }}</span>
+          </button>
+        </div>
+      </section>
+    </template>
 
     <!-- ===== Step 2 · 明确意图 ===== -->
     <section v-else-if="step === 2" class="card">
@@ -216,17 +282,25 @@ function exportReport() {
     <!-- ===== Step 3 · 诊断报告 ===== -->
     <template v-else>
       <div class="report-bar">
-        <div class="rb-title">
-          <h2>诊断报告</h2>
-          <span v-if="report">{{ selectedName ? selectedName + ' · ' : '' }}基于 {{ report.sample_count }} 篇笔记</span>
-        </div>
+        <h2>诊断报告</h2>
         <div class="rb-actions">
-          <button type="button" class="btn-ghost sm" :disabled="!report" @click="exportReport">导出报告</button>
+          <button type="button" class="btn-ghost sm" :disabled="!report || exporting" @click="exportImage">
+            {{ exporting ? '导出中…' : '导出图片' }}
+          </button>
           <button type="button" class="btn-ghost sm" @click="restart">↻ 重新诊断</button>
         </div>
       </div>
 
-      <AppraisalCard v-if="report" :report="report" />
+      <div v-if="report" ref="reportEl" class="report-capture">
+        <div class="capture-head">
+          <div class="ch-left">
+            <strong>{{ reportBloggerName || '对标分析报告' }}</strong>
+            <span>对标分析 · 基于 {{ report.sample_count }} 篇笔记</span>
+          </div>
+          <span class="ch-date">{{ reportDate }}</span>
+        </div>
+        <AppraisalCard :report="report" />
+      </div>
       <div v-else-if="diagnosing" class="report-loading card">
         <span class="spinner"></span>
         <p>正在诊断「{{ selectedName }}」 —— 看 TA 的硬实力、软实力、合规,大约需要 1 分钟…</p>
@@ -655,24 +729,115 @@ function exportReport() {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
-.rb-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.rb-title h2 {
+.report-bar h2 {
   margin: 0;
   font-size: 17px;
   font-weight: 680;
   letter-spacing: -0.01em;
 }
-.rb-title span {
-  font-size: 12.5px;
-  color: var(--color-ink-3);
-}
 .rb-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 历史诊断列表 */
+.hist-list {
+  display: flex;
+  flex-direction: column;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 20px;
+  border: 0;
+  border-top: 1px solid var(--color-paper-3);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.hist-row:first-child {
+  border-top: 0;
+}
+.hist-row:hover {
+  background: #fafbfc;
+}
+.hist-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist-scores {
+  display: flex;
+  gap: 12px;
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hist-scores em {
+  font-style: normal;
+  font-weight: 650;
+}
+.hist-scores .s-ok {
+  color: var(--color-ok);
+}
+.hist-scores .s-warn {
+  color: var(--color-warn);
+}
+.hist-scores .s-danger {
+  color: var(--color-danger);
+}
+.hist-date {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 报告导出截取容器(导出图片时连这块一起渲染) */
+.report-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.capture-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+}
+.ch-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.ch-left strong {
+  font-size: 16px;
+  font-weight: 680;
+  color: var(--color-ink);
+}
+.ch-left span {
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+}
+.ch-date {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
 }
 .report-loading {
   display: flex;

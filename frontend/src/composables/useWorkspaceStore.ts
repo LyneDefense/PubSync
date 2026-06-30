@@ -163,6 +163,8 @@ export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark'; in
   industry: ''
 })
 export const appraisalRun = ref<AccountAuditRun | null>(null)
+// 历史诊断:已成功且可解析的 benchmark 报告,供「历史诊断」列表查看。
+export const appraisalHistory = ref<AccountAuditRun[]>([])
 // 意图引导:选博主后看 TA 在做什么 → 给几道多选题帮用户明确「想学什么」(意图够清晰则不出题)。
 export const intentQuestions = ref<AppraisalIntentQuestion[]>([])
 export const intentSelections = reactive<Record<number, string[]>>({}) // 每题选了哪些选项
@@ -2122,6 +2124,16 @@ export async function refreshAppraisalRun() {
     appraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
   } catch {
     appraisalRun.value = null
+  }
+}
+
+// 历史诊断列表:已成功且报告可解析的 benchmark runs(最新在前)。
+export async function refreshAppraisalHistory() {
+  try {
+    const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')
+    appraisalHistory.value = runs.filter((r) => r.status === 'succeeded' && parseAppraisalReport(r))
+  } catch {
+    appraisalHistory.value = []
   }
 }
 
