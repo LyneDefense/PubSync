@@ -3,6 +3,7 @@
 // 找差距(我 vs 对标)同属本模块,下一轮上线。
 import { computed } from 'vue'
 import AppraisalCard from '../components/AppraisalCard.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import {
   currentSocialPlatformName,
   currentSocialTab,
@@ -52,6 +53,8 @@ const report = computed(() => parseAppraisalReport(selfAppraisalRun.value))
     >
       {{ pendingAction === 'audit' ? '诊断中…' : '开始诊断' }}
     </button>
+
+    <LiveProgress v-if="pendingAction === 'audit'" />
 
     <div v-if="report" class="result">
       <AppraisalCard :report="report" />

@@ -151,7 +151,7 @@ function goCreateSnapshot() {
             <span class="pcs-msg">{{ liveStageMessage }}</span>
             <span class="pcs-elapsed">{{ taskElapsedLabel }}</span>
           </div>
-          <p class="pc-note">完整进度也在页面顶部的进度条同步显示；蒸馏完成后会生成一条「待确认」结果并自动选中。</p>
+          <p class="pc-note">蒸馏在后台进行，离开本页时顶部会出现一条迷你进度提醒；完成后会生成一条「待确认」结果并自动选中。</p>
         </section>
 
         <!-- 蒸馏历史 -->

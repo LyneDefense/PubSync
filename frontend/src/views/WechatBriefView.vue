@@ -3,6 +3,7 @@
 // 合并了原「每日早报」的新闻抓取/勾选和原「文章草稿」的生成/预览/编辑/发送。
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import { sanitizeHtml } from '../utils/sanitize'
+import LiveProgress from '../components/LiveProgress.vue'
 import {
   activeArticleTab,
   activeMainTab,
@@ -72,6 +73,7 @@ import {
               <span>{{ pendingAction === 'fetch' ? '抓取中…' : '重新抓取' }}</span>
             </button>
           </div>
+          <LiveProgress v-if="pendingAction === 'fetch'" />
           <div class="module-subnav">
             <div class="tabs" role="tablist" aria-label="新闻分组">
               <button
@@ -129,6 +131,7 @@ import {
               <span>{{ pendingAction === 'generate' ? '生成中…' : '生成文章' }}</span>
             </button>
           </div>
+          <LiveProgress v-if="pendingAction === 'generate'" />
           <p class="form-hint">当前文章状态：{{ articleStateLabel }}。生成完成后会自动进入「预览/编辑」。</p>
         </section>
 

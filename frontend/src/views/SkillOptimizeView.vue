@@ -1,8 +1,9 @@
 <script setup lang="ts">
-// Skill 优化:选对标博主 → 发起优化(进度走顶部 LiveProgress)→ 看完整结果
+// Skill 优化:选对标博主 → 发起优化(进度就地显示在按钮下方)→ 看完整结果
 // (优化前后对比 + 优化器改了什么 + 样例三栏 + 明确建议;没提升就劝退)→ 采纳/放弃。
 import { computed } from 'vue'
 import TIcon from '../components/TIcon.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import {
   benchmarkAccounts,
   currentSocialPlatform,
@@ -91,7 +92,8 @@ function runTime(iso: string): string {
         {{ optimizing ? '优化中…' : '开始优化' }}
       </button>
     </div>
-    <p class="field-hint">默认优化该博主当前 Skill;也可选历史版本。需采集了足够笔记(≥12 篇)。优化过程见上方进度条。</p>
+    <LiveProgress v-if="optimizing" />
+    <p class="field-hint">默认优化该博主当前 Skill;也可选历史版本。需采集了足够笔记(≥12 篇)。优化过程见下方进度。</p>
 
     <!-- 历史优化记录 -->
     <div v-if="optimizeBloggerId && trainingRuns.length" class="so-history">

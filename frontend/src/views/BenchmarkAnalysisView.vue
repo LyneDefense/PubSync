@@ -4,6 +4,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import type { AccountAuditRun } from '../api/types'
 import {
   appraiseForm,
@@ -277,6 +278,7 @@ onMounted(() => {
           {{ diagnosing ? '诊断中…' : '开始诊断' }}
         </button>
       </div>
+      <LiveProgress v-if="diagnosing" />
     </section>
 
     <!-- ===== Step 3 · 诊断报告 ===== -->

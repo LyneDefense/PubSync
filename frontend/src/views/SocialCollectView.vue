@@ -272,7 +272,7 @@ const metrics = computed(() => {
           <span class="pcs-msg">{{ liveStageMessage }}</span>
           <span class="pcs-elapsed">{{ taskElapsedLabel }}</span>
         </div>
-        <p class="pc-note">完整进度也在页面顶部的进度条同步显示；采集成功后自动进入「查看结果」。</p>
+        <p class="pc-note">采集在后台进行，离开本页时顶部会出现一条迷你进度提醒；成功后自动进入「查看结果」。</p>
       </div>
 
       <!-- 链接定向采集(折叠) -->

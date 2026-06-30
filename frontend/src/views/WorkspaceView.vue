@@ -3,7 +3,6 @@
 // 路由只负责把 URL 同步到 store(见 App.vue),因此这里把全部视图平铺即可。
 import ComingSoonPanel from '../components/ComingSoonPanel.vue'
 import ImagePreviewModal from '../components/ImagePreviewModal.vue'
-import LiveProgress from '../components/LiveProgress.vue'
 import MiniProgressBanner from '../components/MiniProgressBanner.vue'
 import OverviewView from './OverviewView.vue'
 import FindBenchmarkView from './FindBenchmarkView.vue'
@@ -50,8 +49,6 @@ import {
 
 <template>
   <MiniProgressBanner />
-
-  <LiveProgress />
 
   <OverviewView />
 

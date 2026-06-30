@@ -3,6 +3,7 @@
 // 状态与方法来自 useWorkspaceStore 单例；本组件仅负责该面板的视图与交互。
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImageOutputGrid from '../components/ImageOutputGrid.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import {
   parseJsonObject,
   xhsContentTypeLabel,
@@ -129,6 +130,7 @@ import {
                   {{ pendingAction === 'xhs-topic' ? '生成中' : xhsTopicIdeas.length ? '重新生成选题' : '生成选题方案' }}
                 </button>
               </div>
+              <LiveProgress v-if="pendingAction === 'xhs-topic'" />
               <label>
                 种子主题
                 <input v-model="xhsPackageForm.topic" type="text" placeholder="可以留空，也可以输入你想写的大方向" />
@@ -179,6 +181,7 @@ import {
                   {{ pendingAction === 'xhs-package' ? '生成中' : currentXhsDraft ? '重新生成' : '开始生成' }}
                 </button>
               </div>
+              <LiveProgress v-if="pendingAction === 'xhs-package'" />
               <div v-if="selectedXhsTopicIdea" class="selected-idea-card">
                 <span>已选方向</span>
                 <strong>{{ selectedXhsTopicIdea.title }}</strong>

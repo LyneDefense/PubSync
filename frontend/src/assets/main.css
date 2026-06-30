@@ -3441,10 +3441,12 @@ dd {
   overflow-y: auto;
 }
 
-/* ===== 全站统一实时进度面板(LiveProgress.vue) ===== */
+/* ===== 全站统一实时进度面板(LiveProgress.vue) =====
+   现已下沉到各任务页「触发按钮正下方」就地显示,故默认带一点上间距与按钮分隔。 */
 .live-progress {
   display: grid;
   gap: var(--space-sm);
+  margin-top: var(--space-sm);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-lg);
   background: var(--color-accent-soft);
