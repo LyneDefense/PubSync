@@ -62,6 +62,10 @@
   --color-score-danger-bd: #f3d6d2;
   --color-warn-card-bg: #fdf9f1;
   --color-warn-card-bd: #f0e3d2;
+  --color-info: #2a6fdb;
+  /* 深色代码框(蒸馏 Skill 输出等):深底 + 柔和等宽字色。 */
+  --color-code-bg: #1c2024;
+  --color-code-ink: #d6e3dd;
   /* 表单控件:输入框用纯白底 + 清晰描边(原来用灰底 paper + 极淡发丝线,看着像未做样式的灰条)。 */
   --color-field: #ffffff;
   --color-field-border: #c8ced4;
