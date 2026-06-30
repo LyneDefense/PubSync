@@ -1,13 +1,12 @@
 <script setup lang="ts">
-// Skill 优化:选对标博主 → 发起优化(进度就地显示在按钮下方)→ 看完整结果
-// (优化前后对比 + 优化器改了什么 + 样例三栏 + 明确建议;没提升就劝退)→ 采纳/放弃。
+// Skill 优化:选对标博主(卡片单选)→ 发起优化(进度就地内嵌)→ 看「像不像本人」相似度标尺 + 改写清单 + 三栏样例 →
+// 采纳/放弃(没提升会明确劝退)。纯展示重构:store 字段、runTitle/verdictInfo 等逻辑全部沿用。
 import { computed } from 'vue'
 import TIcon from '../components/TIcon.vue'
 import LiveProgress from '../components/LiveProgress.vue'
 import {
   benchmarkAccounts,
   currentSocialPlatform,
-  currentSocialPlatformName,
   currentSocialTab,
   currentTrainingRun,
   handleConfirmOptimize,
@@ -62,198 +61,948 @@ function runTime(iso: string): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
+
+// 「像不像本人」标尺定位:把分数映射到可视区间 20→100 的百分比(避免低分挤在左端)。
+function pos(v: number): number {
+  const p = ((Number(v) - 20) / 80) * 100
+  return Math.max(0, Math.min(100, p))
+}
+function ptStyle(v: number) {
+  return { left: pos(v) + '%' }
+}
+// 提升段:优化前 ↔ 优化后之间高亮(退步则反向、暖色)。
+function gainStyle(before: number, after: number) {
+  const lo = pos(Math.min(before, after))
+  const hi = pos(Math.max(before, after))
+  return { left: lo + '%', width: Math.max(0, hi - lo) + '%' }
+}
+
+// 文字头像:名字首字 + 按 id 取柔和底色。
+const AVATAR_BG = ['#eaf3ee', '#f0eef7', '#eef4f5', '#eef1f6', '#f6eef2', '#eef3f7']
+const AVATAR_INK = ['#2f6b54', '#5a4a86', '#3a6a72', '#44506a', '#8a4a64', '#3a5a86']
+function avatarStyle(id: number) {
+  const i = (((id || 0) % AVATAR_BG.length) + AVATAR_BG.length) % AVATAR_BG.length
+  return { background: AVATAR_BG[i], color: AVATAR_INK[i] }
+}
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'skill-optimize'" class="panel skill-opt">
-    <div class="section-header">
-      <div>
-        <h2>Skill 优化</h2>
-        <p class="toolbar-subtitle">用该博主的真实笔记把 Skill 练得更像;每次优化都会给出前后对比和是否采纳的建议(没提升会明确劝退)。</p>
-      </div>
-    </div>
+  <section v-if="isSocialPlatform && currentSocialTab === 'skill-optimize'" class="skill-opt">
+    <header class="page-head">
+      <h1>Skill 优化</h1>
+      <p>用该博主的真实笔记，把它的写作 Skill 练得更像本人。每次优化都给出<b>前后对比</b>和<b>是否采纳</b>的建议 —— 没提升会明确劝退。</p>
+    </header>
 
-    <div class="so-launch">
-      <label>选择要优化的对标博主
-        <select v-model="optimizeBloggerId" :disabled="optimizing">
-          <option :value="null">请选择…</option>
-          <option v-for="b in platformBloggers" :key="b.id" :value="b.id">{{ b.display_name }}</option>
-        </select>
-      </label>
-      <label>选择要优化的 Skill 版本
-        <select v-model="optimizeSkillId" :disabled="optimizing || !optimizeBloggerId || !optimizeSkillOptions.length">
-          <option v-if="!optimizeSkillOptions.length" :value="null">该博主暂无 Skill</option>
-          <option v-for="s in optimizeSkillOptions" :key="s.id" :value="s.id">
-            {{ s.name }}{{ s.status === 'active' ? '（当前）' : '（历史）' }}
-          </option>
-        </select>
-      </label>
-      <button type="button" class="primary" :disabled="optimizing || !optimizeBloggerId || !optimizeSkillId" @click="handleOptimizeSkill">
-        {{ optimizing ? '优化中…' : '开始优化' }}
-      </button>
-    </div>
-    <LiveProgress v-if="optimizing" />
-    <p class="field-hint">默认优化该博主当前 Skill;也可选历史版本。需采集了足够笔记(≥12 篇)。优化过程见下方进度。</p>
-
-    <!-- 历史优化记录 -->
-    <div v-if="optimizeBloggerId && trainingRuns.length" class="so-history">
-      <h3>优化记录</h3>
-      <ul class="so-history-list">
-        <li v-for="r in trainingRuns" :key="r.id">
+    <!-- 发起卡:两列(博主卡 / 版本单选) -->
+    <section class="card launch">
+      <div class="lc-col">
+        <span class="col-title">要优化的对标博主</span>
+        <div v-if="platformBloggers.length" class="blogger-list">
           <button
+            v-for="b in platformBloggers"
+            :key="b.id"
             type="button"
-            class="so-history-item"
-            :class="{ active: currentTrainingRun && currentTrainingRun.id === r.id }"
-            @click="selectTrainingRun(r)"
+            class="bl-card"
+            :class="{ sel: optimizeBloggerId === b.id }"
+            :disabled="optimizing"
+            @click="optimizeBloggerId = b.id"
           >
-            <span class="so-history-badge" :class="`so-history-badge--${runTitle(r).tone}`"><TIcon :name="TONE_ICON[runTitle(r).tone]" /> {{ runTitle(r).label }}</span>
-            <span v-if="r.status !== 'failed' && r.status !== 'running'" class="so-history-delta">
-              {{ Math.round(r.before_score) }} → {{ Math.round(r.after_score) }}（Δ {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}）
+            <span class="bl-avatar" :style="avatarStyle(b.id)">{{ (b.display_name || '?').slice(0, 1) }}</span>
+            <span class="bl-body">
+              <span class="bl-name">{{ b.display_name }}</span>
+              <span class="bl-sub">已采集 {{ b.sample_count }} 篇<template v-if="optimizeBloggerId === b.id && optimizeSkillOptions.length"> · {{ optimizeSkillOptions.length }} 个 Skill</template></span>
             </span>
-            <span class="so-history-time">{{ runTime(r.created_at) }}</span>
+            <span class="bl-radio" aria-hidden="true"></span>
           </button>
-        </li>
-      </ul>
-    </div>
-
-    <!-- 失败:生成全部失败时不展示误导性的 0→0,直接说明原因 -->
-    <div v-if="run && run.status === 'failed'" class="so-result">
-      <div class="so-verdict so-verdict--bad">
-        <strong><TIcon name="circle-x" /> 本次优化未能完成</strong>
+        </div>
+        <p v-else class="empty-region pad">还没有对标博主。请先到「数据采集 / 提炼 Skill」创建博主并蒸馏。</p>
       </div>
-      <p class="so-note">{{ run.error_message || '生成失败，请稍后重试。' }}</p>
-      <p class="field-hint" v-if="run.report.anchors">
-        参照:其它博主基线 {{ Math.round(run.report.anchors.floor) }} 分 · 真笔记天花板 {{ Math.round(run.report.anchors.ceiling) }} 分(满分100，越高越像本人）。
-      </p>
-    </div>
+
+      <div class="lc-col">
+        <span class="col-title">要优化的 Skill 版本</span>
+        <div v-if="optimizeSkillOptions.length" class="ver-list">
+          <button
+            v-for="s in optimizeSkillOptions"
+            :key="s.id"
+            type="button"
+            class="ver"
+            :class="{ sel: optimizeSkillId === s.id }"
+            :disabled="optimizing"
+            @click="optimizeSkillId = s.id"
+          >
+            <span class="ver-dot" aria-hidden="true"></span>
+            <span class="ver-name">{{ s.name }}</span>
+            <span class="ver-tag" :class="{ cur: s.status === 'active' }">{{ s.status === 'active' ? '当前' : '历史' }}</span>
+          </button>
+        </div>
+        <p v-else class="empty-region pad">{{ optimizeBloggerId ? '该博主暂无 Skill,请先到「提炼 Skill」蒸馏一次。' : '先在左侧选择一个博主。' }}</p>
+
+        <button
+          type="button"
+          class="btn btn--accent block"
+          :disabled="optimizing || !optimizeBloggerId || !optimizeSkillId"
+          @click="handleOptimizeSkill"
+        >
+          <span v-if="optimizing" class="spin" aria-hidden="true"></span>
+          {{ optimizing ? '优化中…' : '开始优化' }}
+        </button>
+        <LiveProgress v-if="optimizing" />
+        <p class="lc-hint">默认优化该博主当前 Skill，也可选历史版本。需已采集 ≥ 12 篇笔记。</p>
+      </div>
+    </section>
+
+    <!-- 优化记录:横向滚动卡片 -->
+    <section v-if="optimizeBloggerId && trainingRuns.length" class="history">
+      <div class="history-head"><h3>优化记录</h3><span>点一条查看详情</span></div>
+      <div class="run-strip">
+        <button
+          v-for="r in trainingRuns"
+          :key="r.id"
+          type="button"
+          class="run-card"
+          :class="{ sel: currentTrainingRun && currentTrainingRun.id === r.id }"
+          @click="selectTrainingRun(r)"
+        >
+          <span class="run-badge" :class="`tone-${runTitle(r).tone}`"><TIcon :name="TONE_ICON[runTitle(r).tone]" /> {{ runTitle(r).label }}</span>
+          <span v-if="r.status !== 'failed' && r.status !== 'running'" class="run-delta">
+            {{ Math.round(r.before_score) }} <i>→</i> {{ Math.round(r.after_score) }}
+            <em :class="r.delta > 0 ? 'pos' : r.delta < 0 ? 'neg' : 'noise'">Δ {{ r.delta > 0 ? '+' : '' }}{{ r.delta }}</em>
+          </span>
+          <span class="run-time">{{ runTime(r.created_at) }}</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 失败态:不展示误导性的 0→0 -->
+    <section v-if="run && run.status === 'failed'" class="card fail">
+      <div class="verdict tone-bad">
+        <span class="vd-ico" aria-hidden="true"><TIcon name="circle-x" /></span>
+        <strong>本次优化未能完成</strong>
+      </div>
+      <p class="note">{{ run.error_message || '生成失败，请稍后重试。' }}</p>
+      <p v-if="run.report.anchors" class="lc-hint">参照:其它博主基线 {{ Math.round(run.report.anchors.floor) }} 分 · 真笔记天花板 {{ Math.round(run.report.anchors.ceiling) }} 分（满分 100，越高越像本人）。</p>
+    </section>
 
     <!-- 结果 -->
-    <div v-else-if="run && run.status !== 'running'" class="so-result">
-      <!-- 建议横幅 -->
-      <div class="so-verdict" :class="`so-verdict--${verdictInfo(run.verdict).tone}`">
-        <strong><TIcon :name="TONE_ICON[verdictInfo(run.verdict).tone]" /> {{ verdictInfo(run.verdict).text }}</strong>
-      </div>
-
-      <!-- 前后对比 -->
-      <div class="so-scores">
-        <div class="so-score">
-          <span class="so-score-label">优化前</span>
-          <span class="so-score-val">{{ Math.round(run.before_score) }}</span>
-          <small>gap {{ run.before_gap }}%</small>
+    <template v-else-if="run && run.status !== 'running'">
+      <!-- 结论横幅 -->
+      <section class="card verdict-card">
+        <div class="verdict" :class="`tone-${verdictInfo(run.verdict).tone}`">
+          <span class="vd-ico" aria-hidden="true"><TIcon :name="TONE_ICON[verdictInfo(run.verdict).tone]" /></span>
+          <strong>{{ verdictInfo(run.verdict).text }}</strong>
         </div>
-        <div class="so-arrow">→</div>
-        <div class="so-score">
-          <span class="so-score-label">优化后</span>
-          <span class="so-score-val">{{ Math.round(run.after_score) }}</span>
-          <small>gap {{ run.after_gap }}%</small>
-        </div>
-        <div class="so-delta" :class="run.delta > 0 ? 'pos' : run.delta < 0 ? 'neg' : ''">
-          Δ {{ run.delta > 0 ? '+' : '' }}{{ run.delta }}
-        </div>
-      </div>
-      <p class="field-hint" v-if="run.report.anchors">
-        参照:其它博主基线 {{ Math.round(run.report.anchors.floor) }} 分 · 真笔记天花板 {{ Math.round(run.report.anchors.ceiling) }} 分(满分100,越高越像本人)。
-      </p>
+      </section>
 
-      <!-- 采纳/放弃(仅待确认时) -->
-      <div v-if="run.status === 'pending_confirmation'" class="so-actions">
-        <button type="button" :class="{ primary: run.recommend_adopt }" :disabled="optimizeConfirming" @click="handleConfirmOptimize(true)">采纳新版本</button>
-        <button type="button" :class="{ primary: !run.recommend_adopt }" :disabled="optimizeConfirming" @click="handleConfirmOptimize(false)">放弃 · 保留原 Skill</button>
-      </div>
-      <p v-else-if="run.status === 'succeeded'" class="so-done so-done--ok">已采纳:优化版已设为当前 Skill。</p>
-      <p v-else-if="run.status === 'abandoned'" class="so-done">已放弃:保留原 Skill。</p>
+      <!-- 「像不像本人」相似度标尺 -->
+      <section class="card meter-card">
+        <div class="meter-head">
+          <div>
+            <h3>像不像本人</h3>
+            <span class="meter-sub">相似度（满分 100，越高越像）</span>
+          </div>
+          <div class="meter-nums">
+            <span class="mn"><small>优化前</small><b>{{ Math.round(run.before_score) }}</b></span>
+            <span class="mn-arrow">→</span>
+            <span class="mn"><small>优化后</small><b class="hi">{{ Math.round(run.after_score) }}</b></span>
+            <span class="mn-delta" :class="run.delta > 0 ? 'pos' : run.delta < 0 ? 'neg' : 'noise'">Δ {{ run.delta > 0 ? '+' : '' }}{{ run.delta }}</span>
+          </div>
+        </div>
 
-      <!-- 怎么优化的 -->
-      <div class="so-block">
-        <h3>我们是怎么优化的</h3>
-        <p class="so-note">{{ run.report.process_note }}</p>
+        <div class="meter">
+          <div class="meter-track"></div>
+          <template v-if="run.report.anchors">
+            <div class="meter-band" :style="gainStyle(run.report.anchors.floor, run.report.anchors.ceiling)"></div>
+            <div class="meter-mark floor" :style="ptStyle(run.report.anchors.floor)">
+              <i></i><span class="mk-val">{{ Math.round(run.report.anchors.floor) }}</span><span class="mk-lbl">其它博主基线</span>
+            </div>
+            <div class="meter-mark ceil" :style="ptStyle(run.report.anchors.ceiling)">
+              <i></i><span class="mk-val">{{ Math.round(run.report.anchors.ceiling) }}</span><span class="mk-lbl">真笔记天花板</span>
+            </div>
+          </template>
+          <div class="meter-gain" :class="{ down: run.delta < 0 }" :style="gainStyle(run.before_score, run.after_score)"></div>
+          <div class="meter-pt before" :style="ptStyle(run.before_score)" :title="`优化前 ${Math.round(run.before_score)}`"></div>
+          <div class="meter-pt after" :style="ptStyle(run.after_score)" :title="`优化后 ${Math.round(run.after_score)}`"></div>
+        </div>
+
+        <p class="meter-foot">距天花板差距：优化前 {{ run.before_gap }}% <i>→</i> 优化后 <b>{{ run.after_gap }}%</b></p>
+      </section>
+
+      <!-- 采纳 / 放弃 -->
+      <section v-if="run.status === 'pending_confirmation'" class="card confirm">
+        <span class="cf-q">要把优化后的版本设为当前 Skill 吗？</span>
+        <div class="cf-actions">
+          <button type="button" class="btn btn--accent" :disabled="optimizeConfirming" @click="handleConfirmOptimize(true)">✓ 采纳新版本</button>
+          <button type="button" class="btn btn--ghost" :disabled="optimizeConfirming" @click="handleConfirmOptimize(false)">放弃 · 保留原 Skill</button>
+        </div>
+      </section>
+      <section v-else-if="run.status === 'succeeded'" class="done-strip ok">已采纳：优化版已设为当前 Skill。</section>
+      <section v-else-if="run.status === 'abandoned'" class="done-strip">已放弃：保留原 Skill。</section>
+
+      <!-- 我们是怎么优化的 -->
+      <section class="card">
+        <h3 class="block-title">我们是怎么优化的</h3>
+        <p class="note">{{ run.report.process_note }}</p>
         <template v-if="run.report.changelog && run.report.changelog.length">
-          <p class="so-sub">优化器对 Skill 做的改写:</p>
-          <ul class="so-changelog">
-            <li v-for="(c, i) in run.report.changelog" :key="i">{{ c }}</li>
-          </ul>
+          <p class="sub-label">优化器对 Skill 做的改写</p>
+          <ol class="changelog">
+            <li v-for="(c, i) in run.report.changelog" :key="i"><span class="cl-num">{{ i + 1 }}</span><span class="cl-text">{{ c }}</span></li>
+          </ol>
         </template>
-        <p v-else class="field-hint">本次优化器没有产生被验证集采纳的改写(候选改写都没能超过原 Skill)。</p>
-      </div>
+        <p v-else class="lc-hint">本次优化器没有产生被验证集采纳的改写（候选改写都没能超过原 Skill）。</p>
+      </section>
 
-      <!-- 样例三栏 -->
-      <div v-if="run.report.samples && run.report.samples.length" class="so-block">
-        <h3>同一选题:优化前 vs 优化后 vs 真笔记</h3>
-        <div v-for="(s, i) in run.report.samples" :key="i" class="so-sample">
-          <p class="so-sample-topic">选题:{{ s.topic }}</p>
-          <div class="so-sample-cols">
-            <div class="so-col">
-              <div class="so-col-head">优化前 <span>{{ s.seed_sim }}</span></div>
+      <!-- 同一选题三栏 -->
+      <section v-if="run.report.samples && run.report.samples.length" class="card">
+        <h3 class="block-title">同一选题：优化前 / 优化后 / 真笔记</h3>
+        <div v-for="(s, i) in run.report.samples" :key="i" class="sample">
+          <p class="sample-topic">选题：{{ s.topic }}</p>
+          <div class="sample-cols">
+            <div class="scol">
+              <div class="scol-head"><span>优化前</span><b>{{ s.seed_sim }}</b></div>
               <p>{{ s.seed_text }}</p>
             </div>
-            <div class="so-col">
-              <div class="so-col-head">优化后 <span>{{ s.optimized_sim }}</span></div>
+            <div class="scol best">
+              <div class="scol-head"><span>优化后</span><b>{{ s.optimized_sim }}</b></div>
               <p>{{ s.optimized_text }}</p>
             </div>
-            <div class="so-col so-col--real">
-              <div class="so-col-head">真笔记</div>
+            <div class="scol real">
+              <div class="scol-head"><span>真笔记</span><b>本人</b></div>
               <p>{{ s.real_text }}</p>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </template>
   </section>
 </template>
 
 <style scoped>
-.skill-opt { max-width: 980px; }
-.so-launch { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 6px; }
-.so-launch label { display: flex; flex-direction: column; gap: 4px; flex: 1; max-width: 360px; }
-.so-history { margin-top: 18px; }
-.so-history h3 { margin: 0 0 8px; font-size: 1rem; }
-.so-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.so-history-item {
-  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
-  padding: 8px 12px; border: 1px solid var(--color-field-border, #c8ced4); border-radius: 10px;
-  background: var(--color-field, #fff); cursor: pointer;
+.skill-opt {
+  max-width: 920px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.so-history-item:hover { border-color: var(--color-accent, #2563eb); }
-.so-history-item.active { border-color: var(--color-accent, #2563eb); box-shadow: 0 0 0 1px var(--color-accent, #2563eb) inset; }
-.so-history-badge { font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
-.so-history-badge--ok { color: var(--color-ok); }
-.so-history-badge--warn { color: #9a6a12; }
-.so-history-badge--bad { color: #c0392b; }
-.so-history-badge--mute { color: var(--color-ink-2, #6b7280); }
-.so-history-delta { font-size: 0.85rem; color: var(--color-ink-2, #6b7280); }
-.so-history-time { margin-left: auto; font-size: 0.8rem; color: var(--color-ink-3, #9aa0a6); white-space: nowrap; }
-.so-result { margin-top: 18px; display: flex; flex-direction: column; gap: 16px; }
-.so-verdict { padding: 12px 14px; border-radius: 12px; font-size: 1rem; }
-.so-verdict strong i, .so-history-badge i { vertical-align: -1px; }
-.so-verdict--ok { background: var(--color-ok-bg, #e8f5ec); color: var(--color-ok); }
-.so-verdict--warn { background: #fdf3e2; color: #9a6a12; }
-.so-verdict--bad { background: #fdecec; color: #c0392b; }
-.so-scores { display: flex; align-items: center; gap: 18px; }
-.so-score { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 18px; border: 1px solid var(--color-field-border, #c8ced4); border-radius: 12px; min-width: 96px; }
-.so-score-label { font-size: 0.8rem; color: var(--color-ink-2, #6b7280); }
-.so-score-val { font-size: 1.8rem; font-weight: 700; }
-.so-score small { color: var(--color-ink-2, #6b7280); font-size: 0.75rem; }
-.so-arrow { font-size: 1.4rem; color: var(--color-ink-3, #9aa0a6); }
-.so-delta { font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--color-paper-3, #eef0f3); }
-.so-delta.pos { background: var(--color-ok-bg); color: var(--color-ok); }
-.so-delta.neg { background: #fdecec; color: #c0392b; }
-.so-actions { display: flex; gap: 10px; }
-.so-done { font-weight: 600; }
-.so-done--ok { color: var(--color-ok); }
-.so-block { border-top: 1px solid var(--color-field-border, #c8ced4); padding-top: 14px; }
-.so-block h3 { margin: 0 0 8px; }
-.so-note { color: var(--color-ink-2, #6b7280); line-height: 1.6; margin: 0 0 8px; }
-.so-sub { font-weight: 600; margin: 8px 0 4px; }
-.so-changelog { margin: 0; padding-left: 20px; line-height: 1.7; }
-.so-sample { border: 1px solid var(--color-field-border, #c8ced4); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-.so-sample-topic { font-weight: 600; margin: 0 0 8px; }
-.so-sample-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-.so-col { background: var(--color-field, #fff); border: 1px solid var(--color-field-border, #c8ced4); border-radius: 10px; padding: 8px 10px; }
-.so-col--real { background: var(--color-paper-3, #f7f8fa); }
-.so-col-head { font-size: 0.8rem; font-weight: 700; color: var(--color-ink-2, #6b7280); margin-bottom: 4px; display: flex; justify-content: space-between; }
-.so-col-head span { color: var(--color-accent, #2563eb); }
-.so-col p { margin: 0; font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; max-height: 220px; overflow-y: auto; }
+.page-head h1 {
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+.page-head p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-ink-2);
+}
+.page-head b {
+  color: var(--color-ink);
+  font-weight: 650;
+}
+
+/* 卡片 */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+}
+.block-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-ink-2);
+}
+.lc-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink-3);
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+.btn.block {
+  width: 100%;
+  margin-top: 12px;
+}
+.btn--accent {
+  border: 0;
+  background: var(--color-accent);
+  color: #fff;
+}
+.btn--accent:hover {
+  background: var(--color-accent-press);
+}
+.btn--ghost {
+  border: 1px solid var(--color-field-border);
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+}
+.btn--ghost:hover {
+  background: #f7f8f9;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 发起卡:两列 */
+.launch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.col-title {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-ink);
+}
+.blogger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bl-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+.bl-card:hover:not(:disabled) {
+  border-color: var(--color-accent-soft-bd);
+}
+.bl-card.sel {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+  box-shadow: 0 1px 4px var(--color-shadow);
+}
+.bl-card:disabled {
+  cursor: not-allowed;
+}
+.bl-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.bl-body {
+  flex: 1;
+  min-width: 0;
+}
+.bl-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bl-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.bl-radio {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: 50%;
+  position: relative;
+}
+.bl-card.sel .bl-radio {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.bl-card.sel .bl-radio::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* 版本单选 */
+.ver-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ver {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-rule);
+  border-radius: 11px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+.ver:hover:not(:disabled) {
+  border-color: var(--color-accent-soft-bd);
+}
+.ver.sel {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+}
+.ver:disabled {
+  cursor: not-allowed;
+}
+.ver-dot {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: 50%;
+  position: relative;
+}
+.ver.sel .ver-dot {
+  border-color: var(--color-accent);
+}
+.ver.sel .ver-dot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+.ver-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ver-tag {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: var(--color-paper-3);
+  color: var(--color-ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.ver-tag.cur {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+/* 优化记录:横向滚动 */
+.history-head {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+.history-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.history-head span {
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+}
+.run-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.run-card {
+  flex: 0 0 auto;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+.run-card:hover {
+  border-color: var(--color-accent-soft-bd);
+}
+.run-card.sel {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+  box-shadow: 0 1px 4px var(--color-shadow);
+}
+.run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.run-badge i {
+  vertical-align: -1px;
+}
+.run-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.run-delta i {
+  color: var(--color-ink-3);
+  font-style: normal;
+}
+.run-delta em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+.run-time {
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.tone-ok {
+  color: var(--color-ok);
+}
+.tone-warn {
+  color: var(--color-warn);
+}
+.tone-bad {
+  color: var(--color-danger);
+}
+.tone-mute {
+  color: var(--color-ink-3);
+}
+.pos {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+.neg {
+  background: var(--color-score-danger-bg);
+  color: var(--color-danger);
+}
+.noise {
+  background: var(--color-paper-3);
+  color: var(--color-ink-3);
+}
+
+/* 结论横幅 */
+.verdict-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.verdict .vd-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  color: #fff;
+}
+.verdict.tone-ok {
+  border-color: var(--color-accent-soft-bd);
+  background: var(--color-accent-soft);
+}
+.verdict.tone-ok .vd-ico {
+  background: var(--color-accent);
+}
+.verdict.tone-warn {
+  border-color: var(--color-warn-card-bd);
+  background: var(--color-warn-card-bg);
+}
+.verdict.tone-warn .vd-ico {
+  background: var(--color-warn);
+}
+.verdict.tone-bad {
+  border-color: var(--color-score-danger-bd);
+  background: var(--color-score-danger-bg);
+}
+.verdict.tone-bad .vd-ico {
+  background: var(--color-danger);
+}
+.verdict.tone-ok strong { color: var(--color-accent-ink); }
+.verdict.tone-warn strong { color: var(--color-warn); }
+.verdict.tone-bad strong { color: var(--color-danger); }
+
+/* 失败卡 */
+.fail .verdict {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  margin-bottom: 8px;
+}
+
+/* 「像不像本人」标尺 */
+.meter-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+.meter-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 680;
+  display: inline;
+}
+.meter-sub {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.meter-nums {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.mn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.mn small {
+  font-size: 11px;
+  color: var(--color-ink-3);
+}
+.mn b {
+  font-size: 24px;
+  font-weight: 720;
+  line-height: 1.1;
+  color: var(--color-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.mn b.hi {
+  color: var(--color-accent);
+}
+.mn-arrow {
+  color: var(--color-ink-3);
+  font-size: 16px;
+  padding-bottom: 2px;
+}
+.mn-delta {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 2px;
+}
+
+.meter {
+  position: relative;
+  height: 56px;
+  margin: 0 10px;
+}
+.meter-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 11px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--color-paper-3);
+}
+.meter-band {
+  position: absolute;
+  top: 11px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--color-accent-soft);
+}
+.meter-gain {
+  position: absolute;
+  top: 11px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--color-accent);
+  opacity: 0.55;
+}
+.meter-gain.down {
+  background: var(--color-warn);
+}
+.meter-mark {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.meter-mark i {
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--color-rule-strong);
+}
+.meter-mark.ceil i {
+  background: var(--color-ink-3);
+}
+.mk-val {
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.mk-lbl {
+  font-size: 11px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+}
+.meter-pt {
+  position: absolute;
+  top: 7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+.meter-pt.before {
+  background: var(--color-surface);
+  border: 2px solid var(--color-rule-strong);
+}
+.meter-pt.after {
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+.meter-foot {
+  margin: 18px 0 0;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.meter-foot i {
+  font-style: normal;
+  color: var(--color-ink-3);
+}
+.meter-foot b {
+  color: var(--color-accent-ink);
+  font-weight: 700;
+}
+
+/* 采纳 / 放弃 */
+.confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.cf-q {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.cf-actions {
+  display: flex;
+  gap: 10px;
+}
+.done-strip {
+  padding: 13px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.done-strip.ok {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+/* 改写清单 */
+.sub-label {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.changelog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.changelog li {
+  display: flex;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+}
+.cl-num {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cl-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-ink-2);
+}
+
+/* 三栏样例 */
+.sample {
+  margin-top: 14px;
+}
+.sample:first-of-type {
+  margin-top: 0;
+}
+.sample-topic {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.sample-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.scol {
+  border: 1px solid var(--color-rule);
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.scol.best {
+  border-color: var(--color-accent);
+}
+.scol.real {
+  background: #fafbfc;
+}
+.scol-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--color-paper-3);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-ink-2);
+}
+.scol.best .scol-head {
+  background: var(--color-accent-tint);
+  color: var(--color-accent-ink);
+}
+.scol-head b {
+  font-variant-numeric: tabular-nums;
+}
+.scol.best .scol-head b {
+  color: var(--color-accent);
+}
+.scol p {
+  margin: 0;
+  padding: 11px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--color-ink-2);
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.empty-region.pad {
+  padding: 22px 16px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
 @media (max-width: 720px) {
-  .so-sample-cols { grid-template-columns: 1fr; }
+  .launch {
+    grid-template-columns: 1fr;
+  }
+  .sample-cols {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
