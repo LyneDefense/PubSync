@@ -186,8 +186,13 @@ function exportReport() {
                 :class="{ on: isPicked(qi, opt) }"
                 @click="toggleOption(qi, opt)"
               >{{ opt }}</button>
+              <input
+                v-model="intentOthers[qi]"
+                class="chip-other"
+                type="text"
+                placeholder="✎ 其他,自己填…"
+              />
             </div>
-            <input v-model="intentOthers[qi]" class="chip-other" type="text" placeholder="其他(可补充)…" />
           </div>
         </template>
       </div>
@@ -557,17 +562,24 @@ function exportReport() {
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
 }
+/* 「其他」做成虚线胶囊,和选项 chip 同排,一眼能看出是「选项 + 自己填」。 */
 .chip-other {
-  width: 100%;
-  max-width: 320px;
-  height: 38px;
-  margin-top: 9px;
-  padding: 0 12px;
-  border: 1px solid var(--color-field-border);
-  border-radius: 10px;
-  background: var(--color-field);
+  min-width: 150px;
+  flex: 0 1 200px;
+  padding: 7px 15px;
+  border: 1px dashed var(--color-rule-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
   font-size: 13px;
   color: var(--color-ink);
+  transition: border-color 120ms var(--ease-out);
+}
+.chip-other::placeholder {
+  color: var(--color-placeholder);
+}
+.chip-other:focus {
+  border-style: solid;
+  border-color: var(--color-accent);
 }
 
 /* Card footer */
