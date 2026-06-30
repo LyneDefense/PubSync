@@ -745,6 +745,13 @@ button.task-button.running span {
   min-height: 0;
   overflow-y: auto;
 }
+/* 各视图根 <section> 都用 max-width + margin:0 auto 居中。但它们是 .workspace(grid)
+   的直接子项,auto 外边距会压过 justify-self:stretch,令其按内容收缩 —— 于是切换数据
+   (如笔记多/少的不同博主、不同账号)时整页宽度忽大忽小。显式 width:100% 让其恒占满栏宽
+   (仍由各自 max-width 封顶并居中),宽度不再随内容跳动。 */
+.workspace > section {
+  width: 100%;
+}
 
 .workspace-snapshot {
   display: grid;

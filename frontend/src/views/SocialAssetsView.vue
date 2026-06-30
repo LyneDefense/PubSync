@@ -544,6 +544,7 @@ async function deleteDetailSnapshot() {
 /* HERO */
 .hero {
   display: flex;
+  align-items: flex-start;
   gap: 16px;
   flex-wrap: wrap;
   padding: 20px 22px;
@@ -593,20 +594,20 @@ async function deleteDetailSnapshot() {
 .hero-actions {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 8px;
-  align-items: stretch;
-  min-width: 132px;
 }
 .ha-btn {
-  height: 36px;
-  padding: 0 14px;
+  height: 34px;
+  padding: 0 13px;
   border: 1px solid var(--color-field-border);
   border-radius: 9px;
   background: var(--color-surface);
   color: var(--color-ink-2);
   font-size: 13px;
   font-weight: 550;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
@@ -622,16 +623,23 @@ async function deleteDetailSnapshot() {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* 删除:弱化的危险动作。平时无边框,hover 才显出红底红框,与上面三个按钮同高同圆角成组。 */
 .ha-del {
-  height: 30px;
-  border: 0;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   background: transparent;
   color: var(--color-danger);
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
   cursor: pointer;
+  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
 .ha-del:hover {
-  text-decoration: underline;
+  background: var(--color-score-danger-bg);
+  border-color: var(--color-score-danger-bd);
 }
 
 /* 卡片头 + 提示 */
