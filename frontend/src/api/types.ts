@@ -846,6 +846,8 @@ export interface AppraisalReport {
   hard_score: number
   soft: AppraisalDim[]
   soft_score: number | null
+  // 目标契合(仅诊断自己 + 填了目标时有):账号现状离用户目标多近 + 针对该目标的整改清单。
+  goal_fit?: { score: number; grade: string; summary: string; gaps: string[]; actions: string[] } | null
   compliance: AppraisalComplianceResult
   verdict: { level: string; text: string }
   score?: number

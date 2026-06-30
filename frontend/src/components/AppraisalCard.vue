@@ -76,6 +76,23 @@ const showSample = computed(
       </div>
     </section>
 
+    <!-- 目标契合(诊断自己 + 填了目标才有) -->
+    <section v-if="report.goal_fit" class="zone">
+      <div class="zone-head">
+        <h3>目标契合</h3><span>离你的目标还差多少</span>
+        <span class="grade" :class="band(report.goal_fit.score)">{{ report.goal_fit.grade }} · {{ report.goal_fit.score }}</span>
+      </div>
+      <p class="gf-summary">{{ report.goal_fit.summary }}</p>
+      <div v-if="report.goal_fit.gaps.length" class="gf-block">
+        <h4>关键短板</h4>
+        <ul class="gf-gaps"><li v-for="(g, i) in report.goal_fit.gaps" :key="i">{{ g }}</li></ul>
+      </div>
+      <div v-if="report.goal_fit.actions.length" class="gf-block">
+        <h4>整改清单</h4>
+        <ol class="gf-actions"><li v-for="(a, i) in report.goal_fit.actions" :key="i">{{ a }}</li></ol>
+      </div>
+    </section>
+
     <!-- 合规 -->
     <section class="zone">
       <div class="zone-head">
@@ -468,6 +485,42 @@ const showSample = computed(
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* —— 目标契合 —— */
+.gf-summary {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--color-ink);
+}
+.gf-block {
+  margin-top: 12px;
+}
+.gf-block h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-ink-2);
+}
+.gf-gaps,
+.gf-actions {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gf-gaps li {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-ink-2);
+}
+.gf-actions li {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-accent-ink);
 }
 
 /* —— 响应式 —— */

@@ -13,7 +13,7 @@ from app.appraisal.hard import (
     score_viral,
 )
 from app.appraisal.intent import suggest_intent
-from app.appraisal.judge import judge_note_relevance, judge_soft, judge_vertical
+from app.appraisal.judge import judge_goal_fit, judge_note_relevance, judge_soft, judge_vertical
 
 NOW = datetime(2026, 6, 26, tzinfo=timezone.utc)
 
@@ -248,3 +248,77 @@ def test_suggest_intent_no_content_no_intent_generic():
     # 没素材、也没填意图 → 不调模型,直接通用题。
     out = suggest_intent(None, titles=[], tags=[], niche="", intent="")
     assert out["clear"] is False and len(out["questions"]) >= 1
+
+
+# —— 自诊断意图(purpose='self'):问的是目标/痛点/阶段,不是「想学什么」——
+
+def test_suggest_intent_self_generic_is_goal_pain_stage():
+    # 自诊断兜底题应是「目标/痛点/阶段」那套,而不是对标的「想学什么」。
+    out = suggest_intent(None, titles=[], tags=[], niche="", intent="", purpose="self")
+    qs = " ".join(q["q"] for q in out["questions"])
+    assert out["clear"] is False and len(out["questions"]) >= 1
+    assert "达成" in qs or "卡点" in qs or "阶段" in qs
+    assert "跟 TA 学" not in qs  # 不是对标的问法
+
+
+def test_suggest_intent_self_clear_skips(monkeypatch):
+    monkeypatch.setattr("app.appraisal.intent.create_json_response",
+                        lambda *a, **k: {"clear": True, "questions": []})
+    out = suggest_intent(None, titles=["港险科普"], tags=["保险"], niche="香港保险",
+                         intent="想把转化做起来,现在有流量没私域留资", purpose="self")
+    assert out["clear"] is True and out["questions"] == []
+
+
+# —— 目标契合(judge_goal_fit,诊断自己用)——
+
+def test_judge_goal_fit_parses(monkeypatch):
+    canned = {"score": 72, "grade": "良", "summary": "选题广但转化弱",
+              "gaps": ["几乎没有引导留资的钩子", "正文没有 CTA"],
+              "actions": ["每篇结尾加一句私域引导", "测评类挂资料领取"]}
+    monkeypatch.setattr("app.appraisal.judge.create_json_response", lambda *a, **k: canned)
+    out = judge_goal_fit("目标:提升转化;痛点:有流量没留资", "标题1\n标题2", settings=None)
+    assert out["score"] == 72 and out["grade"] == "良"
+    assert len(out["gaps"]) == 2 and len(out["actions"]) == 2
+
+
+def test_judge_goal_fit_fallback_empty_intent():
+    out = judge_goal_fit("", "notes", settings=None)
+    assert out["score"] == 50 and out["gaps"] == [] and out["actions"] == []
+
+
+def test_judge_goal_fit_fallback_on_error(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr("app.appraisal.judge.create_json_response", boom)
+    out = judge_goal_fit("目标:涨粉", "notes", settings=None)
+    assert out["score"] == 50 and out["grade"] == "待改进"
+
+
+def test_diagnose_self_with_intent_adds_goal_fit(monkeypatch):
+    from app.appraisal import service
+    from app.appraisal.judge import JudgedDim
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "compliance_scan",
+                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    monkeypatch.setattr(service, "build_account_content", lambda *a, **k: "brief")
+    monkeypatch.setattr(service, "judge_goal_fit", lambda intent, brief, s, timeout=None: {
+        "score": 65, "grade": "良", "summary": "离转化还差留资动作", "gaps": ["没CTA"], "actions": ["加私域引导"]})
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
+                  published_at=NOW, content_type="image", title="港险科普", body_text="正文") for i in range(10)]
+    rep = service._diagnose(None, blogger, posts, kind="self", intent="目标:提升转化", industry=None, db=None, tenant_id=0)
+    assert rep["goal_fit"] is not None and rep["goal_fit"]["score"] == 65
+    assert rep["soft"] == []  # 自诊断仍无软实力
+
+
+def test_diagnose_self_without_intent_no_goal_fit(monkeypatch):
+    from app.appraisal import service
+    from app.appraisal.judge import JudgedDim
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "compliance_scan",
+                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
+                  published_at=NOW, content_type="image", title="t", body_text="b") for i in range(10)]
+    rep = service._diagnose(None, blogger, posts, kind="self", intent="", industry=None, db=None, tenant_id=0)
+    assert rep["goal_fit"] is None  # 没填目标 → 不跑目标契合

@@ -27,15 +27,17 @@ class AppraiseCreate(BaseModel):
 
     blogger_id: int
     kind: str = Field(default="benchmark", pattern="^(benchmark|self)$")
-    intent: str = Field(default="", max_length=500)  # 对标意图(诊断别人时用,诊断自己忽略)
+    intent: str = Field(default="", max_length=500)  # 意图:对标=想学什么;自诊=目标/痛点/阶段
     industry: str | None = Field(default=None, max_length=50)  # 品类(触发合规红线,如「香港保险」)
 
 
 class AppraisalIntentSuggestRequest(BaseModel):
-    """对标分析·意图引导:看选中的博主在做什么,帮用户把「想学什么」问清楚。"""
+    """意图引导:看选中账号在做什么,帮用户把意图问清楚。
+    kind=benchmark → 对标别人(想学什么);kind=self → 诊断自己(目标/痛点/阶段)。"""
 
     blogger_id: int
     intent: str = Field(default="", max_length=500)
+    kind: str = Field(default="benchmark", pattern="^(benchmark|self)$")
 
 
 class AppraisalIntentQuestion(BaseModel):

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.account_audit.service import build_account_content
 from app.appraisal.hard import AccountStat, PostStat, hard_dimensions
-from app.appraisal.judge import judge_note_relevance, judge_soft, judge_vertical
+from app.appraisal.judge import judge_goal_fit, judge_note_relevance, judge_soft, judge_vertical
 from app.blogger_distillation.service import record_task_event, run_blogger_collection
 from app.compliance import compliance_scan
 from app.config import Settings
@@ -169,7 +169,10 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
 
     titles = [p.title or "" for p in posts]
     texts = [((p.title or "") + " " + (p.body_text or "")).strip() for p in posts]
-    brief = build_account_content(db, tenant_id, blogger.id, [p.id for p in posts]) if kind == "benchmark" else ""
+    has_intent = bool((intent or "").strip())
+    # brief(标题+摘要)给软实力(对标)和目标契合(自诊)用;自诊只有填了目标才需要。
+    need_brief = kind == "benchmark" or (kind == "self" and has_intent)
+    brief = build_account_content(db, tenant_id, blogger.id, [p.id for p in posts]) if need_brief else ""
     tmo = int(getattr(settings, "appraisal_llm_timeout", 90) or 90)
 
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -177,9 +180,12 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
         f_comp = pool.submit(compliance_scan, texts, blogger.platform, industry,
                              settings=settings, use_llm=True, timeout=tmo)
         f_soft = pool.submit(judge_soft, intent, brief, settings, timeout=tmo) if kind == "benchmark" else None
+        # 诊断自己 + 填了目标 → 跑「目标契合」(契合度评分 + 针对该目标的整改清单)。
+        f_goal = pool.submit(judge_goal_fit, intent, brief, settings, timeout=tmo) if (kind == "self" and has_intent) else None
         vertical = f_vertical.result()
         comp = f_comp.result()
         soft_dims: dict = f_soft.result() if f_soft else {}
+        goal_fit = f_goal.result() if f_goal else None
 
     hard = computed + [vertical]
     hard_score = round(mean(d.score for d in hard))
@@ -203,6 +209,7 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
         "hard_score": hard_score,
         "soft": [_dim_dict(d) for d in soft_dims.values()],
         "soft_score": soft_score,
+        "goal_fit": goal_fit,
         "compliance": comp,
         "verdict": verdict,
         "headline": verdict["text"],

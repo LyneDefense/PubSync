@@ -554,8 +554,9 @@ export function appraiseBlogger(payload: {
   })
 }
 
-// 对标分析·意图引导:看选中博主在做什么 → 判断意图够不够具体 → 不够给几道多选题。同步返回。
-export function suggestAppraisalIntent(payload: { blogger_id: number; intent?: string }) {
+// 意图引导:看选中账号在做什么 → 判断意图够不够具体 → 不够给几道多选题。同步返回。
+// kind=benchmark(默认,对标别人「想学什么」)/ self(诊断自己「目标·痛点·阶段」)。
+export function suggestAppraisalIntent(payload: { blogger_id: number; intent?: string; kind?: 'benchmark' | 'self' }) {
   return request<AppraisalIntentSuggestResult>('/account-audit/intent-suggest', {
     method: 'POST',
     body: JSON.stringify(payload)

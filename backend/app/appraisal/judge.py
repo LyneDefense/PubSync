@@ -121,6 +121,56 @@ def judge_soft(intent: str, notes_brief: str, settings: Settings, *, timeout: in
     }
 
 
+_GOAL_FIT_PROMPT = """你在给一个博主诊断**他自己的账号**,判断「当前内容离他的目标有多近」。
+
+他的目标 / 痛点 / 阶段:{intent}
+
+他账号近期的真实笔记(标题 + 摘要):
+{notes}
+
+任务:对照他的目标,判断账号现状的契合度,并给出**可执行**的整改清单(别说空话、别泛泛而谈)。
+只输出 JSON:
+{{
+ "score": 0-100(越贴近目标越高),
+ "grade": "优 / 良 / 待改进",
+ "summary": "一句话:现在离目标还差在哪",
+ "gaps": ["针对该目标的 2-4 条短板,每条引到具体现象"],
+ "actions": ["2-4 条具体可做的整改动作(可操作)"]
+}}"""
+
+
+def _goal_fit_fallback(msg: str) -> dict[str, Any]:
+    return {"score": 50, "grade": "待改进", "summary": msg, "gaps": [], "actions": []}
+
+
+def judge_goal_fit(intent: str, notes_brief: str, settings: Settings, *, timeout: int | None = None) -> dict[str, Any]:
+    """目标契合(诊断自己用):账号现状离用户的目标/痛点有多近 + 针对该目标的整改清单。
+
+    返回 {score, grade, summary, gaps[], actions[]}。失败 / 无意图 / 无笔记 → 中性兜底,绝不阻断诊断。
+    """
+    if not (intent or "").strip():
+        return _goal_fit_fallback("未填写诊断目标,无法做目标契合分析;在上方说清你的目标后重新诊断即可")
+    if not (notes_brief or "").strip():
+        return _goal_fit_fallback("没采到可用的笔记内容,无法做目标契合分析;请先多采集一些笔记")
+    prompt = _GOAL_FIT_PROMPT.format(intent=intent.strip(), notes=notes_brief.strip()[:7000])
+    try:
+        data = create_json_response(settings, prompt, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("目标契合判断失败,中性兜底:%s", exc)
+        return _goal_fit_fallback("模型判断超时或出错,暂给中性分,可稍后重试")
+    if not isinstance(data, dict):
+        return _goal_fit_fallback("模型返回格式异常,暂给中性分,可稍后重试")
+    gaps = [str(g).strip() for g in (data.get("gaps") or []) if str(g).strip()][:4]
+    actions = [str(a).strip() for a in (data.get("actions") or []) if str(a).strip()][:4]
+    return {
+        "score": _clamp_score(data.get("score")),
+        "grade": str(data.get("grade") or "").strip() or "待改进",
+        "summary": str(data.get("summary") or "—").strip(),
+        "gaps": gaps,
+        "actions": actions,
+    }
+
+
 _RELEVANCE_PROMPT = """你在帮一个博主判断「另一个账号的哪些笔记,跟他想学的方向相关」。
 他想学 / 想对标的方向:{intent}
 

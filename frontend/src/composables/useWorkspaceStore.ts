@@ -172,9 +172,16 @@ export const intentOthers = reactive<Record<number, string>>({}) // 每题「其
 export const intentChecked = ref(false) // 已对当前博主跑过意图引导(跑过才显示「开始诊断」)
 export const intentClear = ref(false) // 用户填的意图已够具体,无需出题
 export const intentLoading = ref(false)
-// 诊断我的账号(评估与提升):只选我的账号,kind=self(无软实力)。
-export const selfAppraiseForm = reactive<{ blogger_id: number }>({ blogger_id: 0 })
+// 诊断我的账号(评估与提升):只选我的账号,kind=self(无软实力,但有「目标契合」)。
+// 意图在这里是内向的——目标 / 痛点 / 阶段(跟对标的「想学什么」不同),复用同一套多选引导件但独立 state。
+export const selfAppraiseForm = reactive<{ blogger_id: number; intent: string }>({ blogger_id: 0, intent: '' })
 export const selfAppraisalRun = ref<AccountAuditRun | null>(null)
+export const selfIntentQuestions = ref<AppraisalIntentQuestion[]>([])
+export const selfIntentSelections = reactive<Record<number, string[]>>({})
+export const selfIntentOthers = reactive<Record<number, string>>({})
+export const selfIntentChecked = ref(false) // 已跑过意图引导(跑过才显示「开始诊断」)
+export const selfIntentClear = ref(false) // 用户填的目标已够具体,无需出题
+export const selfIntentLoading = ref(false)
 // 我的账号(account_type=mine)与对标账号拆分。
 export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
 export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
@@ -2155,6 +2162,43 @@ export function resetIntentGuide() {
   for (const k of Object.keys(intentOthers)) delete intentOthers[Number(k)]
 }
 
+// —— 意图引导(诊断我的账号:目标 / 痛点 / 阶段)——
+export function resetSelfIntentGuide() {
+  selfIntentQuestions.value = []
+  selfIntentChecked.value = false
+  selfIntentClear.value = false
+  for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
+  for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
+}
+
+// 选我的账号后(可选已填目标)→ 看我自己在做什么,出几道「目标/痛点/阶段」多选题(够清晰则不出题)。
+export async function fetchSelfIntentSuggestions() {
+  if (!selfAppraiseForm.blogger_id) {
+    showMessage('请先选择我的账号', true)
+    return
+  }
+  selfIntentLoading.value = true
+  try {
+    const res = await suggestAppraisalIntent({ blogger_id: selfAppraiseForm.blogger_id, intent: selfAppraiseForm.intent, kind: 'self' })
+    selfIntentClear.value = res.clear
+    selfIntentQuestions.value = res.questions || []
+    for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
+    for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
+    selfIntentQuestions.value.forEach((_, i) => {
+      selfIntentSelections[i] = []
+      selfIntentOthers[i] = ''
+    })
+    selfIntentChecked.value = true
+  } catch (err) {
+    showMessage(err instanceof Error ? err.message : '意图引导失败,可直接诊断', true)
+    selfIntentClear.value = true
+    selfIntentQuestions.value = []
+    selfIntentChecked.value = true
+  } finally {
+    selfIntentLoading.value = false
+  }
+}
+
 // 选博主后(可选已填意图)→ 看 TA 在做什么,判断意图够不够具体;不够则给几道多选题。
 export async function fetchIntentSuggestions() {
   if (!appraiseForm.blogger_id) {
@@ -2184,18 +2228,29 @@ export async function fetchIntentSuggestions() {
   }
 }
 
-// 把「用户填的意图 + 各题所选 / 补充」拼成最终对标意图。
-function buildBenchmarkIntent(): string {
+// 把「用户填的意图 + 各题所选 / 补充」拼成一句意图。对标(想学什么)与自诊(目标/痛点/阶段)共用。
+function composeIntent(
+  typed: string,
+  questions: AppraisalIntentQuestion[],
+  selections: Record<number, string[]>,
+  others: Record<number, string>
+): string {
   const parts: string[] = []
-  const typed = appraiseForm.intent.trim()
-  if (typed) parts.push(typed)
-  intentQuestions.value.forEach((q, i) => {
-    const picked = [...(intentSelections[i] || [])]
-    const other = (intentOthers[i] || '').trim()
+  const t = (typed || '').trim()
+  if (t) parts.push(t)
+  questions.forEach((q, i) => {
+    const picked = [...(selections[i] || [])]
+    const other = (others[i] || '').trim()
     if (other) picked.push(other)
     if (picked.length) parts.push(`${q.q.replace(/[?？]\s*$/, '')}:${picked.join('、')}`)
   })
   return parts.join(';')
+}
+function buildBenchmarkIntent(): string {
+  return composeIntent(appraiseForm.intent, intentQuestions.value, intentSelections, intentOthers)
+}
+function buildSelfIntent(): string {
+  return composeIntent(selfAppraiseForm.intent, selfIntentQuestions.value, selfIntentSelections, selfIntentOthers)
 }
 
 export async function handleRunAppraisal() {
@@ -2223,13 +2278,14 @@ export async function handleRunAppraisal() {
   )
 }
 
-// 诊断我的账号(评估与提升):kind=self,无软实力、无意图。
+// 诊断我的账号(评估与提升):kind=self,无软实力;意图=目标/痛点/阶段,驱动「目标契合」专项。
 export async function handleRunSelfAppraisal() {
   if (!selfAppraiseForm.blogger_id) {
     showMessage('请先选择我的账号', true)
     return
   }
   selfAppraisalRun.value = null
+  const intent = buildSelfIntent()
   await runTaskAction(
     'audit',
     '已提交账号诊断任务（会自动确保 ≥20 篇笔记）',
@@ -2237,7 +2293,7 @@ export async function handleRunSelfAppraisal() {
       appraiseBlogger({
         blogger_id: selfAppraiseForm.blogger_id,
         kind: 'self',
-        intent: '',
+        intent,
         industry: null
       }),
     async () => {

@@ -101,6 +101,7 @@ def suggest_appraisal_intent_endpoint(
         tags=tags,
         niche=blogger.niche or "",
         intent=payload.intent,
+        purpose=payload.kind,
         timeout=settings.appraisal_llm_timeout,
     )
     return AppraisalIntentSuggestResult(
