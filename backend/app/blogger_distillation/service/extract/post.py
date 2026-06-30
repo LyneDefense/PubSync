@@ -78,27 +78,35 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     }
 
 
+def resolve_note_card(container: dict[str, Any]) -> dict[str, Any]:
+    """从详情容器里取出真正的「笔记卡」。兼容三种壳:
+    - app_v2 / web_v3:`noteCard` / `note_card` / `note`(dict);
+    - app/get_note_info:`note_list` / `notes`(list,取第 0 条)—— 这层壳之前没处理,
+      导致图文笔记的 `desc` 不在容器顶层,`first_str` 取不到 → body_text 全空。
+    取到子卡后,把外层的 id / token 并进来(子卡可能缺这些)。都没有则原样返回容器。"""
+    note_card = container.get("noteCard") or container.get("note_card") or container.get("note")
+    if not isinstance(note_card, dict):
+        for list_key in ("note_list", "notes"):
+            seq = container.get(list_key)
+            if isinstance(seq, list) and seq and isinstance(seq[0], dict):
+                note_card = seq[0]
+                break
+    if not isinstance(note_card, dict):
+        return container
+    merged = dict(note_card)
+    for key in ("id", "note_id", "xsecToken", "xsec_token"):
+        if key in container and key not in merged:
+            merged[key] = container[key]
+    return merged
+
+
 def normalize_detail_payload(payload: Any, fallback: dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload, list) and payload:
         first = payload[0]
         if isinstance(first, dict):
-            note_card = first.get("noteCard") or first.get("note_card") or first.get("note")
-            if isinstance(note_card, dict):
-                merged = dict(note_card)
-                for key in ("id", "note_id", "xsecToken", "xsec_token"):
-                    if key in first and key not in merged:
-                        merged[key] = first[key]
-                return merged
-            return first
+            return resolve_note_card(first)
     if isinstance(payload, dict):
-        note_card = payload.get("noteCard") or payload.get("note_card") or payload.get("note")
-        if isinstance(note_card, dict):
-            merged = dict(note_card)
-            for key in ("id", "note_id", "xsecToken", "xsec_token"):
-                if key in payload and key not in merged:
-                    merged[key] = payload[key]
-            return merged
-        return payload
+        return resolve_note_card(payload)
     return fallback
 
 

@@ -1,6 +1,7 @@
 import pytest
 
 from app.blogger_distillation.service.collection import select_targets
+from app.blogger_distillation.service.extract.post import normalize_post
 from app.blogger_distillation.tikhub_client import XhsPostCandidate
 from app.blogger_distillation.tikhub_client.base import TikHubError
 from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
@@ -28,6 +29,30 @@ def test_select_targets_latest_keeps_order():
 def test_select_targets_fetch_all():
     pool = [_cand("a", 10), _cand("b", 500)]
     assert len(select_targets(pool, "top_liked", True, 1)) == 2
+
+
+def test_normalize_post_image_note_list_shape():
+    # app/get_note_info 的真实壳:正文在 data.data[0].note_list[0].desc。
+    # 回归前这层 note_list 壳没被识别,导致图文 body_text 全空。
+    detail = {"data": {"data": [{"note_list": [{"desc": "图文正文内容", "title": "图文标题"}]}]}}
+    out = normalize_post(_cand("img1", 10), detail)
+    assert out["body_text"] == "图文正文内容"
+    assert out["title"] == "图文标题"
+    assert out["content_type"] == "image"
+
+
+def test_normalize_post_note_list_directly_under_data():
+    detail = {"data": {"note_list": [{"desc": "另一种壳的正文"}]}}
+    out = normalize_post(_cand("img2", 10), detail)
+    assert out["body_text"] == "另一种壳的正文"
+
+
+def test_normalize_post_notecard_shape_still_works():
+    # 既有 noteCard 壳(app_v2 / web_v3)不能因修复而回归。
+    detail = {"data": {"noteCard": {"desc": "卡片正文", "title": "卡片标题"}}}
+    out = normalize_post(_cand("nc1", 10), detail)
+    assert out["body_text"] == "卡片正文"
+    assert out["title"] == "卡片标题"
 
 
 def test_parse_xhs_note_link_explore():
