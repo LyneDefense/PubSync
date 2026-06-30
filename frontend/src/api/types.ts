@@ -854,3 +854,14 @@ export interface AppraisalReport {
   low_relevance?: boolean
   notes_relevance?: { title: string; relevant: boolean; reason: string }[]
 }
+
+// 对标分析·意图引导:选博主后,系统看 TA 在做什么 → 给几道多选题帮用户明确「想学什么」。
+export interface AppraisalIntentQuestion {
+  q: string
+  options: string[]
+}
+
+export interface AppraisalIntentSuggestResult {
+  clear: boolean // 用户填的意图已够具体 → 前端直接放行诊断,不展示问题
+  questions: AppraisalIntentQuestion[]
+}

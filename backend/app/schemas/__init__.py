@@ -23,6 +23,9 @@ from app.schemas.audit import (
     AccountAuditReport,
     AccountAuditRunRead,
     AppraiseCreate,
+    AppraisalIntentQuestion,
+    AppraisalIntentSuggestRequest,
+    AppraisalIntentSuggestResult,
     SelfDiagnoseCreate,
 )
 from app.schemas.benchmark import (
@@ -121,6 +124,9 @@ __all__ = [
     "AccountAuditReport",
     "AccountAuditRunRead",
     "AppraiseCreate",
+    "AppraisalIntentQuestion",
+    "AppraisalIntentSuggestRequest",
+    "AppraisalIntentSuggestResult",
     "SelfDiagnoseCreate",
     "BenchmarkIntent",
     "CandidateScore",

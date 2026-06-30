@@ -4,6 +4,7 @@
 """
 
 from app.appraisal.hard import AccountStat, HardDim, PostStat, hard_dimensions
+from app.appraisal.intent import suggest_intent
 from app.appraisal.judge import JudgedDim, judge_soft, judge_vertical
 from app.appraisal.service import run_appraisal
 
@@ -15,5 +16,6 @@ __all__ = [
     "JudgedDim",
     "judge_vertical",
     "judge_soft",
+    "suggest_intent",
     "run_appraisal",
 ]

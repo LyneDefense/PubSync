@@ -16,7 +16,6 @@ import SocialCollectView from './SocialCollectView.vue'
 import SocialDistillView from './SocialDistillView.vue'
 import SocialAssetsView from './SocialAssetsView.vue'
 import MyAccountsView from './MyAccountsView.vue'
-import SocialAuditView from './SocialAuditView.vue'
 import SelfDiagnosisView from './SelfDiagnosisView.vue'
 import BenchmarkAnalysisView from './BenchmarkAnalysisView.vue'
 import SocialPackagesView from './SocialPackagesView.vue'
@@ -77,8 +76,6 @@ import {
   <SocialAssetsView />
 
   <MyAccountsView />
-
-  <SocialAuditView />
 
   <SelfDiagnosisView />
 

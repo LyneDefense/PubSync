@@ -31,6 +31,23 @@ class AppraiseCreate(BaseModel):
     industry: str | None = Field(default=None, max_length=50)  # 品类(触发合规红线,如「香港保险」)
 
 
+class AppraisalIntentSuggestRequest(BaseModel):
+    """对标分析·意图引导:看选中的博主在做什么,帮用户把「想学什么」问清楚。"""
+
+    blogger_id: int
+    intent: str = Field(default="", max_length=500)
+
+
+class AppraisalIntentQuestion(BaseModel):
+    q: str
+    options: list[str] = Field(default_factory=list)
+
+
+class AppraisalIntentSuggestResult(BaseModel):
+    clear: bool  # 用户填的意图是否已够具体(够则前端直接放行诊断,不展示问题)
+    questions: list[AppraisalIntentQuestion] = Field(default_factory=list)
+
+
 class AccountAuditRunRead(BaseModel):
     id: int
     tenant_id: int

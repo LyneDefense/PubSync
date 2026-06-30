@@ -1,10 +1,10 @@
 import type {
-  AccountAuditCreate,
   AccountAuditRun,
   AdminTask,
   AdminTenant,
   AdminUser,
   AdminUserCreate,
+  AppraisalIntentSuggestResult,
   AppSettingRead,
   Article,
   ArticleUpdate,
@@ -38,7 +38,6 @@ import type {
   OperationTaskEvent,
   SocialPlatform,
   Tenant,
-  SelfDiagnoseCreate,
   WorkspaceConfig,
   WorkspaceConfigUpdate,
   DashboardAccount,
@@ -532,20 +531,6 @@ export function confirmSkillTrainingRun(runId: number, adopt: boolean) {
   })
 }
 
-export function startAccountAuditTask(payload: AccountAuditCreate) {
-  return request<OperationTask>('/account-audit', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
-export function startSelfDiagnoseTask(payload: SelfDiagnoseCreate) {
-  return request<OperationTask>('/account-audit/self', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
 export function listAccountAuditRuns(platform: SocialPlatform = 'xhs', kind?: 'benchmark' | 'self') {
   const qs = kind ? `&kind=${kind}` : ''
   return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}${qs}`)
@@ -564,6 +549,14 @@ export function appraiseBlogger(payload: {
   industry?: string | null
 }) {
   return request<OperationTask>('/account-audit/appraise', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+// 对标分析·意图引导:看选中博主在做什么 → 判断意图够不够具体 → 不够给几道多选题。同步返回。
+export function suggestAppraisalIntent(payload: { blogger_id: number; intent?: string }) {
+  return request<AppraisalIntentSuggestResult>('/account-audit/intent-suggest', {
     method: 'POST',
     body: JSON.stringify(payload)
   })

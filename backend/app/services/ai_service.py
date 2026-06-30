@@ -93,14 +93,17 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
     return public_path
 
 
-def create_json_response(settings: Settings, prompt: str, model: str | None = None) -> dict[str, Any]:
+def create_json_response(
+    settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None
+) -> dict[str, Any]:
+    """timeout(秒):None → 默认 180;分类型短任务可传更短值,卡住快速失败而非干等。"""
     provider = settings.llm_provider.lower()
     if provider == "minimax":
-        text = minimax_text(settings, prompt, model=model)
+        text = minimax_text(settings, prompt, model=model, timeout=timeout)
     elif provider == "openai":
-        text = openai_text(settings, prompt, model=model)
+        text = openai_text(settings, prompt, model=model, timeout=timeout)
     elif provider in ("claude", "anthropic"):
-        text = anthropic_text(settings, prompt, model=model)
+        text = anthropic_text(settings, prompt, model=model, timeout=timeout)
     else:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
@@ -130,18 +133,18 @@ def create_json_response(settings: Settings, prompt: str, model: str | None = No
     return parsed
 
 
-def openai_text(settings: Settings, prompt: str, model: str | None = None) -> str:
+def openai_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
     payload: dict[str, Any] = {
         "model": model or settings.openai_text_model,
         "input": prompt,
         "text": {"format": {"type": "json_object"}},
     }
-    data = openai_post(settings=settings, path="/responses", payload=payload, timeout=180)
+    data = openai_post(settings=settings, path="/responses", payload=payload, timeout=timeout or 180)
     record_text_usage("openai", payload["model"], data)
     return extract_openai_response_text(data)
 
 
-def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> str:
+def minimax_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
     if not settings.minimax_api_key:
         raise AIServiceError("未配置 MINIMAX_API_KEY")
 
@@ -164,7 +167,7 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> s
     }
     if supports_minimax_response_format(model):
         payload["response_format"] = {"type": "json_object"}
-    data = minimax_post(settings, "/chat/completions", payload, timeout=180)
+    data = minimax_post(settings, "/chat/completions", payload, timeout=timeout or 180)
     record_text_usage("minimax", model, data)
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
@@ -177,7 +180,7 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None) -> s
     raise AIServiceError(f"MiniMax 文本响应中没有可解析内容：{data}")
 
 
-def anthropic_text(settings: Settings, prompt: str, model: str | None = None) -> str:
+def anthropic_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
     if not settings.anthropic_api_key:
         raise AIServiceError("未配置 ANTHROPIC_API_KEY")
     model = model or settings.anthropic_text_model
@@ -190,7 +193,7 @@ def anthropic_text(settings: Settings, prompt: str, model: str | None = None) ->
         ),
         "messages": [{"role": "user", "content": prompt}],
     }
-    data = anthropic_post(settings, "/v1/messages", payload, timeout=180)
+    data = anthropic_post(settings, "/v1/messages", payload, timeout=timeout or 180)
     record_text_usage("anthropic", model, data)
     content = data.get("content")
     if isinstance(content, list):

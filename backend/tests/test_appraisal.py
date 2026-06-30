@@ -12,6 +12,7 @@ from app.appraisal.hard import (
     score_reach,
     score_viral,
 )
+from app.appraisal.intent import suggest_intent
 from app.appraisal.judge import judge_note_relevance, judge_soft, judge_vertical
 
 NOW = datetime(2026, 6, 26, tzinfo=timezone.utc)
@@ -139,7 +140,7 @@ class _Obj:
 def test_diagnose_self_skips_soft(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
-    monkeypatch.setattr(service, "judge_vertical", lambda titles, s: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
     monkeypatch.setattr(service, "compliance_scan",
                         lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
     blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
@@ -179,11 +180,11 @@ def test_judge_note_relevance_empty_intent_all_relevant():
 def test_diagnose_benchmark_fit_uses_relevance_ratio(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
-    monkeypatch.setattr(service, "judge_vertical", lambda titles, s: JudgedDim("vertical", "垂直度", 80, "聚焦"))
+    monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
     monkeypatch.setattr(service, "compliance_scan",
                         lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
     monkeypatch.setattr(service, "build_account_content", lambda *a, **k: "brief")
-    monkeypatch.setattr(service, "judge_soft", lambda intent, brief, s: {
+    monkeypatch.setattr(service, "judge_soft", lambda intent, brief, s, timeout=None: {
         "fit": JudgedDim("fit", "对路", 50, "原始理由"),
         "learnable": JudgedDim("learnable", "可学", 70, ""),
         "distillable": JudgedDim("distillable", "可蒸馏", 60, ""),
@@ -196,3 +197,54 @@ def test_diagnose_benchmark_fit_uses_relevance_ratio(monkeypatch):
     fit = next(d for d in rep["soft"] if d["key"] == "fit")
     assert fit["score"] == 80  # 对路被相关占比覆盖
     assert "80%" in fit["detail"]
+
+
+# —— 意图引导(suggest_intent):意图够清晰不出题,否则给贴博主的多选题 ——
+
+def test_suggest_intent_clear_skips_questions(monkeypatch):
+    monkeypatch.setattr("app.appraisal.intent.create_json_response",
+                        lambda *a, **k: {"clear": True, "questions": [{"q": "x", "options": ["a", "b"]}]})
+    out = suggest_intent(None, titles=["港险科普"], tags=["保险"], niche="香港保险",
+                         intent="想学他把港险讲专业、能涨粉的选题和钩子")
+    assert out["clear"] is True and out["questions"] == []
+
+
+def test_suggest_intent_returns_questions(monkeypatch):
+    canned = {"clear": False, "questions": [
+        {"q": "你最想学哪方面?", "options": ["选题套路", "涨粉钩子", "口播形式"]},
+        {"q": "目标?", "options": ["涨粉", "变现"]},
+    ]}
+    monkeypatch.setattr("app.appraisal.intent.create_json_response", lambda *a, **k: canned)
+    out = suggest_intent(None, titles=["港险科普"], tags=["保险"], niche="香港保险", intent="")
+    assert out["clear"] is False
+    assert len(out["questions"]) == 2 and out["questions"][0]["options"][0] == "选题套路"
+
+
+def test_suggest_intent_drops_bad_questions_then_generic(monkeypatch):
+    # 选项不足 2 个的题被丢掉;丢空后回落通用题,流程不断。
+    monkeypatch.setattr("app.appraisal.intent.create_json_response",
+                        lambda *a, **k: {"clear": False, "questions": [{"q": "x", "options": ["只有一个"]}]})
+    out = suggest_intent(None, titles=["t"], tags=[], niche="", intent="")
+    assert out["clear"] is False and len(out["questions"]) >= 1
+
+
+def test_suggest_intent_llm_fail_no_intent_gives_generic(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr("app.appraisal.intent.create_json_response", boom)
+    out = suggest_intent(None, titles=["t"], tags=[], niche="", intent="")
+    assert out["clear"] is False and len(out["questions"]) >= 1
+
+
+def test_suggest_intent_llm_fail_with_intent_passes(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr("app.appraisal.intent.create_json_response", boom)
+    out = suggest_intent(None, titles=["t"], tags=[], niche="", intent="想学他的选题和钩子写法")
+    assert out["clear"] is True and out["questions"] == []
+
+
+def test_suggest_intent_no_content_no_intent_generic():
+    # 没素材、也没填意图 → 不调模型,直接通用题。
+    out = suggest_intent(None, titles=[], tags=[], niche="", intent="")
+    assert out["clear"] is False and len(out["questions"]) >= 1

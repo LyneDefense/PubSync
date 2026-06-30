@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from statistics import mean
 from typing import Any
 
@@ -53,6 +54,7 @@ def run_appraisal(
     per_round = int(getattr(settings, "appraisal_sample_size", 30) or 30)
     target_relevant = int(getattr(settings, "appraisal_target_relevant", 10) or 10)
     max_rounds = int(getattr(settings, "appraisal_max_rounds", 2) or 2)
+    tmo = int(getattr(settings, "appraisal_llm_timeout", 90) or 90)
     use_relevance = kind == "benchmark" and bool(intent.strip())
 
     run = AccountAuditRun(
@@ -91,7 +93,7 @@ def run_appraisal(
             new_posts = fetched[len(examined):]
             if not new_posts:
                 break
-            rel = (judge_note_relevance(intent, [p.title or "" for p in new_posts], settings)
+            rel = (judge_note_relevance(intent, [p.title or "" for p in new_posts], settings, timeout=tmo)
                    if use_relevance else [{"relevant": True, "reason": ""} for _ in new_posts])
             examined.extend(zip(new_posts, rel))
             if not use_relevance or sum(1 for _, r in examined if r.get("relevant", True)) >= target_relevant:
@@ -149,7 +151,12 @@ def _active_count(db: Session, tenant_id: int, blogger_id: int) -> int:
 
 
 def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id, relevance_ratio=None) -> dict[str, Any]:
-    """把硬实力(算)+ 垂直度/软实力(模型)+ 合规 串成三区报告。"""
+    """把硬实力(算)+ 垂直度/软实力(模型)+ 合规 串成三区报告。
+
+    三个判定型大模型调用(垂直度 / 软实力 / 合规语义)互不依赖,并行跑 →
+    墙钟从「逐个相加」降到「最慢的那个」;各自带可配读超时,卡住快速兜底而非干等。
+    软实力要的 brief 走 db,提前在并行外建好(线程里只读 settings + 入参,不碰 db)。
+    """
     post_stats = [
         PostStat(likes=p.like_count or 0, collects=p.favorite_count or 0, comments=p.comment_count or 0,
                  published_at=p.published_at, content_type=p.content_type or "image")
@@ -158,24 +165,33 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
     total_lc = sum((p.like_count or 0) + (p.favorite_count or 0) for p in posts)
     acc = AccountStat(follower_count=blogger.follower_count or 0,
                       note_total=blogger.note_total or len(posts), total_like_collect=total_lc)
+    computed = hard_dimensions(acc, post_stats)  # 4 个纯算维度,不花模型
 
-    hard = hard_dimensions(acc, post_stats) + [judge_vertical([p.title or "" for p in posts], settings)]
+    titles = [p.title or "" for p in posts]
+    texts = [((p.title or "") + " " + (p.body_text or "")).strip() for p in posts]
+    brief = build_account_content(db, tenant_id, blogger.id, [p.id for p in posts]) if kind == "benchmark" else ""
+    tmo = int(getattr(settings, "appraisal_llm_timeout", 90) or 90)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_vertical = pool.submit(judge_vertical, titles, settings, timeout=tmo)
+        f_comp = pool.submit(compliance_scan, texts, blogger.platform, industry,
+                             settings=settings, use_llm=True, timeout=tmo)
+        f_soft = pool.submit(judge_soft, intent, brief, settings, timeout=tmo) if kind == "benchmark" else None
+        vertical = f_vertical.result()
+        comp = f_comp.result()
+        soft_dims: dict = f_soft.result() if f_soft else {}
+
+    hard = computed + [vertical]
     hard_score = round(mean(d.score for d in hard))
 
-    soft_dims: dict = {}
     soft_score = None
     if kind == "benchmark":
-        brief = build_account_content(db, tenant_id, blogger.id, [p.id for p in posts])
-        soft_dims = judge_soft(intent, brief, settings)
         # 对路改用「相关占比」(数据驱动):他最近内容有多少落在你的方向上;避免"过滤后再判对路"的循环。
         if relevance_ratio is not None and "fit" in soft_dims:
             soft_dims["fit"].score = max(0, min(100, round(relevance_ratio)))
             soft_dims["fit"].detail = (f"最近内容里约 {round(relevance_ratio)}% 落在你想学的方向上。"
                                        + (soft_dims["fit"].detail or ""))
         soft_score = round(mean(d.score for d in soft_dims.values())) if soft_dims else None
-
-    texts = [((p.title or "") + " " + (p.body_text or "")).strip() for p in posts]
-    comp = compliance_scan(texts, blogger.platform, industry, settings=settings, use_llm=True)
 
     verdict = _verdict(kind, hard_score, soft_score, comp)
     return {

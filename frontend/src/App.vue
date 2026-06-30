@@ -181,6 +181,7 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'my-accounts' }" @click="goTab('my-accounts')"><NavIcon name="user" />我的账号<span class="side-tag">可选</span></button>
           <p class="side-group">对标蒸馏</p>
           <button type="button" :class="{ active: currentSocialTab === 'find' }" @click="goTab('find')"><NavIcon name="search" />找对标博主</button>
+          <button type="button" :class="{ active: currentSocialTab === 'analysis' }" @click="goTab('analysis')"><NavIcon name="target" />对标分析<span class="side-tag side-tag-new">新</span></button>
           <button type="button" :class="{ active: currentSocialTab === 'assets' }" @click="goTab('assets')"><NavIcon name="folder" />博主资产</button>
           <button type="button" :class="{ active: currentSocialTab === 'collect' }" @click="goTab('collect')"><NavIcon name="download" />数据采集</button>
           <button type="button" :class="{ active: currentSocialTab === 'distill' }" @click="goTab('distill')"><NavIcon name="funnel" />提炼 Skill</button>
@@ -189,9 +190,7 @@ onUnmounted(() => {
           <button type="button" :class="{ active: currentSocialTab === 'freecreate' }" @click="goTab('freecreate')"><NavIcon name="edit" />自由创作</button>
           <button type="button" :class="{ active: currentSocialTab === 'history' }" @click="goTab('history')"><NavIcon name="send" />发布草稿</button>
           <p class="side-group">评估与提升</p>
-          <button type="button" :class="{ active: currentSocialTab === 'analysis' }" @click="goTab('analysis')"><NavIcon name="target" />对标分析<span class="side-tag side-tag-new">新</span></button>
-          <button type="button" :class="{ active: currentSocialTab === 'audit' }" @click="goTab('audit')"><NavIcon name="target" />对标诊断</button>
-          <button type="button" :class="{ active: currentSocialTab === 'self-diagnosis' }" @click="goTab('self-diagnosis')"><NavIcon name="pulse" />诊断我的</button>
+          <button type="button" :class="{ active: currentSocialTab === 'self-diagnosis' }" @click="goTab('self-diagnosis')"><NavIcon name="pulse" />诊断我的账号</button>
           <button type="button" :class="{ active: currentSocialTab === 'effects' }" @click="goTab('effects')"><NavIcon name="chart" />效果看板<span class="side-tag side-tag-new">新</span></button>
           <button type="button" :class="{ active: currentSocialTab === 'skill-optimize' }" @click="goTab('skill-optimize')"><NavIcon name="arrow-up" />Skill 优化<span class="side-tag side-tag-new">新</span></button>
           <hr class="side-sep" />

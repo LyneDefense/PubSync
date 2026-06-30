@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     appraisal_sample_size: int = 30
     appraisal_target_relevant: int = 10
     appraisal_max_rounds: int = 2
+    # 诊断里的判定型大模型调用(垂直度/软实力/合规语义/意图引导)单独的读超时(秒)。
+    # 比默认 180 短:这些是分类活,正常 ~20s,卡过这个值基本是模型挂住了 → 快速兜底,不干等。
+    appraisal_llm_timeout: int = 90
     blogger_auto_distill_top_n: int = 30
     # 候选翻页:动态翻页的安全上限(最多翻这么多条候选,防超大号无限翻);只翻列表不抓详情,成本低。
     # 最新优先:翻到"没采过的够 N 条"就停;高赞优先:翻到底或到此上限再排序。系统决定,用户端不暴露。

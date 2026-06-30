@@ -31,8 +31,7 @@ import {
   collectBloggerByUrls,
   appraiseBlogger,
   listAccountAuditRuns,
-  startAccountAuditTask,
-  startSelfDiagnoseTask,
+  suggestAppraisalIntent,
   confirmBloggerRun,
   createBlogger,
   deleteBlogger,
@@ -85,6 +84,7 @@ import {
 } from '../api'
 import type {
   AccountAuditRun,
+  AppraisalIntentQuestion,
   AppraisalReport,
   Article,
   ArticleUpdate,
@@ -118,7 +118,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'self-diagnose' | 'recommend' | 'optimize'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'optimize'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -126,7 +126,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'audit' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -155,27 +155,24 @@ export const bloggerRuns = ref<BloggerDistillationRun[]>([])
 export const bloggerSnapshots = ref<BloggerSnapshot[]>([])
 export const selectedPostIds = ref<number[]>([])
 export const activeNotePostId = ref<number | null>(null)
-export const accountAuditRuns = ref<AccountAuditRun[]>([])
-export const selectedAuditRunId = ref<number | null>(null)
-export const selfDiagnoseRuns = ref<AccountAuditRun[]>([])
-export const selectedSelfRunId = ref<number | null>(null)
-// 对标诊断:选我的账号 + 对标账号,各自勾选要比的内容(post id)。
-export const auditForm = reactive<{
-  my_blogger_id: number
-  my_post_ids: number[]
-  benchmark_blogger_id: number
-  benchmark_post_ids: number[]
-}>({ my_blogger_id: 0, my_post_ids: [], benchmark_blogger_id: 0, benchmark_post_ids: [] })
-// 诊断我的:只选我的账号 + 勾选内容。
-export const selfForm = reactive<{ my_blogger_id: number; my_post_ids: number[] }>({ my_blogger_id: 0, my_post_ids: [] })
-// 博主诊断(对标分析):诊断一个号(对标库博主或我的账号)→ 硬/软/合规 三区报告。
-export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark' | 'self'; intent: string; industry: string }>({
+// 对标分析(诊断别人):诊断一个对标库博主 → 硬/软/合规 三区报告。kind 固定 benchmark。
+export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark'; intent: string; industry: string }>({
   blogger_id: 0,
   kind: 'benchmark',
   intent: '',
   industry: ''
 })
 export const appraisalRun = ref<AccountAuditRun | null>(null)
+// 意图引导:选博主后看 TA 在做什么 → 给几道多选题帮用户明确「想学什么」(意图够清晰则不出题)。
+export const intentQuestions = ref<AppraisalIntentQuestion[]>([])
+export const intentSelections = reactive<Record<number, string[]>>({}) // 每题选了哪些选项
+export const intentOthers = reactive<Record<number, string>>({}) // 每题「其他」填的内容
+export const intentChecked = ref(false) // 已对当前博主跑过意图引导(跑过才显示「开始诊断」)
+export const intentClear = ref(false) // 用户填的意图已够具体,无需出题
+export const intentLoading = ref(false)
+// 诊断我的账号(评估与提升):只选我的账号,kind=self(无软实力)。
+export const selfAppraiseForm = reactive<{ blogger_id: number }>({ blogger_id: 0 })
+export const selfAppraisalRun = ref<AccountAuditRun | null>(null)
 // 我的账号(account_type=mine)与对标账号拆分。
 export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
 export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
@@ -252,7 +249,6 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   distill: 0,
   'xhs-package': 0,
   audit: 0,
-  'self-diagnose': 0,
   recommend: 0,
   optimize: 0,
 })
@@ -805,7 +801,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'self-diagnose', 'recommend', 'optimize'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'recommend', 'optimize'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 // 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
 export const isOnTaskHome = computed(
@@ -833,8 +829,7 @@ const TASK_NAME_MAP: Record<string, string> = {
   distill: '提炼方法论',
   'xhs-package': '生成创作内容',
   'xhs-topic': '生成选题',
-  audit: '对标诊断',
-  'self-diagnose': '诊断我的账号',
+  audit: '账号诊断',
   recommend: '智能找对标',
   optimize: '优化 Skill',
 }
@@ -1278,8 +1273,8 @@ export async function loadAll() {
     resultCollectionFilterId.value = null
   }
   await refreshSelectedBlogger()
-  await refreshAccountAuditRuns()
-  await refreshSelfDiagnoseRuns()
+  await refreshAppraisalRun()
+  await refreshSelfAppraisalRun()
 }
 
 export function setWorkspaceConfig(config: WorkspaceConfig) {
@@ -2074,14 +2069,6 @@ export function qualityTone(grade: string): string {
   return 'neutral'
 }
 
-// —— 账号诊断(对标诊断 / 诊断我的) ——
-export const selectedAuditRun = computed(
-  () => accountAuditRuns.value.find((run) => run.id === selectedAuditRunId.value) || null
-)
-export const selectedSelfRun = computed(
-  () => selfDiagnoseRuns.value.find((run) => run.id === selectedSelfRunId.value) || null
-)
-
 // 账号内容缓存:有缓存就不重拉;force=true 强制重拉。
 export async function loadAccountPosts(id: number, force = false) {
   if (!id) return
@@ -2116,86 +2103,7 @@ export function openCreateMyAccountModal() {
   bloggerModalAccountType.value = 'mine'
 }
 
-export interface AuditReport {
-  dimensions: { name: string; benchmark: string; mine: string; gap: string }[]
-  strengths: string[]
-  gaps: string[]
-  actions: string[]
-  conclusion: string
-  score: number | null
-}
-
-export function auditRunReport(run: AccountAuditRun | null | undefined): AuditReport {
-  const empty: AuditReport = { dimensions: [], strengths: [], gaps: [], actions: [], conclusion: '', score: null }
-  if (!run?.report_json) return empty
-  try {
-    const parsed = JSON.parse(run.report_json)
-    return {
-      dimensions: Array.isArray(parsed.dimensions) ? parsed.dimensions : [],
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-      conclusion: typeof parsed.conclusion === 'string' ? parsed.conclusion : '',
-      score: typeof parsed.score === 'number' ? parsed.score : null
-    }
-  } catch {
-    return empty
-  }
-}
-
-export async function refreshAccountAuditRuns() {
-  try {
-    accountAuditRuns.value = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')
-  } catch {
-    accountAuditRuns.value = []
-  }
-}
-
-export async function refreshSelfDiagnoseRuns() {
-  try {
-    selfDiagnoseRuns.value = await listAccountAuditRuns(currentSocialPlatform.value, 'self')
-  } catch {
-    selfDiagnoseRuns.value = []
-  }
-}
-
-export async function handleRunAccountAudit() {
-  if (!auditForm.my_blogger_id) {
-    showMessage('请先选择我的账号', true)
-    return
-  }
-  if (!auditForm.benchmark_blogger_id) {
-    showMessage('请先选择对标账号', true)
-    return
-  }
-  if (!bloggers.value.find((b) => b.id === auditForm.my_blogger_id)?.sample_count) {
-    showMessage('「我的账号」还没有采集内容，请先到「我的账号」采集', true)
-    return
-  }
-  if (!bloggers.value.find((b) => b.id === auditForm.benchmark_blogger_id)?.sample_count) {
-    showMessage('「对标账号」还没有采集内容，请先到「数据采集」采集', true)
-    return
-  }
-  await runTaskAction(
-    'audit',
-    '已提交对标诊断任务',
-    () =>
-      startAccountAuditTask({
-        platform: currentSocialPlatform.value,
-        my_blogger_id: auditForm.my_blogger_id,
-        my_post_ids: auditForm.my_post_ids,
-        benchmark_blogger_id: auditForm.benchmark_blogger_id,
-        benchmark_post_ids: auditForm.benchmark_post_ids
-      }),
-    async () => {
-      await refreshAccountAuditRuns()
-      selectedAuditRunId.value = accountAuditRuns.value[0]?.id ?? null
-    },
-    '对标诊断仍在后台执行，请稍后刷新页面查看结果'
-  )
-}
-
-// 博主诊断(对标分析):新版三区报告。诊断 runs 与旧对标诊断同表(AccountAuditRun),按 report 形状区分。
+// 博主诊断(对标分析 / 诊断我的账号):新版三区报告。诊断 runs 落 AccountAuditRun,按 report 形状区分新旧。
 export function parseAppraisalReport(run: AccountAuditRun | null): AppraisalReport | null {
   if (!run?.report_json) return null
   try {
@@ -2207,53 +2115,124 @@ export function parseAppraisalReport(run: AccountAuditRun | null): AppraisalRepo
   }
 }
 
+// 进页面/切平台时回填最近一次「新版」诊断(跳过旧版 audit 记录:旧版 parse 为 null)。
+export async function refreshAppraisalRun() {
+  try {
+    const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')
+    appraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
+  } catch {
+    appraisalRun.value = null
+  }
+}
+
+export async function refreshSelfAppraisalRun() {
+  try {
+    const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'self')
+    selfAppraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
+  } catch {
+    selfAppraisalRun.value = null
+  }
+}
+
+// —— 意图引导(对标分析诊断别人时)——
+export function resetIntentGuide() {
+  intentQuestions.value = []
+  intentChecked.value = false
+  intentClear.value = false
+  for (const k of Object.keys(intentSelections)) delete intentSelections[Number(k)]
+  for (const k of Object.keys(intentOthers)) delete intentOthers[Number(k)]
+}
+
+// 选博主后(可选已填意图)→ 看 TA 在做什么,判断意图够不够具体;不够则给几道多选题。
+export async function fetchIntentSuggestions() {
+  if (!appraiseForm.blogger_id) {
+    showMessage('请先选择要诊断的博主', true)
+    return
+  }
+  intentLoading.value = true
+  try {
+    const res = await suggestAppraisalIntent({ blogger_id: appraiseForm.blogger_id, intent: appraiseForm.intent })
+    intentClear.value = res.clear
+    intentQuestions.value = res.questions || []
+    for (const k of Object.keys(intentSelections)) delete intentSelections[Number(k)]
+    for (const k of Object.keys(intentOthers)) delete intentOthers[Number(k)]
+    intentQuestions.value.forEach((_, i) => {
+      intentSelections[i] = []
+      intentOthers[i] = ''
+    })
+    intentChecked.value = true
+  } catch (err) {
+    // 引导失败不挡诊断:直接放行。
+    showMessage(err instanceof Error ? err.message : '意图引导失败,可直接诊断', true)
+    intentClear.value = true
+    intentQuestions.value = []
+    intentChecked.value = true
+  } finally {
+    intentLoading.value = false
+  }
+}
+
+// 把「用户填的意图 + 各题所选 / 补充」拼成最终对标意图。
+function buildBenchmarkIntent(): string {
+  const parts: string[] = []
+  const typed = appraiseForm.intent.trim()
+  if (typed) parts.push(typed)
+  intentQuestions.value.forEach((q, i) => {
+    const picked = [...(intentSelections[i] || [])]
+    const other = (intentOthers[i] || '').trim()
+    if (other) picked.push(other)
+    if (picked.length) parts.push(`${q.q.replace(/[?？]\s*$/, '')}:${picked.join('、')}`)
+  })
+  return parts.join(';')
+}
+
 export async function handleRunAppraisal() {
   if (!appraiseForm.blogger_id) {
-    showMessage('请先选择要诊断的账号', true)
+    showMessage('请先选择要诊断的博主', true)
     return
   }
   appraisalRun.value = null
+  const intent = buildBenchmarkIntent()
   await runTaskAction(
     'audit',
     '已提交博主诊断任务（会自动确保 ≥20 篇笔记）',
     () =>
       appraiseBlogger({
         blogger_id: appraiseForm.blogger_id,
-        kind: appraiseForm.kind,
-        intent: appraiseForm.intent,
+        kind: 'benchmark',
+        intent,
         industry: appraiseForm.industry || null
       }),
     async () => {
-      const runs = await listAccountAuditRuns(currentSocialPlatform.value, appraiseForm.kind)
-      appraisalRun.value = runs[0] ?? null
+      const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')
+      appraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
     },
     '博主诊断仍在后台执行，请稍后刷新页面查看结果'
   )
 }
 
-export async function handleRunSelfDiagnose() {
-  if (!selfForm.my_blogger_id) {
+// 诊断我的账号(评估与提升):kind=self,无软实力、无意图。
+export async function handleRunSelfAppraisal() {
+  if (!selfAppraiseForm.blogger_id) {
     showMessage('请先选择我的账号', true)
     return
   }
-  if (!bloggers.value.find((b) => b.id === selfForm.my_blogger_id)?.sample_count) {
-    showMessage('该账号还没有采集内容，请先到「我的账号」采集', true)
-    return
-  }
+  selfAppraisalRun.value = null
   await runTaskAction(
-    'self-diagnose',
-    '已提交诊断任务',
+    'audit',
+    '已提交账号诊断任务（会自动确保 ≥20 篇笔记）',
     () =>
-      startSelfDiagnoseTask({
-        platform: currentSocialPlatform.value,
-        my_blogger_id: selfForm.my_blogger_id,
-        my_post_ids: selfForm.my_post_ids
+      appraiseBlogger({
+        blogger_id: selfAppraiseForm.blogger_id,
+        kind: 'self',
+        intent: '',
+        industry: null
       }),
     async () => {
-      await refreshSelfDiagnoseRuns()
-      selectedSelfRunId.value = selfDiagnoseRuns.value[0]?.id ?? null
+      const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'self')
+      selfAppraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
     },
-    '诊断仍在后台执行，请稍后刷新页面查看结果'
+    '账号诊断仍在后台执行，请稍后刷新页面查看结果'
   )
 }
 
@@ -2745,10 +2724,12 @@ watch(
     bloggerPosts.value = []
     bloggerCollectionRuns.value = []
     bloggerRuns.value = []
-    accountAuditRuns.value = []
-    selectedAuditRunId.value = null
+    appraisalRun.value = null
+    selfAppraisalRun.value = null
+    resetIntentGuide()
     resetXhsTopicIdeas()
     await refreshBloggers()
-    await refreshAccountAuditRuns()
+    await refreshAppraisalRun()
+    await refreshSelfAppraisalRun()
   }
 )

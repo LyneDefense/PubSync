@@ -2,11 +2,21 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant
+from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
+from app.appraisal.intent import suggest_intent
 from app.database import get_db
-from app.models import AccountAuditRun, BloggerProfile, Tenant
+from app.models import AccountAuditRun, BloggerPost, BloggerProfile, Tenant
 from app.queue import submit_background
-from app.schemas import AccountAuditCreate, AccountAuditRunRead, AppraiseCreate, OperationTaskRead, SelfDiagnoseCreate
+from app.schemas import (
+    AccountAuditCreate,
+    AccountAuditRunRead,
+    AppraisalIntentQuestion,
+    AppraisalIntentSuggestRequest,
+    AppraisalIntentSuggestResult,
+    AppraiseCreate,
+    OperationTaskRead,
+    SelfDiagnoseCreate,
+)
 from app.services.task_service import create_operation_task, run_account_audit_task, run_appraisal_task
 
 router = APIRouter()
@@ -65,6 +75,38 @@ def start_appraisal_endpoint(
     task = create_operation_task(db, "account_audit", tenant_id=tenant.id)
     submit_background(background_tasks, run_appraisal_task, task.id, payload.model_dump())
     return task
+
+
+@router.post("/account-audit/intent-suggest", response_model=AppraisalIntentSuggestResult)
+def suggest_appraisal_intent_endpoint(
+    payload: AppraisalIntentSuggestRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> AppraisalIntentSuggestResult:
+    """对标分析·意图引导(同步):看选中博主在做什么 → 判断意图够不够具体 → 不够给几个多选题帮用户明确。"""
+    blogger = db.get(BloggerProfile, payload.blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    titles = list(db.scalars(
+        select(BloggerPost.title)
+        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger.id,
+               BloggerPost.status != "delisted")
+        .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
+        .limit(30)
+    ))
+    tags = [str(t.get("name") or "") for t in blogger.tags]
+    result = suggest_intent(
+        settings,
+        titles=[t for t in titles if t],
+        tags=tags,
+        niche=blogger.niche or "",
+        intent=payload.intent,
+        timeout=settings.appraisal_llm_timeout,
+    )
+    return AppraisalIntentSuggestResult(
+        clear=bool(result["clear"]),
+        questions=[AppraisalIntentQuestion(q=q["q"], options=q["options"]) for q in result["questions"]],
+    )
 
 
 @router.get("/account-audit/runs", response_model=list[AccountAuditRunRead])
