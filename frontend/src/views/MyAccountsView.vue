@@ -17,7 +17,7 @@ import {
 
 const selectedId = ref<number | null>(null)
 const selectedAccount = computed(() => myAccounts.value.find((acc) => acc.id === selectedId.value) || null)
-const sort = ref<'recent' | 'hot' | 'asr'>('recent')
+const sort = ref<'recent' | 'hot'>('recent')
 
 function pick(id: number) {
   selectedId.value = id
@@ -65,10 +65,6 @@ function formatCount(n: number): string {
 const sortedPosts = computed(() => {
   const arr = [...posts.value]
   if (sort.value === 'hot') return arr.sort((a, b) => interaction(b) - interaction(a))
-  if (sort.value === 'asr') {
-    const rank = (s: string) => (s === 'running' ? 0 : s === 'failed' ? 1 : s === 'succeeded' ? 2 : 3)
-    return arr.sort((a, b) => rank(a.asr_status) - rank(b.asr_status))
-  }
   return arr.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
 })
 
@@ -140,11 +136,11 @@ function asrLabel(s: string): string {
             </div>
             <button
               type="button"
-              class="primary refresh"
+              class="refresh"
               :disabled="Boolean(pendingAction)"
               @click="handleCollectAccount(selectedAccount.id)"
             >
-              {{ pendingAction === 'collect' ? '采集中…' : '↻ 刷新(重新采集)' }}
+              {{ pendingAction === 'collect' ? '采集中…' : '↻ 刷新' }}
             </button>
           </div>
 
@@ -176,7 +172,6 @@ function asrLabel(s: string): string {
             <div class="seg">
               <button type="button" :class="{ on: sort === 'recent' }" @click="sort = 'recent'">最新</button>
               <button type="button" :class="{ on: sort === 'hot' }" @click="sort = 'hot'">最热</button>
-              <button type="button" :class="{ on: sort === 'asr' }" @click="sort = 'asr'">待转写</button>
             </div>
           </div>
 
@@ -394,6 +389,24 @@ function asrLabel(s: string): string {
 }
 .refresh {
   flex: 0 0 auto;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms var(--ease-out);
+}
+.refresh:hover {
+  background: var(--color-accent-press);
+}
+.refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* 统计带:4 格,用 1px 间隙 + 外层底色模拟分隔 */
