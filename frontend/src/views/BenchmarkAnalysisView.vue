@@ -96,7 +96,7 @@ function exportReport() {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'analysis'" class="panel analysis">
+  <section v-if="isSocialPlatform && currentSocialTab === 'analysis'" class="analysis">
     <header class="page-head">
       <h1>{{ currentSocialPlatformName }}对标分析</h1>
       <p>诊断一个号到底值不值得对标 —— 硬实力 × 软实力 × 合规。诊断前会自动确保 ≥ 20 篇笔记样本。</p>
@@ -236,7 +236,7 @@ function exportReport() {
 
 <style scoped>
 .analysis {
-  max-width: 880px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 .page-head {
