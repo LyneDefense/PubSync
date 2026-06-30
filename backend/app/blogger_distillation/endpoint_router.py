@@ -74,16 +74,17 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
             },
         ),
     ],
+    # app_v2 优先:TikHub 已下架 web_v3 搜索接口(HTTP 410),app_v2 为官方推荐的稳定版。
     "search_users": [
-        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_search_users", {"keyword": "${keyword}", "page": "${page}"}),
-        Endpoint("app", "/api/v1/xiaohongshu/app/search_users", {"keyword": "${keyword}", "page": "${page}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/search_users", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("app", "/api/v1/xiaohongshu/app/search_users", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_search_users", {"keyword": "${keyword}", "page": "${page}"}),
     ],
     # 搜索笔记(泛搜索 B 路:取笔记作者)。多端点兜底,取数失败由上层吞掉、退化成 A 路。
     "search_notes": [
-        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_search_notes", {"keyword": "${keyword}", "page": "${page}"}),
-        Endpoint("app", "/api/v1/xiaohongshu/app/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
         Endpoint("app_v2", "/api/v1/xiaohongshu/app_v2/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("app", "/api/v1/xiaohongshu/app/search_notes", {"keyword": "${keyword}", "page": "${page}"}),
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_search_notes", {"keyword": "${keyword}", "page": "${page}"}),
     ],
     # 注:TikHub 小红书没有"关注/粉丝列表"接口,故"找相似"走内容关键词(取自对标库笔记),不走社交图谱。
 }
@@ -131,7 +132,8 @@ DOUYIN_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
 
 
 class EndpointRouter:
-    degradable_status_codes = {400, 404, 422, 500, 502, 503, 504}
+    # 410 = 接口被下架(如 TikHub web_v3 search 已停用):应降级到池里下一个端点,而不是直接报错。
+    degradable_status_codes = {400, 404, 410, 422, 500, 502, 503, 504}
     blocking_status_codes = {401, 402, 403}
 
     def __init__(self, request_func: Callable[[str, dict[str, Any]], dict[str, Any]], pools: dict[str, list[Endpoint]] | None = None) -> None:

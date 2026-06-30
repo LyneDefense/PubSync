@@ -20,8 +20,6 @@ const lastKeyword = ref('')
 const results = ref<BloggerSearchResult[]>([])
 const adopted = ref<string[]>([])
 
-const SUGGEST = ['美妆护肤', '职场干货', '健身减脂', '理财投资']
-
 // 名字首字头像兜底:按 external_id 取一组柔和底色。
 const AVATAR_BG = ['#eaf3ee', '#f0eef7', '#eef4f5', '#eef1f6', '#f6eef2', '#eef3f7']
 const AVATAR_INK = ['#2f6b54', '#5a4a86', '#3a6a72', '#44506a', '#8a4a64', '#3a5a86']
@@ -59,10 +57,6 @@ async function doSearch() {
     searching.value = false
   }
 }
-function pickSuggest(s: string) {
-  keyword.value = s
-  doSearch()
-}
 function adopt(r: BloggerSearchResult) {
   adoptBenchmarkCandidate(r)
   if (!adopted.value.includes(r.external_id)) adopted.value.push(r.external_id)
@@ -93,10 +87,7 @@ function adopt(r: BloggerSearchResult) {
           {{ searching ? '搜索中' : '搜索' }}
         </button>
       </div>
-      <div class="suggest">
-        <span class="suggest-label">试试</span>
-        <button v-for="s in SUGGEST" :key="s" type="button" class="sg-chip" @click="pickSuggest(s)">{{ s }}</button>
-      </div>
+      <p class="search-hint">如果找不到博主,可以点开博主主页复制 Ta 的小红书号进行精确搜索喔。</p>
     </div>
 
     <!-- 结果 / 空态 -->
@@ -203,6 +194,11 @@ function adopt(r: BloggerSearchResult) {
 .search-box input::-webkit-search-cancel-button {
   display: none;
 }
+/* 干掉全局 input:focus 的柔光环——这里描边已经由外层 .search-box:focus-within 接管。 */
+.search-box input:focus {
+  box-shadow: none;
+  border: 0;
+}
 .clear {
   flex: 0 0 auto;
   width: 22px;
@@ -239,36 +235,12 @@ function adopt(r: BloggerSearchResult) {
   cursor: not-allowed;
 }
 
-/* 试试 建议 */
-.suggest {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.suggest-label {
+/* 搜不到时的提示 */
+.search-hint {
+  margin: 12px 0 0;
   font-size: 12.5px;
+  line-height: 1.6;
   color: var(--color-ink-3);
-  margin-right: 2px;
-}
-.sg-chip {
-  padding: 6px 13px;
-  border: 1px solid var(--color-field-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-ink-2);
-  font-size: 12.5px;
-  cursor: pointer;
-  transition:
-    border-color 120ms var(--ease-out),
-    background 120ms var(--ease-out),
-    color 120ms var(--ease-out);
-}
-.sg-chip:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-tint);
-  color: var(--color-accent-ink);
 }
 
 /* 结果计数 */
