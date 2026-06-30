@@ -49,6 +49,19 @@
   --color-danger: #b4453a;
   --color-focus: #c08a1e;
   --color-shadow: rgba(20, 30, 40, 0.08);
+  /* 对标分析 / 评分系统:accent 衍生 + 警示琥珀 + 分数/合规卡软底(诊断报告与诊断我的账号共用)。 */
+  --color-accent-press: #0a5e4f;
+  --color-accent-tint: #f1f8f4;
+  --color-accent-soft-bd: #cfe6db;
+  --color-warn: #b7791f;
+  --color-score-ok-bg: #eef7f1;
+  --color-score-ok-bd: #d7ebe1;
+  --color-score-warn-bg: #fbf4e8;
+  --color-score-warn-bd: #ecdfc4;
+  --color-score-danger-bg: #fdeceb;
+  --color-score-danger-bd: #f3d6d2;
+  --color-warn-card-bg: #fdf9f1;
+  --color-warn-card-bd: #f0e3d2;
   /* 表单控件:输入框用纯白底 + 清晰描边(原来用灰底 paper + 极淡发丝线,看着像未做样式的灰条)。 */
   --color-field: #ffffff;
   --color-field-border: #c8ced4;
