@@ -83,13 +83,13 @@ def run_appraisal(
                     sample_limit=need, comments_per_post=0, asr_enabled=False, content_types=None,
                     order="latest", fetch_all=False,
                 )
-            fetched = list(db.scalars(
+            fetched = _dedup_posts(list(db.scalars(
                 select(BloggerPost)
                 .where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
                        BloggerPost.status != "delisted")
                 .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
-                .limit(need)
-            ))
+                .limit(need * 3)  # 多取一些再去重,避免重复行把有效样本挤出 need 窗口
+            )))[:need]
             new_posts = fetched[len(examined):]
             if not new_posts:
                 break
@@ -139,6 +139,20 @@ def run_appraisal(
         run.error_message = str(exc)
         db.commit()
         raise
+
+
+def _dedup_posts(posts: list[BloggerPost]) -> list[BloggerPost]:
+    """按 note_key(取不到回退 external_id)折叠「同一篇笔记的重复行」——note_id 会随端点漂移,
+    补采时可能把同一篇笔记落成多行;诊断必须按真实笔记数算,不能靠重复行凑数。保留先出现的(已按最新排序)。"""
+    seen: set[str] = set()
+    out: list[BloggerPost] = []
+    for p in posts:
+        key = (p.note_key or "").strip() or (p.external_id or "").strip() or f"id:{p.id}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
 
 
 def _active_count(db: Session, tenant_id: int, blogger_id: int) -> int:

@@ -311,6 +311,19 @@ def test_diagnose_self_with_intent_adds_goal_fit(monkeypatch):
     assert rep["soft"] == []  # 自诊断仍无软实力
 
 
+def test_dedup_posts_collapses_repeats():
+    # note_key 相同 / external_id 相同的重复行折叠成一篇;都空则按 id 各算一篇。
+    from app.appraisal.service import _dedup_posts
+    posts = [
+        _Obj(id=1, note_key="k1", external_id="a"),
+        _Obj(id=2, note_key="k1", external_id="b"),  # 同 note_key → 折叠
+        _Obj(id=3, note_key="", external_id="x"),
+        _Obj(id=4, note_key="", external_id="x"),  # 同 external_id → 折叠
+        _Obj(id=5, note_key="", external_id=""),  # 都空 → 独立一篇
+    ]
+    assert [p.id for p in _dedup_posts(posts)] == [1, 3, 5]
+
+
 def test_diagnose_self_without_intent_no_goal_fit(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim

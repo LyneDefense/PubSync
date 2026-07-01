@@ -63,6 +63,12 @@ const historyItems = computed(() =>
     }))
     .filter((it) => it.report)
 )
+// 只显示「当前选中博主」的历史诊断(选中某个博主后才出现该博主的历史)。
+const selectedHistory = computed(() =>
+  appraiseForm.blogger_id
+    ? historyItems.value.filter((it) => it.run.benchmark_blogger_id === appraiseForm.blogger_id)
+    : []
+)
 
 function scoreBand(n: number): string {
   return n >= 75 ? 's-ok' : n >= 60 ? 's-warn' : 's-danger'
@@ -102,10 +108,16 @@ function restart() {
   resetIntentGuide()
   step.value = 1
 }
-// 查看一条历史报告:直接载入到第 3 步。
-function viewHistoryRun(run: AccountAuditRun) {
-  appraisalRun.value = run
-  step.value = 3
+// 查看一条历史报告:弹框展示(不动向导当前步、不覆盖当前 appraisalRun)。
+const historyModalRun = ref<AccountAuditRun | null>(null)
+const historyModalReport = computed(() => (historyModalRun.value ? parseAppraisalReport(historyModalRun.value) : null))
+const historyModalName = computed(() => (historyModalRun.value ? bloggerNameById(historyModalRun.value.benchmark_blogger_id) : ''))
+const historyModalDate = computed(() => (historyModalRun.value ? formatDate(historyModalRun.value.created_at) : ''))
+function openHistoryRun(run: AccountAuditRun) {
+  historyModalRun.value = run
+}
+function closeHistoryModal() {
+  historyModalRun.value = null
 }
 
 // 把报告区域导出成一张 PNG 图片(含署名头 + 三区报告)。
@@ -186,22 +198,19 @@ onMounted(() => {
       </div>
       </section>
 
-      <!-- 历史诊断:已诊断过的报告,点一条查看 -->
-      <section v-if="historyItems.length" class="card history">
+      <!-- 历史诊断:仅当前选中博主,点一条弹框查看 -->
+      <section v-if="selectedBlogger && selectedHistory.length" class="card history">
         <div class="card-head">
-          <div>
-            <p class="kicker">历史诊断</p>
-            <h2>之前诊断过的报告</h2>
-          </div>
-          <span class="head-hint">点一条查看</span>
+          <h2>历史诊断</h2>
+          <span class="head-hint">点一条查看「{{ selectedName }}」的历史报告</span>
         </div>
         <div class="hist-list">
           <button
-            v-for="it in historyItems"
+            v-for="it in selectedHistory"
             :key="it.run.id"
             type="button"
             class="hist-row"
-            @click="viewHistoryRun(it.run)"
+            @click="openHistoryRun(it.run)"
           >
             <span class="hist-name">{{ it.name }}</span>
             <span class="hist-scores">
@@ -312,6 +321,22 @@ onMounted(() => {
         <button type="button" class="btn-primary" @click="restart">重新诊断</button>
       </div>
     </template>
+
+    <!-- 历史诊断弹框:点历史条目在此查看,不跳向导步骤、也不覆盖当前诊断 -->
+    <div v-if="historyModalRun && historyModalReport" class="hist-modal-overlay" @click.self="closeHistoryModal">
+      <div class="hist-modal">
+        <div class="hm-head">
+          <div class="hm-title">
+            <strong>{{ historyModalName || '对标分析报告' }}</strong>
+            <span>对标分析 · 基于 {{ historyModalReport.sample_count }} 篇笔记 · {{ historyModalDate }}</span>
+          </div>
+          <button type="button" class="hm-close" aria-label="关闭" @click="closeHistoryModal">✕</button>
+        </div>
+        <div class="hm-body">
+          <AppraisalCard :report="historyModalReport" />
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -868,6 +893,86 @@ onMounted(() => {
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation-duration: 1.6s;
+  }
+}
+
+/* 历史诊断弹框 */
+.hist-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 24, 28, 0.4);
+  animation: hm-fade 160ms var(--ease-out);
+}
+.hist-modal {
+  width: min(920px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.hm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-rule);
+  flex: 0 0 auto;
+}
+.hm-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.hm-title strong {
+  font-size: 16px;
+  font-weight: 680;
+  color: var(--color-ink);
+}
+.hm-title span {
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.hm-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.hm-close:hover {
+  background: var(--color-rule-strong);
+}
+.hm-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+@keyframes hm-fade {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hist-modal-overlay {
+    animation: none;
   }
 }
 
