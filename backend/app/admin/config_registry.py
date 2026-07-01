@@ -86,7 +86,10 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("benchmark_search_terms_max", "benchmark", "搜索词扩展上限(个)", "int"),
     ConfigField("benchmark_inactive_days", "benchmark", "不活跃判定阈值(天)", "int"),
     # —— ASR ——
-    ConfigField("asr_enabled", "asr", "启用 ASR", "bool"),
+    ConfigField("asr_enabled", "asr", "启用 ASR(全局;用户端不可选)", "bool"),
+    ConfigField("modality_density_high_cps", "asr", "模态-口播密度上阈(字/秒,≥判口播)", "float"),
+    ConfigField("modality_density_low_cps", "asr", "模态-非口播密度下阈(字/秒,≤判非口播)", "float"),
+    ConfigField("modality_llm_adjudicate_enabled", "asr", "模态-模糊带启用 LLM 语义裁决", "bool"),
     ConfigField("asr_provider", "asr", "ASR 供应商"),
     ConfigField("asr_max_duration_seconds", "asr", "最大时长(秒)", "int"),
     ConfigField("asr_poll_interval_seconds", "asr", "轮询间隔(秒)", "int"),

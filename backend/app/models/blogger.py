@@ -65,10 +65,14 @@ class BloggerPost(Base):
     # 内容模态细分(可扩展枚举):image_text/talking_video/visual_video/unknown;
     # 预留 article/article_with_image 给公众号。采集时按 content_type + 转写密度启发式打标。
     content_subtype: Mapped[str] = mapped_column(String(30), nullable=False, default="unknown", server_default="unknown", index=True)
+    # 模态判定置信来源:platform(图文)/density(字·秒)/chars(无时长回退)/llm(语义裁决)/unknown。空=旧数据未判。
+    content_subtype_confidence: Mapped[str] = mapped_column(String(20), nullable=False, default="", server_default="")
     hashtags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     cover_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     media_urls_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     transcript_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 视频时长(秒),来自 ASR 结果(腾讯 ASR 已 ffprobe);用于 content_subtype 的「字/秒」密度判定。
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     asr_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_required")
     asr_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

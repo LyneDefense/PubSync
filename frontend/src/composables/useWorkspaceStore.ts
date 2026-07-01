@@ -287,8 +287,7 @@ export const bloggerForm = reactive({
 
 export const bloggerDistillForm = reactive({
   sample_limit: 50,
-  comments_per_post: 20,
-  asr_enabled: false
+  comments_per_post: 20
 })
 
 // 内容模态标签(与后端 app/blogger_distillation/modality.py 对齐)。
@@ -2172,7 +2171,7 @@ export async function handleCollectAccount(id: number) {
   await runTaskAction(
     'collect',
     '已提交内容采集任务',
-    () => collectBlogger(id, { sample_limit: 30, comments_per_post: 0, asr_enabled: false }),
+    () => collectBlogger(id, { sample_limit: 30, comments_per_post: 0 }),
     async () => {
       await loadAccountPosts(id, true)
     },
@@ -2495,7 +2494,6 @@ export async function handleCollectBlogger() {
       collectBlogger(selectedBloggerId.value!, {
         sample_limit: bloggerDistillForm.sample_limit,
         comments_per_post: bloggerDistillForm.comments_per_post,
-        asr_enabled: bloggerDistillForm.asr_enabled,
         content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video'],
         order: collectOrder.value,
         fetch_all: collectFetchAll.value
@@ -2532,8 +2530,7 @@ export async function handleCollectByUrls() {
     () =>
       collectBloggerByUrls(selectedBloggerId.value!, {
         urls,
-        comments_per_post: bloggerDistillForm.comments_per_post,
-        asr_enabled: bloggerDistillForm.asr_enabled
+        comments_per_post: bloggerDistillForm.comments_per_post
       }),
     async () => {
       urlCollectInput.value = ''

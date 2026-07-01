@@ -51,7 +51,7 @@ def collect_blogger_endpoint(
         blogger.id,
         payload.sample_limit,
         payload.comments_per_post,
-        payload.asr_enabled,
+        settings.asr_enabled,  # ASR 只由后台全局开关控制,用户端不再可选
         payload.content_types,
         payload.order,
         payload.fetch_all,
@@ -80,7 +80,7 @@ def collect_blogger_by_urls_endpoint(
         blogger.id,
         payload.urls,
         payload.comments_per_post,
-        payload.asr_enabled,
+        settings.asr_enabled,  # ASR 只由后台全局开关控制,用户端不再可选
     )
     return task
 

@@ -45,8 +45,11 @@ class Settings(BaseSettings):
     blogger_auto_tag_enabled: bool = True
     blogger_tag_model: str = ""  # 留空=用 distill_text_model 或默认文本模型
     blogger_tag_max: int = 6
-    # 内容模态细分:视频转写字数 >= 此阈值判为「口播视频」,否则「非口播视频」。
-    talking_video_min_transcript_chars: int = 200
+    # 内容模态细分(口播/非口播):优先按「字/秒」密度判(有视频时长时),无时长退回字数阈值。
+    talking_video_min_transcript_chars: int = 200   # 无时长回退:转写字数 ≥ 此值判口播
+    modality_density_high_cps: float = 3.0          # 字/秒 ≥ 此值 → 口播(高置信)
+    modality_density_low_cps: float = 1.0           # 字/秒 ≤ 此值 → 非口播(高置信);之间=模糊带,交 LLM 裁决
+    modality_llm_adjudicate_enabled: bool = True    # 模糊带是否用大模型语义裁决(口播/剧情/卡点/vlog)
     # 蒸馏时每个被选模态的最低样本数,不足则拒绝(避免样本太少蒸出垃圾)。
     distill_min_samples_per_subtype: int = 5
     # 蒸馏选材:最低样本硬下限(<此值拒绝)、软建议值(界面提示)、自动蒸馏取高赞 top-N。
@@ -128,7 +131,8 @@ class Settings(BaseSettings):
     # Minimum seconds between TikHub requests to proactively avoid 429s.
     # 0 disables throttling (default); ~0.15 paces to roughly the base 10 RPS plan.
     tikhub_min_request_interval_seconds: float = 0.0
-    asr_enabled: bool = False
+    # ASR 默认开启,只由后台全局控制;用户端采集不再暴露开关(诊断采样等内部路径仍可显式传 False)。
+    asr_enabled: bool = True
     asr_provider: str = "tencent_rec_task"
     asr_max_duration_seconds: int = 1800
     asr_poll_interval_seconds: int = 10

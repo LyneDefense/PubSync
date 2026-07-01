@@ -136,6 +136,8 @@ def handle_video_asr(
         normalized["transcript_text"] = strip_asr_timestamps(result.text)
         normalized["asr_status"] = "succeeded"
         normalized["asr_error"] = ""
+        if result.duration_seconds:  # 供 content_subtype 密度判定用(字/秒);字幕/复用路径没有则留空
+            normalized["duration_seconds"] = float(result.duration_seconds)
         record_task_event(
             db,
             tenant_id,

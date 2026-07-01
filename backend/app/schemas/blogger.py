@@ -132,7 +132,7 @@ class CollectEstimate(BaseModel):
 class BloggerCollectRequest(BaseModel):
     sample_limit: int = Field(default=50, ge=5, le=200)
     comments_per_post: int = Field(default=20, ge=0, le=100)
-    asr_enabled: bool = False
+    # ASR 已改为后台全局控制,采集请求不再携带 asr 开关。
     # 拉取范围:image=图文,video=视频;默认全部。仅这两类(口播细分在采集后判定)。
     content_types: list[str] = Field(default_factory=lambda: ["image", "video"])
     # 选材排序:top_liked=高赞优先(默认),latest=最新优先。
@@ -142,10 +142,9 @@ class BloggerCollectRequest(BaseModel):
 
 
 class BloggerUrlCollectRequest(BaseModel):
-    # 粘贴的笔记链接(一行一个);兜底定向采集。
+    # 粘贴的笔记链接(一行一个);兜底定向采集。ASR 由后台全局控制,不再随请求携带。
     urls: list[str] = Field(min_length=1, max_length=20)
     comments_per_post: int = Field(default=20, ge=0, le=100)
-    asr_enabled: bool = False
 
 
 class BloggerPostRead(BaseModel):

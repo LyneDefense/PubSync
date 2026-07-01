@@ -100,7 +100,7 @@ const metrics = computed(() => {
   <section v-if="isSocialPlatform && currentSocialTab === 'collect'" class="collect">
     <header class="page-head">
       <h1>{{ currentSocialPlatformName }}数据采集</h1>
-      <p>先选择博主，再配置采样数量、评论数量和 ASR；采集结果会进入「博主资产」。</p>
+      <p>先选择博主，再配置采样数量与评论数量；采集结果会进入「博主资产」。视频转写已默认开启。</p>
     </header>
 
     <!-- 步骤条 -->
@@ -212,16 +212,7 @@ const metrics = computed(() => {
         </div>
       </div>
 
-      <label class="asr" :class="{ on: bloggerDistillForm.asr_enabled }">
-        <input v-model="bloggerDistillForm.asr_enabled" type="checkbox" />
-        <span class="cc-box" aria-hidden="true"></span>
-        <span class="asr-text">
-          <strong>启用视频字幕 / ASR 分析</strong>
-          <small>采集视频笔记时优先提取字幕；没有字幕时尝试转写音频。</small>
-        </span>
-      </label>
-
-      <p class="card-foot">这些配置只影响本次采集批次，后续可基于不同批次分别蒸馏。</p>
+      <p class="card-foot">这些配置只影响本次采集批次，后续可基于不同批次分别蒸馏。视频字幕/口播转写已默认开启（由后台统一控制）。</p>
     </section>
 
     <!-- 第 3 步:执行采集 -->
@@ -251,11 +242,10 @@ const metrics = computed(() => {
         <span class="recap-chip">评论 <b>{{ bloggerDistillForm.comments_per_post }}/条</b></span>
         <span class="recap-chip">范围 <b>{{ rangeText }}</b></span>
         <span class="recap-chip">排序 <b>{{ orderText }}</b></span>
-        <span class="recap-chip">ASR <b>{{ bloggerDistillForm.asr_enabled ? '开启' : '关闭' }}</b></span>
       </div>
 
       <p v-if="!selectedBloggerId" class="card-foot">还没选择博主——请回第 1 步「选择博主」选择一个博主。</p>
-      <p v-else-if="!collecting" class="card-foot">采集耗时取决于样本数量、评论数量和视频 ASR 开关。重复采集只补新笔记、刷新老笔记，不会重复扣费。</p>
+      <p v-else-if="!collecting" class="card-foot">采集耗时取决于样本数量、评论数量和视频转写。重复采集只补新笔记、刷新老笔记，不会重复扣费。</p>
 
       <!-- 采集中:复用真实任务进度,不杜撰数字 -->
       <div v-if="collecting" class="progress-card">
@@ -698,8 +688,7 @@ const metrics = computed(() => {
   background: var(--color-accent-tint);
   color: var(--color-accent-ink);
 }
-.chip-check input,
-.asr input {
+.chip-check input {
   position: absolute;
   opacity: 0;
   width: 0;
@@ -715,13 +704,11 @@ const metrics = computed(() => {
   place-items: center;
   transition: background 110ms var(--ease-out), border-color 110ms var(--ease-out);
 }
-.chip-check.on .cc-box,
-.asr.on .cc-box {
+.chip-check.on .cc-box {
   border-color: var(--color-accent);
   background: var(--color-accent);
 }
-.chip-check.on .cc-box::after,
-.asr.on .cc-box::after {
+.chip-check.on .cc-box::after {
   content: '✓';
   color: #fff;
   font-size: 12px;
@@ -754,37 +741,6 @@ const metrics = computed(() => {
   box-shadow: 0 1px 2px var(--color-shadow);
 }
 
-/* ASR callout */
-.asr {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--color-field-border);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: border-color 120ms var(--ease-out), background 120ms var(--ease-out);
-}
-.asr.on {
-  border-color: var(--color-accent-soft-bd);
-  background: var(--color-accent-tint);
-}
-.asr .cc-box {
-  margin-top: 1px;
-}
-.asr-text strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 620;
-  color: var(--color-ink);
-}
-.asr-text small {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-ink-3);
-}
 
 /* 第 3 步:配置回看 + 进度 */
 .recap {

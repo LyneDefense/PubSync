@@ -493,7 +493,6 @@ export interface SnapshotSuggestResult {
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
-  asr_enabled: boolean
   content_types?: string[]
   order?: 'top_liked' | 'latest'
   fetch_all?: boolean
@@ -502,7 +501,6 @@ export interface BloggerCollectRequest {
 export interface BloggerUrlCollectRequest {
   urls: string[]
   comments_per_post?: number
-  asr_enabled?: boolean
 }
 
 export interface CollectEstimate {

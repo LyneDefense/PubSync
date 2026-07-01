@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis
 from app.blogger_distillation.asr import ASRError, build_asr_provider
-from app.blogger_distillation.modality import candidate_modality, classify_subtype
+from app.blogger_distillation.modality import CONF_AMBIGUOUS, CONF_LLM, candidate_modality, classify_subtype
+from app.blogger_distillation.modality_adjudicator import adjudicate_modality
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import evaluate_post_quality, quality_report
@@ -571,10 +572,17 @@ def collect_posts(
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
         normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
-        # 在入库前定模态:转写此刻已确定,保证每条存库的 content_subtype 与其转写一致(防中途中断留下脏 unknown)。
-        normalized["content_subtype"] = classify_subtype(
-            normalized["content_type"], normalized.get("transcript_text", ""), min_transcript_chars=settings.talking_video_min_transcript_chars
+        # 在入库前定模态(T0平台+T1密度):转写/时长此刻已确定,保证每条存库的 content_subtype 与其转写一致。
+        subtype, confidence = classify_subtype(
+            normalized["content_type"],
+            normalized.get("transcript_text", ""),
+            duration_seconds=normalized.get("duration_seconds"),
+            density_high_cps=settings.modality_density_high_cps,
+            density_low_cps=settings.modality_density_low_cps,
+            min_transcript_chars=settings.talking_video_min_transcript_chars,
         )
+        normalized["content_subtype"] = subtype
+        normalized["content_subtype_confidence"] = confidence
         post_quality = evaluate_post_quality(normalized)
         if post_quality.level == "failed":
             logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
@@ -593,4 +601,28 @@ def collect_posts(
             {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"]},
         )
     db.commit()
+    # T2 语义裁决:密度判不清的模糊视频(半口播/剧情/卡点),批量交大模型判口播/非口播;
+    # 仅少数、成本有界,失败则保留 T1 密度猜测,绝不阻断采集。
+    if settings.modality_llm_adjudicate_enabled:
+        ambiguous = [p for p in posts if p.content_subtype_confidence == CONF_AMBIGUOUS]
+        if ambiguous:
+            record_task_event(db, tenant_id, task_id, "模态裁决", "running", f"{len(ambiguous)} 条视频密度判不清,语义裁决中…")
+            verdicts = adjudicate_modality(
+                [{"id": p.id, "title": p.title, "transcript": p.transcript_text, "duration": p.duration_seconds} for p in ambiguous],
+                settings,
+            )
+            changed = 0
+            for p in ambiguous:
+                verdict = verdicts.get(p.id)
+                if not verdict:
+                    continue
+                if verdict != p.content_subtype:
+                    changed += 1
+                p.content_subtype = verdict
+                p.content_subtype_confidence = CONF_LLM
+            db.commit()
+            record_task_event(
+                db, tenant_id, task_id, "模态裁决", "succeeded",
+                f"语义裁决完成:{len(verdicts)}/{len(ambiguous)} 条判定,{changed} 条修正",
+            )
     return posts

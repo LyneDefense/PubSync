@@ -30,16 +30,50 @@ def subtype_label(subtype: str) -> str:
     return SUBTYPE_LABELS.get(subtype, subtype)
 
 
-def classify_subtype(content_type: str, transcript_text: str, *, min_transcript_chars: int) -> str:
-    """按 content_type + 转写密度启发式打标。纯函数,零 LLM。"""
+# 判定置信来源。density/platform 高置信;ambiguous 待 T2 语义裁决;chars 无时长回退(中);unknown 判不了。
+CONF_PLATFORM = "platform"
+CONF_DENSITY = "density"
+CONF_AMBIGUOUS = "ambiguous"
+CONF_CHARS = "chars"
+CONF_UNKNOWN = "unknown"
+CONF_LLM = "llm"
+
+
+def classify_subtype(
+    content_type: str,
+    transcript_text: str,
+    *,
+    duration_seconds: float | None = None,
+    density_high_cps: float = 3.0,
+    density_low_cps: float = 1.0,
+    min_transcript_chars: int = 200,
+) -> tuple[str, str]:
+    """分级判定内容模态,返回 (subtype, confidence)。纯函数,零 LLM。
+
+    T0 平台:非视频 → 图文(platform)。
+    T1 密度(有时长):字/秒 ≥ high → 口播(density);≤ low → 非口播(density);之间 → 模糊(ambiguous,给密度最近猜测,交 T2)。
+    回退(无时长,如字幕来源/旧数据):字数 ≥ 阈值 → 口播,否则非口播(chars,中置信)。
+    视频但无转写(ASR 关/失败) → 未知(unknown)。
+    """
     if content_type != "video":
-        return IMAGE_TEXT
+        return IMAGE_TEXT, CONF_PLATFORM
     transcript = (transcript_text or "").strip()
     if not transcript:
-        return UNKNOWN
-    if len(transcript) >= max(1, min_transcript_chars):
-        return TALKING_VIDEO
-    return VISUAL_VIDEO
+        return UNKNOWN, CONF_UNKNOWN
+    chars = len(transcript)
+    if duration_seconds and duration_seconds > 0:
+        cps = chars / duration_seconds  # 字/秒:整段说话密度
+        if cps >= density_high_cps:
+            return TALKING_VIDEO, CONF_DENSITY
+        if cps <= density_low_cps:
+            return VISUAL_VIDEO, CONF_DENSITY
+        # 模糊带:密度既不高也不低(半口播/剧情/vlog)→ 先给最近猜测,标 ambiguous 交 T2 语义裁决
+        provisional = TALKING_VIDEO if cps >= (density_low_cps + density_high_cps) / 2 else VISUAL_VIDEO
+        return provisional, CONF_AMBIGUOUS
+    # 无时长:字数回退(中置信),仍可被 T2 提升
+    if chars >= max(1, min_transcript_chars):
+        return TALKING_VIDEO, CONF_CHARS
+    return VISUAL_VIDEO, CONF_CHARS
 
 
 def coarse_modality(content_type: str) -> str:

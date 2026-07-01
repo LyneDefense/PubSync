@@ -31,10 +31,11 @@ def _post(**kw) -> BloggerPost:
 
 
 def test_classify_subtype():
-    assert classify_subtype("image", "", min_transcript_chars=200) == IMAGE_TEXT
-    assert classify_subtype("video", "字" * 250, min_transcript_chars=200) == TALKING_VIDEO
-    assert classify_subtype("video", "太短了", min_transcript_chars=200) == VISUAL_VIDEO
-    assert classify_subtype("video", "", min_transcript_chars=200) == UNKNOWN
+    # 无时长时走字数回退;返回 (subtype, confidence),这里只校验 subtype。密度分级见 test_modality_classify.py。
+    assert classify_subtype("image", "", min_transcript_chars=200)[0] == IMAGE_TEXT
+    assert classify_subtype("video", "字" * 250, min_transcript_chars=200)[0] == TALKING_VIDEO
+    assert classify_subtype("video", "太短了", min_transcript_chars=200)[0] == VISUAL_VIDEO
+    assert classify_subtype("video", "", min_transcript_chars=200)[0] == UNKNOWN
 
 
 def test_coarse_modality():
