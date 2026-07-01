@@ -11,11 +11,12 @@ const TEXT_MODELS: Record<string, string[]> = {
   minimax: ['MiniMax-M2.7', 'MiniMax-Text-01'],
   claude: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
   openai: ['gpt-5.5', 'gpt-5.5-mini', 'gpt-4.1', 'gpt-4o'],
-  glm: ['glm-4.6', 'glm-4.5', 'glm-4.5-air', 'glm-4-plus', 'glm-4-flash']
+  glm: ['glm-5.2', 'glm-5.1', 'glm-4.7', 'glm-4.6', 'glm-4.5', 'glm-4.7-flash', 'glm-4-flash-250414']
 }
 const IMAGE_MODELS: Record<string, string[]> = {
   openai: ['gpt-image-1', 'dall-e-3'],
-  minimax: ['image-01']
+  minimax: ['image-01'],
+  glm: ['cogview-4-250304', 'cogview-4', 'cogview-3-flash']
 }
 const TEXT_PROVIDERS = [
   { value: 'minimax', label: 'MiniMax' },
@@ -25,7 +26,8 @@ const TEXT_PROVIDERS = [
 ]
 const IMAGE_PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
-  { value: 'minimax', label: 'MiniMax' }
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'glm', label: '智谱 GLM (CogView)' }
 ]
 // 供应商 → 配置键。claude 复用 anthropic_* 键。
 const TEXT_KEYS: Record<string, { model: string; key: string; base: string }> = {
@@ -34,7 +36,7 @@ const TEXT_KEYS: Record<string, { model: string; key: string; base: string }> = 
   claude: { model: 'anthropic_text_model', key: 'anthropic_api_key', base: 'anthropic_base_url' },
   openai: { model: 'openai_text_model', key: 'openai_api_key', base: 'openai_base_url' }
 }
-const IMAGE_KEYS: Record<string, string> = { openai: 'openai_image_model', minimax: 'minimax_image_model' }
+const IMAGE_KEYS: Record<string, string> = { openai: 'openai_image_model', minimax: 'minimax_image_model', glm: 'glm_image_model' }
 const CUSTOM = '__custom__'
 // 向导已接管的键;其余 model 组字段进「高级」。
 const HANDLED = new Set([
@@ -271,7 +273,7 @@ async function clearAdv(f: ConfigFieldView) {
       <!-- 图像模型 -->
       <div class="ms-card">
         <h3>图像模型（配图用）</h3>
-        <p class="ms-hint">Claude 无图像生成,配图固定走 OpenAI / MiniMax。</p>
+        <p class="ms-hint">配图可选 OpenAI / MiniMax / 智谱 CogView（Claude 无图像生成）。Key 与上方文本卡共用同一供应商。</p>
         <div class="ms-grid">
           <label>供应商
             <select v-model="imageProvider" @change="syncImageModelFromProvider">

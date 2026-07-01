@@ -33,10 +33,11 @@ class Settings(BaseSettings):
     anthropic_text_model: str = "claude-sonnet-4-6"
     anthropic_version: str = "2023-06-01"
     anthropic_max_tokens: int = 8000
-    # 智谱 GLM(OpenAI 兼容的 /chat/completions)。设 llm_provider=glm 即全站文本走 GLM;图像不变。
+    # 智谱 GLM(OpenAI 兼容)。llm_provider=glm 全站文本走 GLM;image_provider=glm 配图走 CogView。
     glm_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     glm_api_key: str = ""
     glm_text_model: str = "glm-4.6"
+    glm_image_model: str = "cogview-4-250304"  # 智谱文生图 CogView
     # 博主蒸馏单独的文本模型（留空=用上面的 *_text_model）。蒸馏对推理要求更高，
     # 可在此指向更强的模型（如更高档的 OpenAI/MiniMax 模型）以提升蒸馏质量。
     distill_text_model: str = ""

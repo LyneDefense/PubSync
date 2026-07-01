@@ -79,6 +79,8 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
         image_bytes, extension = generate_minimax_image(settings, prompt)
     elif provider == "openai":
         image_bytes, extension = generate_openai_image(settings, prompt)
+    elif provider in ("glm", "zhipu", "bigmodel"):
+        image_bytes, extension = generate_glm_image(settings, prompt)
     else:
         raise AIServiceError(f"不支持的 IMAGE_PROVIDER: {settings.image_provider}")
 
@@ -288,6 +290,35 @@ def generate_openai_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
         raise AIServiceError("OpenAI 图片生成返回缺少 b64_json")
     record_image_usage("openai", settings.openai_image_model, 1)
     return base64.b64decode(str(first["b64_json"])), "png"
+
+
+def generate_glm_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
+    """智谱 CogView 文生图(OpenAI 兼容 /images/generations)。返回 (图片字节, 扩展名)。
+
+    CogView 通常返回图片 URL(而非 base64),这里两种都兼容:有 b64_json 直接解码,否则下载 url。
+    """
+    data = glm_post(
+        settings,
+        "/images/generations",
+        {"model": settings.glm_image_model, "prompt": prompt, "size": "1024x1024"},
+        timeout=180,
+    )
+    images = data.get("data")
+    if not isinstance(images, list) or not images or not isinstance(images[0], dict):
+        raise AIServiceError(f"GLM 图片生成返回为空：{data}")
+    first = images[0]
+    if first.get("b64_json"):
+        record_image_usage("glm", settings.glm_image_model, 1)
+        return base64.b64decode(str(first["b64_json"])), "png"
+    url = first.get("url")
+    if isinstance(url, str) and url:
+        with httpx.Client(timeout=120) as client:
+            resp = client.get(url)
+        if resp.status_code >= 400:
+            raise AIServiceError(f"GLM 图片下载失败 HTTP {resp.status_code}")
+        record_image_usage("glm", settings.glm_image_model, 1)
+        return resp.content, "png"
+    raise AIServiceError(f"GLM 图片生成返回缺少 url/b64_json：{data}")
 
 
 def generate_minimax_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
