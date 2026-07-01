@@ -10,7 +10,8 @@ import type { ConfigFieldView, ConfigView } from '../../api/types'
 const TEXT_MODELS: Record<string, string[]> = {
   minimax: ['MiniMax-M2.7', 'MiniMax-Text-01'],
   claude: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-  openai: ['gpt-5.5', 'gpt-5.5-mini', 'gpt-4.1', 'gpt-4o']
+  openai: ['gpt-5.5', 'gpt-5.5-mini', 'gpt-4.1', 'gpt-4o'],
+  glm: ['glm-4.6', 'glm-4.5', 'glm-4.5-air', 'glm-4-plus', 'glm-4-flash']
 }
 const IMAGE_MODELS: Record<string, string[]> = {
   openai: ['gpt-image-1', 'dall-e-3'],
@@ -18,6 +19,7 @@ const IMAGE_MODELS: Record<string, string[]> = {
 }
 const TEXT_PROVIDERS = [
   { value: 'minimax', label: 'MiniMax' },
+  { value: 'glm', label: '智谱 GLM' },
   { value: 'claude', label: 'Claude（Anthropic）' },
   { value: 'openai', label: 'OpenAI' }
 ]
@@ -28,6 +30,7 @@ const IMAGE_PROVIDERS = [
 // 供应商 → 配置键。claude 复用 anthropic_* 键。
 const TEXT_KEYS: Record<string, { model: string; key: string; base: string }> = {
   minimax: { model: 'minimax_text_model', key: 'minimax_api_key', base: 'minimax_base_url' },
+  glm: { model: 'glm_text_model', key: 'glm_api_key', base: 'glm_base_url' },
   claude: { model: 'anthropic_text_model', key: 'anthropic_api_key', base: 'anthropic_base_url' },
   openai: { model: 'openai_text_model', key: 'openai_api_key', base: 'openai_base_url' }
 }
@@ -115,7 +118,8 @@ async function reload() {
     const view = await getAdminConfig()
     config.value = view
     const prov = valueOf('llm_provider').toLowerCase()
-    textProvider.value = prov === 'anthropic' ? 'claude' : prov in TEXT_KEYS ? prov : 'minimax'
+    const provNorm = prov === 'anthropic' ? 'claude' : prov === 'zhipu' || prov === 'bigmodel' ? 'glm' : prov
+    textProvider.value = provNorm in TEXT_KEYS ? provNorm : 'minimax'
     imageProvider.value = valueOf('image_provider').toLowerCase() in IMAGE_KEYS ? valueOf('image_provider').toLowerCase() : 'openai'
     syncTextModelFromProvider()
     syncImageModelFromProvider()
