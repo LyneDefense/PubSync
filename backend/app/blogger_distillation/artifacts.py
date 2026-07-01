@@ -4,6 +4,7 @@ import html
 import re
 from typing import Any
 
+from app.blogger_distillation.modality import subtype_label
 from app.blogger_distillation.tikhub_client import TikHubUsage
 from app.models import BloggerProfile
 
@@ -49,7 +50,6 @@ def render_report_html(
 ) -> str:
     cognitive = distillation.get("cognitive_layer", {})
     strategy = distillation.get("strategy_layer", {})
-    content = distillation.get("content_layer", {})
 
     body: list[str] = [
         f"<h1>{html.escape(report_title(blogger, mode))}</h1>",
@@ -73,11 +73,8 @@ def render_report_html(
     body += layer_block("认知层 · 怎么想", cognitive, COGNITIVE_LABELS)
     # 5. 策略层（怎么运营）
     body += layer_block("策略层 · 怎么运营", strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm")))
-    # 6. 内容层（怎么写）
-    body += layer_block("内容层 · 怎么写", content, CONTENT_LABELS)
-    # 7. TOP 爆款逐条拆解
-    body.append("<h2>TOP 爆款逐条拆解</h2>")
-    body.append(render_breakdowns(distillation.get("top_post_breakdowns"), stats.get("hot_posts", [])))
+    # 6-7. 内容层（怎么写，按内容形态分车道）+ 各车道爆款拆解
+    body += render_content_section(distillation, stats)
     # 8. 评论洞察
     body += section("评论区洞察", distillation.get("comment_insights"))
     # 9. 数据面板
@@ -147,6 +144,51 @@ def layer_block(title: str, layer: dict[str, Any], labels: dict[str, str], tail:
     if not rendered_any:
         out.append("<p>暂无</p>")
     return out
+
+
+def render_content_section(distillation: dict[str, Any], stats: dict[str, Any]) -> list[str]:
+    """内容层 HTML:新形态(content_lanes)按车道分节 + 各车道爆款;旧形态(content_layer)回退单块。"""
+    lanes = distillation.get("content_lanes")
+    hot = stats.get("hot_posts") or []
+    if isinstance(lanes, dict) and lanes:
+        out: list[str] = ["<h2>内容层 · 怎么写（按内容形态分车道）</h2>"]
+        coverage = distillation.get("lane_coverage") or {}
+        for lane, content in lanes.items():
+            n = (content or {}).get("sample_count") or coverage.get(lane) or 0
+            tag = "（综合·样本不足未分车道）" if (content or {}).get("mixed") else ""
+            out += layer_block(f"{subtype_label(lane)}写法 · {n} 篇{tag}", content or {}, CONTENT_LABELS)
+            if (content or {}).get("top_post_breakdowns"):
+                out.append("<h3>该车道 TOP 爆款拆解</h3>")
+                out.append(render_breakdowns(content.get("top_post_breakdowns"), hot))
+        skipped = coverage.get("skipped") or []
+        if skipped:
+            out.append('<p class="lane-skip">未生成的车道：' + html.escape("；".join(str(s) for s in skipped)) + "</p>")
+        return out
+    # 旧形态兜底:单块内容层 + 顶层爆款拆解。
+    out = layer_block("内容层 · 怎么写", distillation.get("content_layer", {}), CONTENT_LABELS)
+    out.append("<h2>TOP 爆款逐条拆解</h2>")
+    out.append(render_breakdowns(distillation.get("top_post_breakdowns"), hot))
+    return out
+
+
+def content_section_markdown(distillation: dict[str, Any]) -> str:
+    """内容层 markdown:新形态按车道分节,旧形态单块。"""
+    lanes = distillation.get("content_lanes")
+    if isinstance(lanes, dict) and lanes:
+        coverage = distillation.get("lane_coverage") or {}
+        parts: list[str] = []
+        for lane, content in lanes.items():
+            n = (content or {}).get("sample_count") or coverage.get(lane) or 0
+            tag = "（综合）" if (content or {}).get("mixed") else ""
+            parts.append(f"### {subtype_label(lane)}写法 · {n} 篇{tag}")
+            parts.append(layer_markdown(content or {}, CONTENT_LABELS))
+            parts.append("")
+        skipped = coverage.get("skipped") or []
+        if skipped:
+            parts.append("> 未生成的车道：" + "；".join(str(s) for s in skipped))
+            parts.append("")
+        return "\n".join(parts)
+    return layer_markdown(distillation.get("content_layer", {}), CONTENT_LABELS)
 
 
 def section(title: str, value: Any) -> list[str]:
@@ -240,7 +282,6 @@ def build_skill_markdown(
     modality_compare = stats.get("modality_comparison") or ""
     cognitive = distillation.get("cognitive_layer", {})
     strategy = distillation.get("strategy_layer", {})
-    content = distillation.get("content_layer", {})
 
     if mode == "B":
         heading = f"# {blogger.display_name} 创作基因 Skill（账号诊断）"
@@ -277,9 +318,9 @@ def build_skill_markdown(
         "## 3. 策略层（怎么运营）",
         "",
         layer_markdown(strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm"))),
-        "## 4. 内容层（怎么写）",
+        "## 4. 内容层（怎么写，按内容形态分车道）",
         "",
-        layer_markdown(content, CONTENT_LABELS),
+        content_section_markdown(distillation),
         "## 5. 创作禁区",
         "",
         markdown_list(distillation.get("do_not_do")),

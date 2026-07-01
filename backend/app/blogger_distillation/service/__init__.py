@@ -24,7 +24,7 @@ from app.blogger_distillation.service.crud import (
     update_snapshot,
     update_blogger,
 )
-from app.blogger_distillation.service.distill_engine import distill_with_llm
+from app.blogger_distillation.service.distill_engine import distill_core, distill_lane
 from app.blogger_distillation.service.distillation import (
     DistillationResult,
     abandon_blogger_distillation,
@@ -70,7 +70,8 @@ __all__ = [
     "run_blogger_distillation",
     "confirm_blogger_distillation",
     "abandon_blogger_distillation",
-    "distill_with_llm",
+    "distill_core",
+    "distill_lane",
     "extract_video_url",
     "is_likely_video_url",
     "collect_video_url_candidates",

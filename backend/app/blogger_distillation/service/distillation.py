@@ -17,10 +17,18 @@ from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis, artifacts
 from app.blogger_distillation.modality import ALL as SCOPE_ALL
+from app.blogger_distillation.modality import (
+    IMAGE_TEXT,
+    TALKING_VIDEO,
+    VISUAL_VIDEO,
+    subtype_label,
+)
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.blogger_distillation.service.distill_engine import (
-    distill_with_llm,
-    evaluate_distillation_quality,
+    distill_core,
+    distill_lane,
+    evaluate_core_quality,
+    evaluate_lane_quality,
     normalize_mode,
 )
 from app.blogger_distillation.service.events import (
@@ -45,19 +53,6 @@ logger = logging.getLogger(__name__)
 class DistillationResult:
     run: BloggerDistillationRun
     skill: BloggerSkill
-
-
-def build_distillation_diagnostics(posts: list[BloggerPost], stats: dict[str, Any]) -> dict[str, int]:
-    stats_json = json.dumps(stats, ensure_ascii=False, default=str)
-    return {
-        "sample_count": len(posts),
-        "video_count": sum(1 for post in posts if post.content_type == "video"),
-        "transcript_count": sum(1 for post in posts if (post.transcript_text or "").strip()),
-        "transcript_chars": sum(len(post.transcript_text or "") for post in posts),
-        "comment_total": int(stats.get("comment_total") or 0),
-        "stats_json_chars": len(stats_json),
-        "stats_prompt_chars": min(len(stats_json), 18000),
-    }
 
 
 def run_blogger_distillation(
@@ -110,38 +105,12 @@ def run_blogger_distillation(
                 f"用于蒸馏的笔记只有 {len(posts)} 篇，至少需要 {settings.distill_min_samples} 篇"
                 f"（建议 ≥{settings.distill_recommend_samples} 篇,样本越多越准）"
             )
-        # 选材来源:自动=通用 skill;自定义=按所选笔记的模态推导 scope。
-        if source == "auto":
-            scope = [SCOPE_ALL]
-        else:
-            present = sorted({post.content_subtype for post in posts if post.content_subtype and post.content_subtype != "unknown"})
-            scope = present or [SCOPE_ALL]
         record_task_event(
             db, tenant_id, task_id, "蒸馏选材", "succeeded",
             f"{'自动蒸馏(高赞)' if source == 'auto' else '自定义选材'}:{len(posts)} 篇笔记",
         )
-        record_task_event(db, tenant_id, task_id, "认知蒸馏", "running", "开始用大模型提炼认知、策略和执行层方法论")
-        ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        stats = analysis.analyze_posts(posts)
+        stats = analysis.analyze_posts(posts)  # 内核 stats(全账号,跨模态)
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
-        diagnostics = build_distillation_diagnostics(posts, stats)
-        logger.info(
-            "认知蒸馏诊断：任务ID=%s，平台=%s，博主ID=%s，来源=%s，样本=%s，视频=%s，转写样本=%s，总转写字数=%s，评论=%s，stats字符=%s，发送字符=%s，模型=%s",
-            task_id,
-            blogger.platform,
-            blogger.id,
-            source,
-            diagnostics["sample_count"],
-            diagnostics["video_count"],
-            diagnostics["transcript_count"],
-            diagnostics["transcript_chars"],
-            diagnostics["comment_total"],
-            diagnostics["stats_json_chars"],
-            diagnostics["stats_prompt_chars"],
-            settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model,
-        )
-        llm_started_at = time.perf_counter()
-        logger.info("认知蒸馏请求已发送：任务ID=%s，平台=%s，模型=%s", task_id, blogger.platform, settings.minimax_text_model if settings.minimax_api_key else settings.openai_text_model)
 
         def on_distill_event(kind: str, event: dict[str, Any]) -> None:
             triple = humanize_event(kind, event, subject="博主方法论", gerund="提炼")
@@ -149,18 +118,70 @@ def run_blogger_distillation(
                 step, status, message = triple
                 record_task_event(db, tenant_id, task_id, step, status, message)
 
-        distillation, synthesis_trace = distill_with_llm(settings, blogger, user_info, stats, mode, on_event=on_distill_event)
-        quality = evaluate_distillation_quality(distillation, stats, mode)
-        quality["revisions"] = synthesis_trace.revisions
-        quality["final_passed"] = synthesis_trace.final_passed
+        llm_started_at = time.perf_counter()
+        # 1) 内核蒸馏(认知/策略/人设,吃全部笔记含 unknown)。
+        record_task_event(db, tenant_id, task_id, "内核蒸馏", "running", "提炼这个人的认知层、策略层与人设(跨模态)")
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        core, core_trace = distill_core(settings, blogger, user_info, stats, mode, on_event=on_distill_event)
+        core_quality = evaluate_core_quality(core, stats, mode)
+
+        # 2) 内容层按 content_subtype 分车道蒸馏;样本不足的车道诚实跳过。
+        lane_posts: dict[str, list[BloggerPost]] = {IMAGE_TEXT: [], TALKING_VIDEO: [], VISUAL_VIDEO: []}
+        for post in posts:
+            if post.content_subtype in lane_posts:
+                lane_posts[post.content_subtype].append(post)
+        unknown_count = len(posts) - sum(len(v) for v in lane_posts.values())
+        min_lane = settings.distill_min_samples_per_subtype
+        content_lanes: dict[str, Any] = {}
+        lane_quality: dict[str, Any] = {}
+        skipped: list[str] = []
+        total_revisions = core_trace.revisions
+        for lane, lps in lane_posts.items():
+            if len(lps) < min_lane:
+                if lps:
+                    skipped.append(f"{subtype_label(lane)}(仅{len(lps)}篇,<{min_lane})")
+                continue
+            ensure_distillation_not_cancelled(db, tenant_id, task_id)
+            lane_stats = analysis.analyze_posts(lps)
+            record_task_event(db, tenant_id, task_id, "内容层", "running", f"蒸馏{subtype_label(lane)}写法({len(lps)}篇)")
+            content, lane_trace = distill_lane(settings, blogger, user_info, lane, lane_stats, mode, on_event=on_distill_event)
+            content["sample_count"] = len(lps)
+            content_lanes[lane] = content
+            lane_quality[lane] = evaluate_lane_quality(content, lane_stats, lane)
+            total_revisions += lane_trace.revisions
+
+        # 兜底:一条车道都不够(小号)→ 对全部笔记走一次内容层,标「综合」,不让内容层空着。
+        if not content_lanes:
+            dominant = max(lane_posts, key=lambda k: len(lane_posts[k])) if any(lane_posts.values()) else IMAGE_TEXT
+            content, lane_trace = distill_lane(settings, blogger, user_info, dominant, stats, mode, on_event=on_distill_event)
+            content["sample_count"] = len(posts)
+            content["mixed"] = True
+            content_lanes[dominant] = content
+            lane_quality[dominant] = evaluate_lane_quality(content, stats, dominant)
+            total_revisions += lane_trace.revisions
+            skipped.append("样本不足未分车道,内容层基于全部笔记(综合)")
+
+        # 3) 合并结果 + 组合质量分。
+        lane_coverage = {
+            IMAGE_TEXT: len(lane_posts[IMAGE_TEXT]), TALKING_VIDEO: len(lane_posts[TALKING_VIDEO]),
+            VISUAL_VIDEO: len(lane_posts[VISUAL_VIDEO]), "unknown": unknown_count, "skipped": skipped,
+        }
+        distillation = {**core, "content_lanes": content_lanes, "lane_coverage": lane_coverage}
+        lane_scores = [q["score"] for q in lane_quality.values()]
+        combined = round((core_quality["score"] + sum(lane_scores)) / (1 + len(lane_scores))) if lane_scores else core_quality["score"]
+        all_issues = list(core_quality.get("issues", []))
+        for lane_key, lane_q in lane_quality.items():
+            all_issues += [f"[{subtype_label(lane_key)}] {i}" for i in lane_q.get("issues", [])]
+        quality = {
+            "score": combined, "grade": "优" if combined >= 85 else ("良" if combined >= 70 else "待改进"),
+            "issues": all_issues, "core": core_quality, "lanes": lane_quality, "lane_coverage": lane_coverage,
+            "revisions": total_revisions, "final_passed": core_trace.final_passed,
+        }
+        scope = list(content_lanes.keys()) or [SCOPE_ALL]  # 技能 scope 天然 = 实际产出的车道
         llm_elapsed = time.perf_counter() - llm_started_at
         logger.info(
-            "认知蒸馏返回：任务ID=%s，平台=%s，耗时=%.2fs，输出字段=%s，输出字符=%s",
-            task_id,
-            blogger.platform,
-            llm_elapsed,
-            len(distillation),
-            len(json.dumps(distillation, ensure_ascii=False, default=str)),
+            "蒸馏完成：任务ID=%s，平台=%s，provider=%s，耗时=%.2fs，车道=%s，跳过=%s，综合分=%s",
+            task_id, blogger.platform, settings.llm_provider, llm_elapsed, list(content_lanes.keys()), skipped, combined,
         )
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         usage = TikHubUsage()
@@ -188,7 +209,7 @@ def run_blogger_distillation(
         run.hot_post_count = len(stats["hot_posts"])
         run.comment_count = stats["comment_total"]
         run.report_json = json.dumps(
-            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "synthesis": synthesis_trace.to_dict()},
+            {"mode": mode, "stats": stats, "distillation": distillation, "quality": quality, "synthesis": core_trace.to_dict()},
             ensure_ascii=False,
             default=str,
         )
@@ -202,14 +223,15 @@ def run_blogger_distillation(
             task_id,
             "Skill 生成",
             "succeeded",
-            f"蒸馏完成，等待确认：质量评分 {quality['score']}（{quality['grade']}），自我修订 {synthesis_trace.revisions} 次",
+            f"蒸馏完成，等待确认：质量评分 {quality['score']}（{quality['grade']}），自我修订 {total_revisions} 次",
             {
                 "run_id": run.id,
                 "skill_id": skill.id,
                 "mode": mode,
                 "quality_score": quality["score"],
                 "quality_grade": quality["grade"],
-                "revisions": synthesis_trace.revisions,
+                "revisions": total_revisions,
+                "lanes": list(content_lanes.keys()),
             },
         )
         return DistillationResult(run=run, skill=skill)
