@@ -861,9 +861,17 @@ export interface AppraisalReport {
 export interface AppraisalIntentQuestion {
   q: string
   options: string[]
+  multi?: boolean // 可多选(缺省 true);false=单选(互斥)
+  allow_other?: boolean // 是否允许「其他,自己填」(缺省 true)
 }
 
 export interface AppraisalIntentSuggestResult {
   clear: boolean // 用户填的意图已够具体 → 前端直接放行诊断,不展示问题
   questions: AppraisalIntentQuestion[]
+}
+
+// 答题打卡「读取 TA 最近笔记」阶段的真实返回:note_count 为实际喂给模型的近期笔记数。
+export interface AppraisalIntentContext {
+  note_count: number
+  has_material: boolean
 }

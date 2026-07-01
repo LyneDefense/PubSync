@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// 对标分析(诊断别人):三步向导 —— ① 选对标博主 ② 明确意图(看 TA 在做什么 + 引导问题) ③ 诊断报告。
-// 同一时间只显示一步;顶部 stepper 贯穿三步。状态机:step(1|2|3) 本地;意图/问题/报告复用 store。
-import { computed, onMounted, ref } from 'vue'
+// 对标分析(诊断别人):三步向导 —— ① 选对标博主 ② 明确意图 ③ 诊断报告。
+// 第 2 步是「意图录入 → 内嵌进度卡 → 答题打卡」三小阶段的状态机(intentPhase),一次只问一道题;
+// 进度卡由两次真实后端往返(读笔记 / 模型出题)点亮,不按时间假装分阶段完成。
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
-import LiveProgress from '../components/LiveProgress.vue'
-import type { AccountAuditRun } from '../api/types'
+import type { AccountAuditRun, AppraisalIntentQuestion } from '../api/types'
 import {
   appraiseForm,
   appraisalHistory,
@@ -14,16 +14,15 @@ import {
   bloggers,
   currentSocialPlatformName,
   currentSocialTab,
+  fetchIntentContext,
   fetchIntentSuggestions,
   formatDate,
   handleRunAppraisal,
-  intentChecked,
-  intentClear,
-  intentLoading,
   intentOthers,
   intentQuestions,
   intentSelections,
   isSocialPlatform,
+  markIntentSkipped,
   parseAppraisalReport,
   pendingAction,
   refreshAppraisalHistory,
@@ -41,6 +40,125 @@ const exporting = ref(false)
 const selectedBlogger = computed(() => benchmarkAccounts.value.find((b) => b.id === appraiseForm.blogger_id) || null)
 const selectedName = computed(() => selectedBlogger.value?.display_name || '')
 const diagnosing = computed(() => pendingAction.value === 'audit')
+
+// —— 第 2 步·意图状态机(本地) ——
+type IntentPhase = 'intro' | 'analyzing' | 'quiz'
+const intentPhase = ref<IntentPhase>('intro')
+const stageStep = ref(0) // 进度卡阶段:0=读取笔记(context 在飞) 1=拆解/出题(suggest 在飞)
+const noteCount = ref<number | null>(null) // context 返回的真实近期笔记数
+const analyzeError = ref('')
+const quizIndex = ref(0) // 当前第几题(0-based)
+const analyzeStartMs = ref(0)
+const elapsedMs = ref(0)
+let elapsedTimer: number | undefined
+
+// 进度卡三段(第一段带真实笔记数)。接真实事件推进,不按 elapsed 假装完成。
+const analyzeStages: ((n: number | null) => string)[] = [
+  (n) => `读取 TA 最近 ${n ?? '…'} 篇笔记`,
+  () => '拆解 TA 的选题与风格方向',
+  () => '生成帮你明确意图的问题'
+]
+const elapsedLabel = computed(() => `${(elapsedMs.value / 1000).toFixed(1)}s`)
+
+function stageStatus(i: number): 'done' | 'active' | 'pending' {
+  if (i < stageStep.value) return 'done'
+  if (i === stageStep.value) return 'active'
+  return 'pending'
+}
+function startElapsedTimer() {
+  stopElapsedTimer()
+  elapsedMs.value = 0
+  analyzeStartMs.value = Date.now()
+  elapsedTimer = window.setInterval(() => {
+    elapsedMs.value = Date.now() - analyzeStartMs.value
+  }, 200)
+}
+function stopElapsedTimer() {
+  if (elapsedTimer) {
+    window.clearInterval(elapsedTimer)
+    elapsedTimer = undefined
+  }
+}
+
+// 点「明确意图」→ 两次真实往返:读笔记(点亮第一段)→ 模型出题(点亮后两段)→ 进答题。
+async function checkIntent() {
+  if (!appraiseForm.blogger_id) {
+    showMessage('请先选择要诊断的博主', true)
+    return
+  }
+  analyzeError.value = ''
+  noteCount.value = null
+  stageStep.value = 0
+  intentPhase.value = 'analyzing'
+  startElapsedTimer()
+  try {
+    const ctx = await fetchIntentContext(appraiseForm.blogger_id)
+    noteCount.value = ctx.note_count
+    stageStep.value = 1
+    await fetchIntentSuggestions()
+    quizIndex.value = 0
+    intentPhase.value = 'quiz'
+  } catch (err) {
+    // 失败态:留在进度卡展示重试 / 跳过,不卡在转圈。
+    analyzeError.value = err instanceof Error ? err.message : '分析失败,请重试'
+  } finally {
+    stopElapsedTimer()
+  }
+}
+// 引导失败时「跳过,直接诊断」:视为意图已明确,进 quiz(0 题)直接可开始诊断。
+function skipGuide() {
+  markIntentSkipped()
+  analyzeError.value = ''
+  quizIndex.value = 0
+  intentPhase.value = 'quiz'
+}
+
+// —— 答题打卡 ——
+const curQuestion = computed<AppraisalIntentQuestion | null>(() => intentQuestions.value[quizIndex.value] || null)
+const answeredQuestions = computed(() => intentQuestions.value.slice(0, quizIndex.value))
+const pendingQuestions = computed(() => intentQuestions.value.slice(quizIndex.value + 1))
+const isLastQuestion = computed(() => quizIndex.value >= intentQuestions.value.length - 1)
+const curAnswered = computed(() => {
+  if (!curQuestion.value) return false
+  const sel = intentSelections[quizIndex.value] || []
+  const other = (intentOthers[quizIndex.value] || '').trim()
+  return sel.length > 0 || other.length > 0
+})
+
+function isPicked(qi: number, opt: string): boolean {
+  return (intentSelections[qi] || []).includes(opt)
+}
+function pickOption(q: AppraisalIntentQuestion, opt: string) {
+  const qi = quizIndex.value
+  const arr = intentSelections[qi] || (intentSelections[qi] = [])
+  const idx = arr.indexOf(opt)
+  if (q.multi === false) {
+    intentSelections[qi] = idx >= 0 ? [] : [opt] // 单选:点已选取消,点别的替换
+  } else if (idx >= 0) {
+    arr.splice(idx, 1)
+  } else {
+    arr.push(opt)
+  }
+}
+function answerOf(qi: number): string[] {
+  const picked = [...(intentSelections[qi] || [])]
+  const other = (intentOthers[qi] || '').trim()
+  if (other) picked.push(other)
+  return picked
+}
+function segClass(i: number): 'done' | 'cur' | 'todo' {
+  return i < quizIndex.value ? 'done' : i === quizIndex.value ? 'cur' : 'todo'
+}
+function prevQuiz() {
+  if (quizIndex.value === 0) intentPhase.value = 'intro'
+  else quizIndex.value -= 1
+}
+function nextQuiz() {
+  if (quizIndex.value < intentQuestions.value.length - 1) quizIndex.value += 1
+}
+function editAnswer(qi: number) {
+  quizIndex.value = qi
+}
 
 function bloggerNameById(id: number | null | undefined): string {
   if (!id) return ''
@@ -85,18 +203,20 @@ function avatarStyle(id: number) {
   return { background: AVATAR_BG[i], color: AVATAR_INK[i] }
 }
 
+// 第 2 步意图状态机复位(换博主 / 重新诊断时)。
+function resetIntentFlow() {
+  stopElapsedTimer()
+  intentPhase.value = 'intro'
+  stageStep.value = 0
+  noteCount.value = null
+  analyzeError.value = ''
+  quizIndex.value = 0
+}
+
 function pick(id: number) {
   appraiseForm.blogger_id = appraiseForm.blogger_id === id ? 0 : id
   resetIntentGuide()
-}
-function toggleOption(qi: number, opt: string) {
-  const arr = intentSelections[qi] || (intentSelections[qi] = [])
-  const i = arr.indexOf(opt)
-  if (i >= 0) arr.splice(i, 1)
-  else arr.push(opt)
-}
-function isPicked(qi: number, opt: string): boolean {
-  return (intentSelections[qi] || []).includes(opt)
+  resetIntentFlow()
 }
 
 async function startDiagnose() {
@@ -106,6 +226,7 @@ async function startDiagnose() {
 }
 function restart() {
   resetIntentGuide()
+  resetIntentFlow()
   step.value = 1
 }
 // 查看一条历史报告:弹框展示(不动向导当前步、不覆盖当前 appraisalRun)。
@@ -141,6 +262,9 @@ async function exportImage() {
 
 onMounted(() => {
   refreshAppraisalHistory()
+})
+onUnmounted(() => {
+  stopElapsedTimer()
 })
 </script>
 
@@ -224,7 +348,7 @@ onMounted(() => {
       </section>
     </template>
 
-    <!-- ===== Step 2 · 明确意图 ===== -->
+    <!-- ===== Step 2 · 明确意图(意图录入 → 内嵌进度 → 答题打卡) ===== -->
     <section v-else-if="step === 2" class="card">
       <div class="card-head col">
         <p class="kicker">第 2 步 / 共 3 步</p>
@@ -233,61 +357,141 @@ onMounted(() => {
           正在诊断「<b>{{ selectedName }}</b>」。先说说你想从 TA 身上学什么,我们会看 TA 在做什么、再用几道选择题帮你把意图问清楚。
         </p>
       </div>
-      <div class="card-body form">
-        <label class="field">
-          <span>你想学什么 / 对标意图 <em>(可不填)</em></span>
-          <input v-model="appraiseForm.intent" type="text" placeholder="例:想学把香港保险讲得专业、又有人看、能涨粉" />
-        </label>
-        <label class="field narrow">
-          <span>品类 <em>(可选,触发合规红线)</em></span>
-          <input v-model="appraiseForm.industry" type="text" placeholder="保险 / 金融 / 医疗 / 美妆…" />
-        </label>
 
-        <!-- 引导问题(明确意图后出现) -->
-        <template v-if="intentChecked">
-          <div class="guide-rule"></div>
-          <div class="guide-hint">
-            <span class="tick">✓</span>
-            <span>看了 TA 最近的内容,挑几个最贴近你的方向,诊断会更准。</span>
+      <!-- 阶段 A · 意图录入 -->
+      <template v-if="intentPhase === 'intro'">
+        <div class="card-body form">
+          <label class="field">
+            <span>你想学什么 / 对标意图 <em>(可不填)</em></span>
+            <input v-model="appraiseForm.intent" type="text" placeholder="例:想学把香港保险讲得专业、又有人看、能涨粉" />
+          </label>
+          <label class="field narrow">
+            <span>品类 <em>(可选,触发合规红线)</em></span>
+            <input v-model="appraiseForm.industry" type="text" placeholder="保险 / 金融 / 医疗 / 美妆…" />
+          </label>
+        </div>
+        <div class="card-foot split">
+          <button type="button" class="btn-ghost" @click="step = 1">← 上一步</button>
+          <button type="button" class="btn-primary" @click="checkIntent">下一步:明确意图 →</button>
+        </div>
+      </template>
+
+      <!-- 阶段 B · 分析中(内嵌进度卡,真实事件驱动) -->
+      <div v-else-if="intentPhase === 'analyzing'" class="card-body analyze">
+        <div class="progress-card" :class="{ failed: !!analyzeError }" role="status" aria-live="polite">
+          <div class="pc-head">
+            <span v-if="!analyzeError" class="pc-spin" aria-hidden="true"></span>
+            <span v-else class="pc-fail" aria-hidden="true">!</span>
+            <span class="pc-title">{{ analyzeError ? '分析没能完成' : '正在看 TA 最近在做什么…' }}</span>
+            <span v-if="!analyzeError" class="pc-elapsed">{{ elapsedLabel }}</span>
           </div>
-          <p v-if="intentClear && !intentQuestions.length" class="intent-clear">你的意图已经清楚,可以直接诊断。</p>
-          <div v-for="(q, qi) in intentQuestions" :key="qi" class="guide-q">
-            <p class="q-title">{{ q.q }}</p>
-            <div class="chips">
-              <button
-                v-for="opt in q.options"
-                :key="opt"
-                type="button"
-                class="chip"
-                :class="{ on: isPicked(qi, opt) }"
-                @click="toggleOption(qi, opt)"
-              >{{ opt }}</button>
-              <input
-                v-model="intentOthers[qi]"
-                class="chip-other"
-                type="text"
-                placeholder="✎ 其他,自己填…"
-              />
+
+          <ol v-if="!analyzeError" class="pc-stages">
+            <li v-for="(s, i) in analyzeStages" :key="i" :class="stageStatus(i)">
+              <span class="pc-dot" aria-hidden="true"><span v-if="stageStatus(i) === 'done'" class="pc-check">✓</span></span>
+              <span class="pc-step">{{ s(noteCount) }}</span>
+            </li>
+          </ol>
+
+          <template v-if="!analyzeError">
+            <div class="pc-bar" aria-hidden="true"><i></i></div>
+            <p class="pc-hint">通常需要 5–10 秒;TA 的笔记越多,问得越准。</p>
+          </template>
+          <template v-else>
+            <p class="pc-error">{{ analyzeError }}</p>
+            <div class="pc-actions">
+              <button type="button" class="btn-primary" @click="checkIntent">↻ 重试</button>
+              <button type="button" class="btn-ghost" @click="skipGuide">跳过,直接诊断 →</button>
             </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- 阶段 C · 答题打卡(一次一题) -->
+      <div v-else class="card-body quiz">
+        <!-- 顶部进度 -->
+        <div v-if="intentQuestions.length" class="quiz-progress">
+          <span class="qp-label">明确意图 · 已答 {{ quizIndex }} / {{ intentQuestions.length }}</span>
+          <div class="qp-track">
+            <i v-for="i in intentQuestions.length" :key="i" :class="segClass(i - 1)"></i>
           </div>
-        </template>
-      </div>
-      <div class="card-foot split">
-        <button type="button" class="btn-ghost" @click="step = 1">← 上一步</button>
+        </div>
+
+        <!-- 已答堆叠 -->
         <button
-          v-if="!intentChecked"
+          v-for="(q, qi) in answeredQuestions"
+          :key="'a' + qi"
           type="button"
-          class="btn-primary"
-          :disabled="intentLoading"
-          @click="fetchIntentSuggestions"
+          class="answered"
+          @click="editAnswer(qi)"
         >
-          {{ intentLoading ? '正在看 TA 在做什么…' : '下一步:明确意图 →' }}
+          <span class="ans-dot" aria-hidden="true">✓</span>
+          <span class="ans-body">
+            <span class="ans-q">{{ q.q }}</span>
+            <span class="ans-chips">
+              <em v-for="a in answerOf(qi)" :key="a" class="ans-chip">{{ a }}</em>
+              <em v-if="!answerOf(qi).length" class="ans-chip skipped">已跳过</em>
+            </span>
+          </span>
+          <span class="ans-edit">修改</span>
         </button>
-        <button v-else type="button" class="btn-primary" :disabled="diagnosing" @click="startDiagnose">
-          {{ diagnosing ? '诊断中…' : '开始诊断' }}
-        </button>
+
+        <!-- 当前题 -->
+        <div v-if="curQuestion" class="current">
+          <div class="cur-head">
+            <span class="cur-pill">第 {{ quizIndex + 1 }} 题</span>
+            <span class="cur-hint">{{ curQuestion.multi === false ? '单选' : '可多选' }}</span>
+          </div>
+          <p class="cur-q">{{ curQuestion.q }}</p>
+          <div class="cur-options">
+            <button
+              v-for="opt in curQuestion.options"
+              :key="opt"
+              type="button"
+              class="opt"
+              :class="{ on: isPicked(quizIndex, opt) }"
+              @click="pickOption(curQuestion, opt)"
+            >
+              <span class="opt-dot" aria-hidden="true"><span v-if="isPicked(quizIndex, opt)">✓</span></span>
+              <span>{{ opt }}</span>
+            </button>
+          </div>
+          <input
+            v-if="curQuestion.allow_other !== false"
+            v-model="intentOthers[quizIndex]"
+            class="cur-other"
+            type="text"
+            placeholder="✎ 其他,自己填…"
+          />
+        </div>
+
+        <!-- 无需追问(意图已清楚) -->
+        <div v-else class="cur-clear">
+          <span class="cc-tick" aria-hidden="true">✓</span>
+          <p>你的意图已经清楚,可以直接开始诊断。</p>
+        </div>
+
+        <!-- 未答占位 -->
+        <div v-for="(q, pi) in pendingQuestions" :key="'p' + pi" class="pending">
+          <span class="pend-n">{{ quizIndex + 2 + pi }}</span>
+          <span class="pend-q">{{ q.q }}</span>
+        </div>
+
+        <!-- 底部导航 -->
+        <div class="quiz-foot">
+          <button type="button" class="btn-ghost" @click="prevQuiz">{{ quizIndex === 0 ? '← 上一步' : '← 上一题' }}</button>
+          <button
+            v-if="!isLastQuestion"
+            type="button"
+            class="btn-primary"
+            :disabled="!curAnswered"
+            @click="nextQuiz"
+          >下一题 →</button>
+          <button v-else type="button" class="btn-primary" :disabled="diagnosing" @click="startDiagnose">
+            {{ diagnosing ? '诊断中…' : '开始诊断' }}
+          </button>
+        </div>
       </div>
-      <LiveProgress v-if="diagnosing" />
     </section>
 
     <!-- ===== Step 3 · 诊断报告 ===== -->
@@ -571,7 +775,7 @@ onMounted(() => {
   color: #fff;
 }
 
-/* Step 2 form */
+/* Step 2 · intro 表单 */
 .card-body.form {
   padding: 18px 22px;
   display: grid;
@@ -602,52 +806,293 @@ onMounted(() => {
 .field.narrow {
   max-width: 320px;
 }
-.guide-rule {
-  border-top: 1px dashed var(--color-rule);
-  margin: 4px 0 2px;
+
+/* Step 2 · analyzing — 内嵌进度卡(真实事件驱动) */
+.card-body.analyze {
+  padding: 18px 22px;
 }
-.guide-hint {
+.progress-card {
+  background: var(--color-accent-tint);
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.progress-card.failed {
+  background: #fdf3f2;
+  border-color: #f0d3d0;
+}
+.pc-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #3a4048;
+  gap: 10px;
 }
-.guide-hint .tick {
+.pc-spin {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid var(--color-accent-soft-bd);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.pc-fail {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--color-accent-soft);
-  color: var(--color-accent-ink);
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-danger);
+  color: #fff;
   font-size: 13px;
   font-weight: 800;
-  flex: 0 0 auto;
 }
-.intent-clear {
-  margin: 0;
-  font-size: 13px;
-  color: var(--color-ok);
-}
-.guide-q .q-title {
-  margin: 0 0 9px;
-  font-size: 13.5px;
+.pc-title {
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-ink);
 }
-.chips {
+.pc-elapsed {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pc-stages {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.pc-stages li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pc-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid #cfd6d2;
+  background: transparent;
+  transition: all 160ms var(--ease-out);
+}
+.pc-stages li.active .pc-dot {
+  border-color: var(--color-accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.pc-stages li.done .pc-dot {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.pc-check {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+.pc-step {
+  font-size: 13.5px;
+  color: #9aa1aa;
+}
+.pc-stages li.active .pc-step {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.pc-stages li.done .pc-step {
+  color: var(--color-ink-2);
+}
+.pc-bar {
+  margin-top: 16px;
+  height: 4px;
+  border-radius: 999px;
+  background: #e0eee7;
+  overflow: hidden;
+}
+.pc-bar i {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
+  animation: indet 1.3s ease-in-out infinite;
+}
+.pc-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.pc-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--color-danger);
+  line-height: 1.6;
+}
+.pc-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+/* Step 2 · quiz — 答题打卡 */
+.card-body.quiz {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.quiz-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.qp-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent-ink);
+  font-variant-numeric: tabular-nums;
+}
+.qp-track {
+  display: flex;
+  gap: 6px;
+}
+.qp-track i {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: #e6e8eb;
+  transition: background 200ms var(--ease-out);
+}
+.qp-track i.done {
+  background: var(--color-accent);
+}
+.qp-track i.cur {
+  background: var(--color-accent-soft-bd);
+}
+
+/* 已答堆叠 */
+.answered {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #eef0f2;
+  border-radius: 12px;
+  background: #fafbfc;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms var(--ease-out),
+    border-color 120ms var(--ease-out);
+}
+.answered:hover {
+  background: #f5f7f8;
+  border-color: var(--color-rule);
+}
+.ans-dot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+.ans-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.ans-q {
+  font-size: 13px;
+  color: var(--color-ink-3);
+}
+.ans-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ans-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+.ans-chip.skipped {
+  background: #f1f2f4;
+  color: var(--color-ink-3);
+}
+.ans-edit {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-accent-ink);
+}
+
+/* 当前题(聚焦) */
+.current {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px -7px rgba(13, 90, 74, 0.35);
+}
+.cur-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cur-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cur-hint {
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.cur-q {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+.cur-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-.chip {
-  padding: 7px 15px;
+.opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
   border: 1px solid var(--color-field-border);
-  border-radius: var(--radius-pill);
+  border-radius: 10px;
   background: var(--color-surface);
   color: var(--color-ink-2);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 550;
   cursor: pointer;
   transition:
@@ -655,32 +1100,116 @@ onMounted(() => {
     background 120ms var(--ease-out),
     color 120ms var(--ease-out);
 }
-.chip:hover {
+.opt:hover {
   border-color: var(--color-rule-strong);
 }
-.chip.on {
+.opt.on {
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
 }
-/* 「其他」做成虚线胶囊,和选项 chip 同排,一眼能看出是「选项 + 自己填」。 */
-.chip-other {
-  min-width: 150px;
-  flex: 0 1 200px;
-  padding: 7px 15px;
+.opt-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid #d4d8dd;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  transition: all 120ms var(--ease-out);
+}
+.opt.on .opt-dot {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.cur-other {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
   border: 1px dashed var(--color-rule-strong);
-  border-radius: var(--radius-pill);
+  border-radius: 10px;
   background: var(--color-surface);
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-ink);
   transition: border-color 120ms var(--ease-out);
 }
-.chip-other::placeholder {
+.cur-other::placeholder {
   color: var(--color-placeholder);
 }
-.chip-other:focus {
+.cur-other:focus {
   border-style: solid;
   border-color: var(--color-accent);
+  outline: none;
+}
+
+/* 意图已清楚(0 题) */
+.cur-clear {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--color-accent-tint);
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 14px;
+}
+.cc-tick {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+.cur-clear p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-ink-2);
+}
+
+/* 未答占位 */
+.pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px dashed #e6e8eb;
+  border-radius: 10px;
+  opacity: 0.65;
+}
+.pend-n {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid #dfe2e6;
+  color: #9aa1aa;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pend-q {
+  font-size: 13.5px;
+  color: #9aa1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiz-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
 }
 
 /* Card footer */
@@ -890,9 +1419,35 @@ onMounted(() => {
     transform: rotate(360deg);
   }
 }
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 115, 97, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(13, 115, 97, 0);
+  }
+}
+@keyframes indet {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
+  .spinner,
+  .pc-spin {
     animation-duration: 1.6s;
+  }
+  .pc-stages li.active .pc-dot {
+    animation: none;
+  }
+  .pc-bar i {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
   }
 }
 

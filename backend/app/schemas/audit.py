@@ -43,11 +43,25 @@ class AppraisalIntentSuggestRequest(BaseModel):
 class AppraisalIntentQuestion(BaseModel):
     q: str
     options: list[str] = Field(default_factory=list)
+    multi: bool = True  # True=可多选(默认);False=单选(互斥,如目标/阶段)
+    allow_other: bool = True  # 是否允许「其他,自己填」
 
 
 class AppraisalIntentSuggestResult(BaseModel):
     clear: bool  # 用户填的意图是否已够具体(够则前端直接放行诊断,不展示问题)
     questions: list[AppraisalIntentQuestion] = Field(default_factory=list)
+
+
+class AppraisalIntentContextRequest(BaseModel):
+    """答题打卡·第一步「读取 TA 最近笔记」的真实事件:只做便宜的 DB 读,返回将用于出题的笔记数。"""
+
+    blogger_id: int
+    kind: str = Field(default="benchmark", pattern="^(benchmark|self)$")
+
+
+class AppraisalIntentContextResult(BaseModel):
+    note_count: int  # 用于意图分析读取的近期笔记数(真实,≤30)
+    has_material: bool  # 是否有素材(标题/标签/赛道)可供模型出题
 
 
 class AccountAuditRunRead(BaseModel):

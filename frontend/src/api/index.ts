@@ -4,6 +4,7 @@ import type {
   AdminTenant,
   AdminUser,
   AdminUserCreate,
+  AppraisalIntentContext,
   AppraisalIntentSuggestResult,
   AppSettingRead,
   Article,
@@ -558,6 +559,14 @@ export function appraiseBlogger(payload: {
 // kind=benchmark(默认,对标别人「想学什么」)/ self(诊断自己「目标·痛点·阶段」)。
 export function suggestAppraisalIntent(payload: { blogger_id: number; intent?: string; kind?: 'benchmark' | 'self' }) {
   return request<AppraisalIntentSuggestResult>('/account-audit/intent-suggest', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+// 答题打卡第一段「读取 TA 最近笔记」的真实事件:只做便宜的 DB 读,返回将喂给模型的近期笔记数。
+export function fetchAppraisalIntentContext(payload: { blogger_id: number; kind?: 'benchmark' | 'self' }) {
+  return request<AppraisalIntentContext>('/account-audit/intent-context', {
     method: 'POST',
     body: JSON.stringify(payload)
   })

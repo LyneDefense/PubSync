@@ -10,6 +10,8 @@ from app.queue import submit_background
 from app.schemas import (
     AccountAuditCreate,
     AccountAuditRunRead,
+    AppraisalIntentContextRequest,
+    AppraisalIntentContextResult,
     AppraisalIntentQuestion,
     AppraisalIntentSuggestRequest,
     AppraisalIntentSuggestResult,
@@ -29,6 +31,18 @@ def _require_account(db: Session, tenant_id: int, platform: str, blogger_id: int
     if blogger.platform != platform:
         raise HTTPException(status_code=400, detail=f"{label}与所选平台不一致")
     return blogger
+
+
+def _recent_titles(db: Session, tenant_id: int, blogger_id: int, limit: int = 30) -> list[str]:
+    """意图引导用到的「近期标题」:未下架、按发布时间倒序取前 N 条,去空。"""
+    rows = db.scalars(
+        select(BloggerPost.title)
+        .where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
+               BloggerPost.status != "delisted")
+        .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
+        .limit(limit)
+    )
+    return [t for t in rows if t]
 
 
 @router.post("/account-audit", response_model=OperationTaskRead)
@@ -77,6 +91,26 @@ def start_appraisal_endpoint(
     return task
 
 
+@router.post("/account-audit/intent-context", response_model=AppraisalIntentContextResult)
+def intent_context_endpoint(
+    payload: AppraisalIntentContextRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> AppraisalIntentContextResult:
+    """答题打卡·「读取 TA 最近笔记」的真实事件:只做便宜的 DB 读,返回将喂给模型的近期笔记数。
+
+    前端答题打卡进度卡的第一段「读取 TA 最近 N 篇笔记」由这个真实返回点亮(N 为真实值),
+    再发起 /intent-suggest(模型出题)点亮后两段——两次真实往返,不用前端假装分阶段。
+    """
+    blogger = db.get(BloggerProfile, payload.blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    titles = _recent_titles(db, tenant.id, blogger.id)
+    tags = [t for t in (str(x.get("name") or "").strip() for x in blogger.tags) if t]
+    has_material = bool(titles or tags or (blogger.niche or "").strip())
+    return AppraisalIntentContextResult(note_count=len(titles), has_material=has_material)
+
+
 @router.post("/account-audit/intent-suggest", response_model=AppraisalIntentSuggestResult)
 def suggest_appraisal_intent_endpoint(
     payload: AppraisalIntentSuggestRequest,
@@ -87,17 +121,11 @@ def suggest_appraisal_intent_endpoint(
     blogger = db.get(BloggerProfile, payload.blogger_id)
     if not blogger or blogger.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="账号不存在")
-    titles = list(db.scalars(
-        select(BloggerPost.title)
-        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger.id,
-               BloggerPost.status != "delisted")
-        .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
-        .limit(30)
-    ))
+    titles = _recent_titles(db, tenant.id, blogger.id)
     tags = [str(t.get("name") or "") for t in blogger.tags]
     result = suggest_intent(
         settings,
-        titles=[t for t in titles if t],
+        titles=titles,
         tags=tags,
         niche=blogger.niche or "",
         intent=payload.intent,
@@ -106,7 +134,15 @@ def suggest_appraisal_intent_endpoint(
     )
     return AppraisalIntentSuggestResult(
         clear=bool(result["clear"]),
-        questions=[AppraisalIntentQuestion(q=q["q"], options=q["options"]) for q in result["questions"]],
+        questions=[
+            AppraisalIntentQuestion(
+                q=q["q"],
+                options=q["options"],
+                multi=bool(q.get("multi", True)),
+                allow_other=bool(q.get("allow_other", True)),
+            )
+            for q in result["questions"]
+        ],
     )
 
 

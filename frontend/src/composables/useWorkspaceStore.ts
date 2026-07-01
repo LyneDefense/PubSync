@@ -32,6 +32,7 @@ import {
   appraiseBlogger,
   listAccountAuditRuns,
   suggestAppraisalIntent,
+  fetchAppraisalIntentContext,
   confirmBloggerRun,
   createBlogger,
   deleteBlogger,
@@ -2199,11 +2200,16 @@ export async function fetchSelfIntentSuggestions() {
   }
 }
 
+// 答题打卡第一段「读取 TA 最近笔记」的真实事件:返回将喂给模型的近期笔记数(真实,≤30)。
+export async function fetchIntentContext(bloggerId: number) {
+  return await fetchAppraisalIntentContext({ blogger_id: bloggerId })
+}
+
 // 选博主后(可选已填意图)→ 看 TA 在做什么,判断意图够不够具体;不够则给几道多选题。
+// 失败会抛出:由答题打卡进度卡展示「重试 / 跳过直接诊断」,不再静默放行。
 export async function fetchIntentSuggestions() {
   if (!appraiseForm.blogger_id) {
-    showMessage('请先选择要诊断的博主', true)
-    return
+    throw new Error('请先选择要诊断的博主')
   }
   intentLoading.value = true
   try {
@@ -2217,15 +2223,18 @@ export async function fetchIntentSuggestions() {
       intentOthers[i] = ''
     })
     intentChecked.value = true
-  } catch (err) {
-    // 引导失败不挡诊断:直接放行。
-    showMessage(err instanceof Error ? err.message : '意图引导失败,可直接诊断', true)
-    intentClear.value = true
-    intentQuestions.value = []
-    intentChecked.value = true
   } finally {
     intentLoading.value = false
   }
+}
+
+// 引导失败时用户选择「跳过,直接诊断」:清空问题、视为意图已明确,放行诊断(保留「引导失败不挡诊断」)。
+export function markIntentSkipped() {
+  intentClear.value = true
+  intentQuestions.value = []
+  for (const k of Object.keys(intentSelections)) delete intentSelections[Number(k)]
+  for (const k of Object.keys(intentOthers)) delete intentOthers[Number(k)]
+  intentChecked.value = true
 }
 
 // 把「用户填的意图 + 各题所选 / 补充」拼成一句意图。对标(想学什么)与自诊(目标/痛点/阶段)共用。

@@ -220,6 +220,18 @@ def test_suggest_intent_returns_questions(monkeypatch):
     assert len(out["questions"]) == 2 and out["questions"][0]["options"][0] == "选题套路"
 
 
+def test_suggest_intent_question_flags_default_and_parsed(monkeypatch):
+    # 模型省略 multi/allow_other → 默认可多选+可填其他;显式给出则透传。
+    canned = {"clear": False, "questions": [
+        {"q": "可多选题?", "options": ["a", "b"]},
+        {"q": "单选题?", "options": ["x", "y"], "multi": False, "allow_other": False},
+    ]}
+    monkeypatch.setattr("app.appraisal.intent.create_json_response", lambda *a, **k: canned)
+    out = suggest_intent(None, titles=["港险科普"], tags=["保险"], niche="香港保险", intent="")
+    assert out["questions"][0]["multi"] is True and out["questions"][0]["allow_other"] is True
+    assert out["questions"][1]["multi"] is False and out["questions"][1]["allow_other"] is False
+
+
 def test_suggest_intent_drops_bad_questions_then_generic(monkeypatch):
     # 选项不足 2 个的题被丢掉;丢空后回落通用题,流程不断。
     monkeypatch.setattr("app.appraisal.intent.create_json_response",
