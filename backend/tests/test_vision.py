@@ -67,6 +67,12 @@ class _FakeProvider:
         return self.result
 
 
+@pytest.fixture
+def with_ffmpeg(monkeypatch):
+    # GlmVisionProvider.__init__ 会检查 ffmpeg;测试统一假装有。
+    monkeypatch.setattr(vision_mod.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+
+
 # —— 响应解析 ——
 
 def test_parse_vision_response_json():
@@ -109,7 +115,7 @@ def test_select_images_caps_at_five():
 
 # —— provider 路由 ——
 
-def test_build_provider_returns_glm():
+def test_build_provider_returns_glm(with_ffmpeg):
     assert isinstance(build_vision_provider(_settings()), GlmVisionProvider)
 
 
@@ -122,7 +128,13 @@ def test_build_provider_missing_key_raises():
         build_vision_provider(_settings(glm_api_key=""))
 
 
-def test_analyze_images_parses_result(monkeypatch):
+def test_analyze_images_parses_result(monkeypatch, with_ffmpeg):
+    # 打桩下载+转码(返回 2 张假 JPEG)+ GLM 回复,只测请求→解析链路。
+    monkeypatch.setattr(
+        vision_mod.GlmVisionProvider,
+        "_to_jpeg_base64",
+        lambda self, urls: ["data:image/jpeg;base64,QUJD", "data:image/jpeg;base64,REVG"],
+    )
     monkeypatch.setattr(
         vision_mod,
         "glm_vision_chat",
@@ -136,7 +148,7 @@ def test_analyze_images_parses_result(monkeypatch):
     assert result.provider == "glm_vision"
 
 
-def test_analyze_images_no_urls_raises():
+def test_analyze_images_no_urls_raises(with_ffmpeg):
     with pytest.raises(VisionError, match="没有可解析的图片"):
         GlmVisionProvider(_settings()).analyze_images(["not-a-url"])
 

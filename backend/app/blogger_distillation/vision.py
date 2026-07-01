@@ -10,6 +10,8 @@ import base64
 import json
 import logging
 import re
+import shutil
+import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -72,42 +74,55 @@ class GlmVisionProvider(VisionProvider):
         self.settings = settings
         if not settings.glm_api_key:
             raise VisionError("未配置智谱 GLM API Key(GLM_API_KEY)，无法使用视觉理解")
+        if not shutil.which("ffmpeg"):
+            raise VisionError("服务器未安装 ffmpeg，无法转换图片格式")
 
     def analyze_images(self, image_urls: list[str], *, source_id: str = "", on_progress: ProgressCallback | None = None) -> VisionResult:
         urls = [u for u in image_urls if isinstance(u, str) and u.startswith("http")][:GLM_VISION_MAX_IMAGES]
         if not urls:
             raise VisionError("没有可解析的图片 URL")
         if on_progress is not None:
-            on_progress(f"正在理解图片…共 {len(urls)} 张")
-        # 先直传 URL(GLM 服务器去拉,省下载);失败且允许兜底则下载转 base64 再试一次。
+            on_progress(f"正在识别并理解图片…共 {len(urls)} 张")
+        # 小红书图多为 webp、视频封面是 mp4,GLM 视觉都会拒收(400 图片格式/解析错误)。
+        # 统一下载后用 ffmpeg 转 JPEG(视频取首帧,恰好就是封面)再 base64 上传,最稳。
+        parts = self._to_jpeg_base64(urls)
+        if not parts:
+            raise VisionError("图片下载/转码失败，无可用图片")
         try:
-            raw = glm_vision_chat(self.settings, image_parts=list(urls), instruction=VISION_PROMPT, model=self.settings.vision_model)
-        except AIServiceError as exc:
-            if not self.settings.vision_download_fallback:
-                raise VisionError(f"GLM 视觉调用失败：{exc}") from exc
-            logger.info("GLM 直传图 URL 失败,改下载转 base64 兜底：source=%s，原因=%s", source_id, exc)
-            parts = self._download_as_base64(urls)
-            if not parts:
-                raise VisionError(f"GLM 视觉调用失败且图片下载兜底为空：{exc}") from exc
             raw = glm_vision_chat(self.settings, image_parts=parts, instruction=VISION_PROMPT, model=self.settings.vision_model)
+        except AIServiceError as exc:
+            raise VisionError(f"GLM 视觉调用失败：{exc}") from exc
         image_text, digest = parse_vision_response(raw)
-        return VisionResult(image_text=image_text, visual_digest=digest, image_count=len(urls), provider="glm_vision")
+        return VisionResult(image_text=image_text, visual_digest=digest, image_count=len(parts), provider="glm_vision")
 
-    def _download_as_base64(self, urls: list[str]) -> list[str]:
+    def _to_jpeg_base64(self, urls: list[str]) -> list[str]:
+        """下载每张图并用 ffmpeg 转成 JPEG(视频取首帧);统一格式绕开 GLM 对 webp/mp4 的拒收。单张失败则跳过。"""
         parts: list[str] = []
-        max_bytes = 8 * (1 << 20)  # 单图硬上限 8MB,防个别大图撑爆请求
+        max_bytes = 8 * (1 << 20)  # 单图/单封面硬上限 8MB
         with tempfile.TemporaryDirectory(prefix="pubsync-vision-") as tmp_dir:
             for index, url in enumerate(urls):
-                target = Path(tmp_dir) / f"img_{index}"
+                src = Path(tmp_dir) / f"src_{index}"
+                dst = Path(tmp_dir) / f"img_{index}.jpg"
                 try:
-                    download_file(url, target, max_seconds=60, max_bytes=max_bytes)
-                    raw = target.read_bytes()
+                    download_file(url, src, max_seconds=60, max_bytes=max_bytes)
                 except (httpx.HTTPError, OSError, RuntimeError) as exc:
-                    logger.info("视觉兜底下载单图失败,跳过：url=%s，原因=%s", url[:80], exc)
+                    logger.info("视觉下载单图失败,跳过：url=%s，原因=%s", url[:80], exc)
                     continue
-                mime = _guess_image_mime(raw)
-                encoded = base64.b64encode(raw).decode("ascii")
-                parts.append(f"data:{mime};base64,{encoded}")
+                try:
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-i", str(src), "-frames:v", "1", str(dst)],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=60,
+                    )
+                except subprocess.TimeoutExpired:
+                    logger.info("视觉转码超时,跳过：url=%s", url[:80])
+                    continue
+                if not dst.exists():
+                    logger.info("视觉转码单图失败,跳过：url=%s", url[:80])
+                    continue
+                parts.append("data:image/jpeg;base64," + base64.b64encode(dst.read_bytes()).decode("ascii"))
         return parts
 
 
@@ -189,15 +204,3 @@ def _is_image_url(url: Any) -> bool:
     if any(marker in low for marker in (".mp4", ".m3u8", "/video", "video/", ".mov")):
         return False
     return True
-
-
-def _guess_image_mime(data: bytes) -> str:
-    if data[:3] == b"\xff\xd8\xff":
-        return "image/jpeg"
-    if data[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return "image/gif"
-    return "image/jpeg"

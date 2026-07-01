@@ -111,7 +111,6 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("vision_model", "vision", "视觉模型 (glm-4.6v / glm-4.5v / glm-4v-plus-0111)"),
     ConfigField("vision_scope", "vision", "解析范围 (cover=仅封面 / cover_body=封面+正文图)"),
     ConfigField("vision_max_images_per_note", "vision", "每篇正文图上限(封面另计)", "int"),
-    ConfigField("vision_download_fallback", "vision", "图 URL 被拦时下载转 base64", "bool"),
 ]
 
 FIELDS_BY_KEY: dict[str, ConfigField] = {f.key: f for f in OVERRIDABLE}

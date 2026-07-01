@@ -159,7 +159,6 @@ class Settings(BaseSettings):
     vision_model: str = "glm-4.6v"  # 智谱视觉;后台可切 glm-4.5v / glm-4v-plus-0111
     vision_scope: str = "cover_body"  # cover=仅封面 / cover_body=封面+正文图
     vision_max_images_per_note: int = 4  # 正文图上限(封面不计),控成本
-    vision_download_fallback: bool = True  # 图 URL 被防盗链挡住(GLM 拉不到)时,下载后转 base64
     public_api_base_url: str = ""
     static_dir: str = "static"
 
