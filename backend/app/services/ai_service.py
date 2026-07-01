@@ -27,6 +27,8 @@ def is_ai_enabled(settings: Settings) -> bool:
         return bool(settings.minimax_api_key)
     if provider in ("claude", "anthropic"):
         return bool(settings.anthropic_api_key)
+    if provider in ("glm", "zhipu", "bigmodel"):
+        return bool(settings.glm_api_key)
     return False
 
 
@@ -104,6 +106,8 @@ def create_json_response(
         text = openai_text(settings, prompt, model=model, timeout=timeout)
     elif provider in ("claude", "anthropic"):
         text = anthropic_text(settings, prompt, model=model, timeout=timeout)
+    elif provider in ("glm", "zhipu", "bigmodel"):
+        text = glm_text(settings, prompt, model=model, timeout=timeout)
     else:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
@@ -204,6 +208,36 @@ def anthropic_text(settings: Settings, prompt: str, model: str | None = None, *,
     raise AIServiceError(f"Anthropic 文本响应中没有可解析内容：{data}")
 
 
+def glm_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
+    """智谱 GLM 文本(OpenAI 兼容 /chat/completions)。"""
+    if not settings.glm_api_key:
+        raise AIServiceError("未配置 GLM_API_KEY")
+    model = model or settings.glm_text_model
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是严谨的助手。所有输出必须是合法 JSON。"
+                    "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+    data = glm_post(settings, "/chat/completions", payload, timeout=timeout or 180)
+    record_text_usage("glm", model, data)
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            return str(message["content"])
+    raise AIServiceError(f"GLM 文本响应中没有可解析内容：{data}")
+
+
 def supports_minimax_response_format(model: str) -> bool:
     return model.strip().lower() in {"minimax-text-01", "text-01"}
 
@@ -228,6 +262,8 @@ def repair_json_response(settings: Settings, raw_text: str) -> str:
         return openai_text(settings, prompt)
     if provider in ("claude", "anthropic"):
         return anthropic_text(settings, prompt)
+    if provider in ("glm", "zhipu", "bigmodel"):
+        return glm_text(settings, prompt)
     raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
 
@@ -319,6 +355,21 @@ def anthropic_post(settings: Settings, path: str, payload: dict[str, Any], timeo
             json=payload,
         )
     return parse_json_response(response, "Anthropic")
+
+
+def glm_post(settings: Settings, path: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    if not settings.glm_api_key:
+        raise AIServiceError("未配置 GLM_API_KEY")
+    with httpx.Client(timeout=timeout) as client:
+        response = client.post(
+            f"{settings.glm_base_url.rstrip('/')}{path}",
+            headers={
+                "Authorization": f"Bearer {settings.glm_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+    return parse_json_response(response, "GLM")
 
 
 def parse_json_response(response: httpx.Response, provider: str) -> dict[str, Any]:

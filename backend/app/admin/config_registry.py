@@ -33,8 +33,11 @@ GROUPS: list[tuple[str, str]] = [
 
 OVERRIDABLE: list[ConfigField] = [
     # —— 模型与生成 ——
-    ConfigField("llm_provider", "model", "文本模型供应商 (openai/minimax/claude)"),
+    ConfigField("llm_provider", "model", "文本模型供应商 (openai/minimax/claude/glm)"),
     ConfigField("image_provider", "model", "图像模型供应商 (openai/minimax)"),
+    ConfigField("glm_base_url", "model", "智谱 GLM Base URL"),
+    ConfigField("glm_api_key", "model", "智谱 GLM API Key", is_secret=True),
+    ConfigField("glm_text_model", "model", "GLM 文本模型 (如 glm-4.6 / glm-4-flash)"),
     ConfigField("openai_base_url", "model", "OpenAI Base URL"),
     ConfigField("openai_api_key", "model", "OpenAI API Key", is_secret=True),
     ConfigField("openai_text_model", "model", "OpenAI 文本模型"),
