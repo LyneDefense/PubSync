@@ -2173,10 +2173,10 @@ export function resetSelfIntentGuide() {
 }
 
 // 选我的账号后(可选已填目标)→ 看我自己在做什么,出几道「目标/痛点/阶段」多选题(够清晰则不出题)。
+// 失败会抛出:由答题打卡进度卡展示「重试 / 跳过直接诊断」,不再静默放行。
 export async function fetchSelfIntentSuggestions() {
   if (!selfAppraiseForm.blogger_id) {
-    showMessage('请先选择我的账号', true)
-    return
+    throw new Error('请先选择我的账号')
   }
   selfIntentLoading.value = true
   try {
@@ -2190,17 +2190,21 @@ export async function fetchSelfIntentSuggestions() {
       selfIntentOthers[i] = ''
     })
     selfIntentChecked.value = true
-  } catch (err) {
-    showMessage(err instanceof Error ? err.message : '意图引导失败,可直接诊断', true)
-    selfIntentClear.value = true
-    selfIntentQuestions.value = []
-    selfIntentChecked.value = true
   } finally {
     selfIntentLoading.value = false
   }
 }
 
-// 答题打卡第一段「读取 TA 最近笔记」的真实事件:返回将喂给模型的近期笔记数(真实,≤30)。
+// 自诊断引导失败时「跳过,直接诊断」:清空问题、视为目标已明确,放行诊断。
+export function markSelfIntentSkipped() {
+  selfIntentClear.value = true
+  selfIntentQuestions.value = []
+  for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
+  for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
+  selfIntentChecked.value = true
+}
+
+// 答题打卡第一段「读取最近笔记」的真实事件:返回将喂给模型的近期笔记数(真实,≤30)。对标 / 自诊共用。
 export async function fetchIntentContext(bloggerId: number) {
   return await fetchAppraisalIntentContext({ blogger_id: bloggerId })
 }
