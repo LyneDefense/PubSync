@@ -42,11 +42,18 @@ def configure_logging(level: int = logging.INFO) -> None:
 
     main.py 在 import 期与 lifespan 启动期各调一次:后者发生在 uvicorn 日志初始化「之后」,
     确保我们的配置最终生效(谁后调谁赢)。
+
+    另:仅压 root 级别不够——实测启动期 ``[app.*]`` INFO 可见,一旦进入请求处理,root 级别会被
+    (uvicorn/某三方库在运行时)复位回 WARNING,于是应用层 INFO 全被吞、只剩 WARNING+(这正是当年
+    超时观测被静默丢弃的同类坑)。所以显式把 ``app`` 这一祖先 logger 钉在 INFO:``app.*`` 的有效级别
+    从此只认这里,不再随 root 被复位而变。root 的 handler 仍在(WARNING 能打出即证),INFO 过了级别
+    检查就能落到该 handler。
     """
     for log_level, name in _LEVEL_NAMES_ZH.items():
         logging.addLevelName(log_level, name)
     logging.basicConfig(level=level, format=_LOG_FORMAT, force=True)
     logging.getLogger().setLevel(level)
+    logging.getLogger("app").setLevel(level)  # 钉住应用日志子树,免疫 root 级别被运行时复位
     access = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, HealthAccessLogFilter) for f in access.filters):
         access.addFilter(HealthAccessLogFilter())
