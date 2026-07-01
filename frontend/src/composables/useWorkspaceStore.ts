@@ -53,6 +53,7 @@ import {
   listBloggerRuns,
   listBloggerSnapshots,
   createBloggerSnapshot,
+  suggestSnapshot,
   updateBloggerSnapshot,
   deleteBloggerSnapshot,
   listBloggerSkills,
@@ -99,6 +100,7 @@ import type {
   CandidateScore,
   SkillTrainingRun,
   BloggerSnapshot,
+  SnapshotSuggestItem,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -638,6 +640,63 @@ export function selectGroupPosts(subtype: string) {
   const ids = new Set(selectedPostIds.value)
   for (const post of group.posts) ids.add(post.id)
   selectedPostIds.value = [...ids]
+}
+
+// —— 智能选材:AI 按需求预选笔记建快照 ——
+export const snapshotSuggestLoading = ref(false)
+export const snapshotSuggestError = ref('')
+export const snapshotSuggestName = ref('') // AI 建议的快照名
+export const snapshotSuggestRanked = ref<SnapshotSuggestItem[]>([]) // 覆盖全部候选,按分降序(供放宽/自动补)
+export const snapshotSuggestReasons = reactive<Record<number, string>>({}) // post_id → 为什么选它
+export const snapshotSuggested = computed(() => snapshotSuggestRanked.value.length > 0)
+const SNAPSHOT_PICK_SCORE = 55 // 预勾选门槛:相关度 ≥ 此值自动勾上
+
+export function resetSnapshotSuggest() {
+  snapshotSuggestLoading.value = false
+  snapshotSuggestError.value = ''
+  snapshotSuggestName.value = ''
+  snapshotSuggestRanked.value = []
+  for (const k of Object.keys(snapshotSuggestReasons)) delete snapshotSuggestReasons[Number(k)]
+}
+
+// 输需求 → AI 打分 → 预勾选高分笔记(仍在当前池里的)。返回预选数量供 UI 提示;失败退化为手动挑。
+export async function fetchSnapshotSuggestion(need: string): Promise<number | null> {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择一个博主', true)
+    return null
+  }
+  snapshotSuggestLoading.value = true
+  snapshotSuggestError.value = ''
+  try {
+    const res = await suggestSnapshot(selectedBloggerId.value, need)
+    snapshotSuggestRanked.value = res.items
+    snapshotSuggestName.value = res.suggested_name
+    for (const k of Object.keys(snapshotSuggestReasons)) delete snapshotSuggestReasons[Number(k)]
+    for (const it of res.items) snapshotSuggestReasons[it.post_id] = it.reason
+    const poolIds = new Set(bloggerPosts.value.map((p) => p.id))
+    const picked = res.items.filter((it) => it.score >= SNAPSHOT_PICK_SCORE && poolIds.has(it.post_id)).map((it) => it.post_id)
+    selectedPostIds.value = picked
+    return picked.length
+  } catch (err) {
+    snapshotSuggestError.value = err instanceof Error ? err.message : 'AI 选材失败,请手动挑选'
+    return null
+  } finally {
+    snapshotSuggestLoading.value = false
+  }
+}
+
+// 自动补 / 放宽:从 AI 排序结果里把没选中的按分数从高到低补进来,直到达到 target 篇。
+export function topUpSelectionByScore(target: number) {
+  if (!snapshotSuggestRanked.value.length) return
+  const poolIds = new Set(bloggerPosts.value.map((p) => p.id))
+  const selected = new Set(selectedPostIds.value)
+  for (const it of snapshotSuggestRanked.value) {
+    if (selected.size >= target) break
+    if (!selected.has(it.post_id) && poolIds.has(it.post_id)) {
+      selectedPostIds.value.push(it.post_id)
+      selected.add(it.post_id)
+    }
+  }
 }
 
 // 详情抽屉的当前笔记:先在对标博主笔记池找,再在「我的账号」缓存里找 —— 两处笔记复用同一个抽屉。

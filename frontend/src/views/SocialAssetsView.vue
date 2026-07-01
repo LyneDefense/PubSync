@@ -36,7 +36,15 @@ import {
   selectGroupPosts,
   setCurrentSocialTab,
   subtypeLabel,
-  togglePostSelection
+  togglePostSelection,
+  fetchSnapshotSuggestion,
+  topUpSelectionByScore,
+  resetSnapshotSuggest,
+  snapshotSuggested,
+  snapshotSuggestLoading,
+  snapshotSuggestError,
+  snapshotSuggestName,
+  snapshotSuggestReasons
 } from '../composables/useWorkspaceStore'
 
 // 笔记池排序:最新(按发布时间)/ 最热(按互动量),在每个类型分组内排序。参考「我的账号」的笔记列表。
@@ -108,8 +116,19 @@ const detailSnapshotPosts = computed(() => {
   return ids.map((id) => bloggerPosts.value.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => Boolean(p))
 })
 
+// 智能选材:需求输入 + AI 挑选。
+const needInput = ref('')
+async function runAiSelect() {
+  if (!needInput.value.trim()) return
+  const picked = await fetchSnapshotSuggestion(needInput.value)
+  // AI 建议的快照名回填(用户没自己填时)。
+  if (picked != null && !pickerName.value.trim() && snapshotSuggestName.value) pickerName.value = snapshotSuggestName.value
+}
+
 function openCreatePicker() {
   clearPostSelection()
+  resetSnapshotSuggest()
+  needInput.value = ''
   pickerName.value = ''
   pickerSnapshotId.value = null
   pickerOpen.value = true
@@ -117,6 +136,8 @@ function openCreatePicker() {
 function closePicker() {
   pickerOpen.value = false
   clearPostSelection()
+  resetSnapshotSuggest()
+  needInput.value = ''
 }
 async function savePicker() {
   if (!enoughSelected.value) return
@@ -299,6 +320,34 @@ async function deleteDetailSnapshot() {
           <button type="button" class="modal-close" aria-label="关闭" @click="closePicker"><TIcon name="x" /></button>
         </div>
         <div class="modal-body">
+          <!-- 智能选材:描述需求 → AI 预选 -->
+          <div class="ai-select">
+            <div class="ai-row">
+              <input
+                v-model="needInput"
+                class="ai-input"
+                type="text"
+                maxlength="300"
+                placeholder="描述你想要什么，让 AI 帮你挑，如:讲储蓄险的干货 / 爆款标题写法"
+                @keydown.enter="runAiSelect"
+              />
+              <button type="button" class="ai-btn" :disabled="snapshotSuggestLoading || !needInput.trim()" @click="runAiSelect">
+                {{ snapshotSuggestLoading ? '挑选中…' : '✨ AI 挑选' }}
+              </button>
+            </div>
+            <div v-if="snapshotSuggestLoading" class="ai-progress"><span class="ai-spin" aria-hidden="true"></span>AI 正在按你的需求挑选笔记…</div>
+            <p v-else-if="snapshotSuggestError" class="ai-error">{{ snapshotSuggestError }}</p>
+            <div v-else-if="snapshotSuggested" class="ai-result">
+              <span class="ai-tip">
+                AI 已挑 <strong>{{ selectedPostCount }}</strong> 篇（下方已勾选，可自行增删）。
+                <template v-if="selectedPostCount < DISTILL_MIN_SAMPLES">偏少，一键补齐:</template>
+                <template v-else-if="selectedPostCount < DISTILL_RECOMMEND_SAMPLES">可再放宽补更多:</template>
+              </span>
+              <button v-if="selectedPostCount < DISTILL_MIN_SAMPLES" type="button" class="ai-fill" @click="topUpSelectionByScore(DISTILL_MIN_SAMPLES)">补到 {{ DISTILL_MIN_SAMPLES }} 篇</button>
+              <button v-if="selectedPostCount < DISTILL_RECOMMEND_SAMPLES" type="button" class="ai-fill" @click="topUpSelectionByScore(DISTILL_RECOMMEND_SAMPLES)">补到 {{ DISTILL_RECOMMEND_SAMPLES }} 篇</button>
+            </div>
+          </div>
+
           <label class="modal-field">
             <span>快照名称 <em>(可留空,自动按时间命名)</em></span>
             <input v-model="pickerName" type="text" maxlength="40" placeholder="如:高赞口播 · 确定性主题" />
@@ -319,6 +368,7 @@ async function deleteDetailSnapshot() {
                 <span class="pr-main">
                   <span class="pr-title">{{ post.title || '(无标题)' }}</span>
                   <span class="pr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }}</span>
+                  <span v-if="snapshotSuggestReasons[post.id]" class="pr-reason">✨ {{ snapshotSuggestReasons[post.id] }}</span>
                 </span>
               </label>
             </div>
@@ -1070,6 +1120,110 @@ async function deleteDetailSnapshot() {
   background: var(--color-surface);
   color: var(--color-ink);
   box-shadow: 0 1px 2px var(--color-shadow);
+}
+
+/* 智能选材 AI 面板 */
+.ai-select {
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--color-accent-tint);
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 12px;
+}
+.ai-row {
+  display: flex;
+  gap: 8px;
+}
+.ai-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-field-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  font-size: 13.5px;
+  color: var(--color-ink);
+}
+.ai-btn {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 620;
+  cursor: pointer;
+  transition: background 140ms var(--ease-out);
+}
+.ai-btn:hover {
+  background: var(--color-accent-press);
+}
+.ai-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ai-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-accent-ink);
+}
+.ai-spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-accent-soft-bd);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: ai-spin 0.8s linear infinite;
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-spin { animation-duration: 1.6s; }
+}
+.ai-error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--color-danger);
+}
+.ai-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ai-tip {
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+.ai-fill {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-accent-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.ai-fill:hover {
+  background: var(--color-accent-soft);
+}
+.pr-reason {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--color-accent-ink);
+  line-height: 1.5;
 }
 
 @media (max-width: 900px) {

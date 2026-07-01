@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
+from app.blogger_distillation.note_ranking import rank_notes_by_need
 from app.blogger_distillation.service import (
     abandon_blogger_distillation,
     confirm_blogger_distillation,
@@ -30,6 +31,9 @@ from app.schemas import (
     BloggerSnapshotRead,
     BloggerSnapshotUpdate,
     OperationTaskRead,
+    SnapshotSuggestItem,
+    SnapshotSuggestRequest,
+    SnapshotSuggestResult,
 )
 from app.services.task_service import create_operation_task, run_blogger_distillation_task
 
@@ -171,6 +175,31 @@ def create_snapshot_endpoint(
         return create_snapshot(db, tenant.id, blogger_id, name, post_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/bloggers/{blogger_id}/snapshot-suggest", response_model=SnapshotSuggestResult)
+def snapshot_suggest_endpoint(
+    blogger_id: int,
+    payload: SnapshotSuggestRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> SnapshotSuggestResult:
+    """智能选材:按用户需求给该博主未下架笔记打相关度分,帮用户预选建快照。失败/无需求 → 空结果(前端退化手动)。"""
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Blogger not found")
+    rows = db.execute(
+        select(BloggerPost.id, BloggerPost.title, BloggerPost.content_subtype)
+        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id, BloggerPost.status != "delisted")
+        .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
+        .limit(150)
+    ).all()
+    notes = [{"id": r.id, "title": r.title or "", "subtype": r.content_subtype or ""} for r in rows]
+    result = rank_notes_by_need(payload.need, notes, settings, timeout=settings.appraisal_llm_timeout)
+    return SnapshotSuggestResult(
+        suggested_name=result["name"],
+        items=[SnapshotSuggestItem(post_id=it["post_id"], score=it["score"], reason=it["reason"]) for it in result["items"]],
+    )
 
 
 @router.patch("/bloggers/{blogger_id}/snapshots/{snapshot_id}", response_model=BloggerSnapshotRead)

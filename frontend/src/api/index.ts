@@ -22,6 +22,7 @@ import type {
   BloggerProfileUpdate,
   BloggerSearchResult,
   BloggerSnapshot,
+  SnapshotSuggestResult,
   CollectEstimate,
   BloggerSkill,
   EvaluateResult,
@@ -391,6 +392,14 @@ export function createBloggerSnapshot(id: number, payload: { name?: string; post
   return request<BloggerSnapshot>(`/bloggers/${id}/snapshots`, {
     method: 'POST',
     body: JSON.stringify(payload)
+  })
+}
+
+// 智能选材:按需求让 AI 给该博主笔记打相关度分。
+export function suggestSnapshot(id: number, need: string) {
+  return request<SnapshotSuggestResult>(`/bloggers/${id}/snapshot-suggest`, {
+    method: 'POST',
+    body: JSON.stringify({ need })
   })
 }
 

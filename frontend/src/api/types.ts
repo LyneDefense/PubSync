@@ -479,6 +479,17 @@ export interface BloggerSnapshot {
   updated_at: string | null
 }
 
+// 智能选材:AI 按需求给博主笔记打相关度分(覆盖全部候选,按分降序)。
+export interface SnapshotSuggestItem {
+  post_id: number
+  score: number
+  reason: string
+}
+export interface SnapshotSuggestResult {
+  suggested_name: string
+  items: SnapshotSuggestItem[]
+}
+
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
