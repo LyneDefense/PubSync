@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.compliance import CATEGORY_HINTS, scan_creation_output
+from app.compliance import scan_creation
 from app.synthesis import SensorResult
 from app.xhs_creation.agent.context import CreationContext
 
@@ -44,14 +44,17 @@ class CreationComplianceSensor:
     name = "平台合规"
 
     def check(self, result: dict[str, Any], ctx: CreationContext) -> SensorResult:
-        hits = scan_creation_output(result, ctx.platform, ctx.extra_block_words)
+        niche = getattr(ctx.blogger, "niche", "") or ""
+        hits = scan_creation(result, ctx.platform, niche=niche, extra_words=ctx.extra_block_words).creation_dict()["hits"]
         if not hits:
             return SensorResult(passed=True)
         # 人类可读问题:词(类别·所在字段)
         issues = [f"{h['word']}（{h['category']}·{h['field']}）" for h in hits]
-        # 给模型的纠错指令:按类别给通俗改法,要求重写到不含这些词。
-        categories = list(dict.fromkeys(h["category"] for h in hits))
-        fixes = "；".join(f"{c}:{CATEGORY_HINTS.get(c, '换成不踩线的表达')}" for c in categories)
+        # 给模型的纠错指令:每个命中自带改法 hint,按类别去重。
+        fixes_by_cat: dict[str, str] = {}
+        for h in hits:
+            fixes_by_cat.setdefault(h["category"], h.get("hint") or "换成不踩线的表达")
+        fixes = "；".join(f"{c}:{hint}" for c, hint in fixes_by_cat.items())
         feedback = (
             f"以下词会被平台限流/违禁,必须改掉后重写(不要再出现这些词):{ '、'.join(dict.fromkeys(h['word'] for h in hits)) }。"
             f"改法:{fixes}。"

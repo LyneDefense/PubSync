@@ -14,6 +14,7 @@ from app.appraisal.hard import (
 )
 from app.appraisal.intent import suggest_intent
 from app.appraisal.judge import judge_goal_fit, judge_note_relevance, judge_soft, judge_vertical
+from app.compliance import ScanResult
 
 NOW = datetime(2026, 6, 26, tzinfo=timezone.utc)
 
@@ -141,9 +142,8 @@ def test_diagnose_self_skips_soft(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
     monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
-    monkeypatch.setattr(service, "compliance_scan",
-                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
-    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    monkeypatch.setattr(service, "scan_account", lambda *a, **k: ScanResult())
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50, niche="", tags=[])
     posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
                   published_at=NOW, content_type="image", title="港险科普", body_text="正文")
              for i in range(10)]
@@ -181,15 +181,14 @@ def test_diagnose_benchmark_fit_uses_relevance_ratio(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
     monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
-    monkeypatch.setattr(service, "compliance_scan",
-                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    monkeypatch.setattr(service, "scan_account", lambda *a, **k: ScanResult())
     monkeypatch.setattr(service, "build_account_content", lambda *a, **k: "brief")
     monkeypatch.setattr(service, "judge_soft", lambda intent, brief, s, timeout=None: {
         "fit": JudgedDim("fit", "对路", 50, "原始理由"),
         "learnable": JudgedDim("learnable", "可学", 70, ""),
         "distillable": JudgedDim("distillable", "可蒸馏", 60, ""),
     })
-    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50, niche="", tags=[])
     posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
                   published_at=NOW, content_type="image", title="t", body_text="b") for i in range(10)]
     rep = service._diagnose(None, blogger, posts, kind="benchmark", intent="学保险", industry=None,
@@ -310,12 +309,11 @@ def test_diagnose_self_with_intent_adds_goal_fit(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
     monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
-    monkeypatch.setattr(service, "compliance_scan",
-                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
+    monkeypatch.setattr(service, "scan_account", lambda *a, **k: ScanResult())
     monkeypatch.setattr(service, "build_account_content", lambda *a, **k: "brief")
     monkeypatch.setattr(service, "judge_goal_fit", lambda intent, brief, s, timeout=None: {
         "score": 65, "grade": "良", "summary": "离转化还差留资动作", "gaps": ["没CTA"], "actions": ["加私域引导"]})
-    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50, niche="", tags=[])
     posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
                   published_at=NOW, content_type="image", title="港险科普", body_text="正文") for i in range(10)]
     rep = service._diagnose(None, blogger, posts, kind="self", intent="目标:提升转化", industry=None, db=None, tenant_id=0)
@@ -340,9 +338,8 @@ def test_diagnose_self_without_intent_no_goal_fit(monkeypatch):
     from app.appraisal import service
     from app.appraisal.judge import JudgedDim
     monkeypatch.setattr(service, "judge_vertical", lambda titles, s, timeout=None: JudgedDim("vertical", "垂直度", 80, "聚焦"))
-    monkeypatch.setattr(service, "compliance_scan",
-                        lambda *a, **k: {"score": 100, "grade": "干净", "hits": [], "by_severity": {}, "has_ban": False})
-    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50)
+    monkeypatch.setattr(service, "scan_account", lambda *a, **k: ScanResult())
+    blogger = _Obj(id=1, platform="xhs", follower_count=5000, note_total=50, niche="", tags=[])
     posts = [_Obj(id=i, like_count=200, favorite_count=50, comment_count=10,
                   published_at=NOW, content_type="image", title="t", body_text="b") for i in range(10)]
     rep = service._diagnose(None, blogger, posts, kind="self", intent="", industry=None, db=None, tenant_id=0)

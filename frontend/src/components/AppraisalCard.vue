@@ -14,6 +14,18 @@ function sevClass(sev: string): string {
   return sev === '封号级' ? 'sev-ban' : sev === '限流级' ? 'sev-warn' : 'sev-notice'
 }
 
+// 合规:新架构分「违规(需处置) / 提示(优化建议)」两档 + 赛道标签;旧报告回落到扁平 hits。
+const comp = computed(() => props.report.compliance)
+const cViolations = computed(() => comp.value.violations || [])
+const cAdvisories = computed(() => comp.value.advisories || [])
+const cVerticalLabels = computed(() => comp.value.vertical_labels || [])
+const legacyHits = computed(() =>
+  cViolations.value.length || cAdvisories.value.length ? [] : comp.value.hits || []
+)
+const complianceClean = computed(
+  () => !cViolations.value.length && !cAdvisories.value.length && !legacyHits.value.length
+)
+
 const BADGE: Record<string, Record<string, string>> = {
   benchmark: { ok: '值得对标', warn: '可以选学', danger: '慎选 · 有风险', muted: '不太建议对标' },
   self: { ok: '基本面不错', warn: '有提升空间', danger: '需尽快整改', muted: '有提升空间' }
@@ -99,9 +111,36 @@ const showSample = computed(
         <h3>合规</h3><span>干不干净</span>
         <span class="grade" :class="band(report.compliance.score)">{{ report.compliance.grade }}</span>
       </div>
-      <p v-if="!report.compliance.hits.length" class="clean">未发现违规打法,内容干净 ✓</p>
-      <div v-else class="hits">
-        <div v-for="(h, i) in report.compliance.hits" :key="i" class="hit" :class="sevClass(h.severity)">
+      <p v-if="cVerticalLabels.length" class="c-verticals">按「{{ cVerticalLabels.join(' · ') }} · 通用」规则检测</p>
+      <p v-if="complianceClean" class="clean">未发现违规打法,内容干净 ✓</p>
+
+      <!-- 违规(需处置) -->
+      <div v-if="cViolations.length" class="hits">
+        <div v-for="(g, i) in cViolations" :key="'v' + i" class="hit" :class="sevClass(g.severity)">
+          <span class="sev" :class="sevClass(g.severity)">{{ g.severity }}</span>
+          <div class="hit-body">
+            <b>{{ g.category }}</b>
+            <span v-if="g.coverage && g.coverage.total_notes > 1" class="cover">命中 {{ g.coverage.hit_notes }}/{{ g.coverage.total_notes }} 篇</span>
+            <span v-if="g.matched && g.matched.length" class="quote">{{ g.matched.join('、') }}</span>
+            <span v-if="g.hint" class="sugg">→ {{ g.hint }}</span>
+            <span v-if="g.basis" class="basis">依据:{{ g.basis }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 优化提示(折叠,不计入违规) -->
+      <details v-if="cAdvisories.length" class="advisories">
+        <summary>{{ cAdvisories.length }} 条优化提示(不算违规,酌情调整)</summary>
+        <div v-for="(g, i) in cAdvisories" :key="'a' + i" class="adv-row">
+          <b>{{ g.category }}</b>
+          <span v-if="g.matched && g.matched.length" class="quote">{{ g.matched.join('、') }}</span>
+          <span v-if="g.hint" class="sugg">→ {{ g.hint }}</span>
+        </div>
+      </details>
+
+      <!-- 兼容:旧报告只有扁平 hits -->
+      <div v-if="legacyHits.length" class="hits">
+        <div v-for="(h, i) in legacyHits" :key="'l' + i" class="hit" :class="sevClass(h.severity)">
           <span class="sev" :class="sevClass(h.severity)">{{ h.severity }}</span>
           <div class="hit-body">
             <b>{{ h.category }}</b>
@@ -435,6 +474,62 @@ const showSample = computed(
   margin-top: 5px;
   font-size: 12.5px;
   color: var(--color-accent-ink);
+}
+.c-verticals {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.cover {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--color-paper-3);
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.basis {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+}
+/* 优化提示:折叠,弱化,不与违规同权 */
+.advisories {
+  margin-top: 10px;
+  border: 1px dashed var(--color-rule);
+  border-radius: 11px;
+  background: #fbfcfc;
+  padding: 4px 14px;
+}
+.advisories > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-2);
+  list-style: none;
+}
+.advisories > summary::-webkit-details-marker {
+  display: none;
+}
+.advisories > summary::before {
+  content: '▸ ';
+  color: var(--color-ink-3);
+}
+.advisories[open] > summary::before {
+  content: '▾ ';
+}
+.adv-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-paper-3);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.adv-row b {
+  color: var(--color-ink);
 }
 
 /* —— 笔记相关性 —— */

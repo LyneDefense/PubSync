@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.compliance import prompt_guidance
+from app.compliance import detect_verticals, prompt_guidance
 from app.xhs_creation.agent.content_types import BASE_SCHEMA, CONTENT_TYPE_SPECS
 from app.xhs_creation.agent.context import CreationContext
 from app.xhs_creation.agent.platforms import PLATFORM_SPECS
@@ -13,9 +13,10 @@ from app.xhs_creation.normalize import normalize_image_plan, normalize_script, n
 def _compliance_block(ctx: CreationContext) -> str:
     if not ctx.compliance_enabled:
         return ""
+    verticals = detect_verticals(getattr(ctx.blogger, "niche", "") or "")  # 按赛道给更贴切的规避说明
     return (
         "\n平台限流词规避(这些词会被平台限流/违禁,标题、正文、标签、封面、脚本里都不要出现):\n"
-        f"{prompt_guidance(ctx.platform)}\n"
+        f"{prompt_guidance(ctx.platform, verticals)}\n"
     )
 
 

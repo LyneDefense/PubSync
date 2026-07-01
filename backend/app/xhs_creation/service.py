@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
-from app.compliance import scan_creation_output
+from app.compliance import scan_creation
 from app.config import Settings
 from app.models import AppSetting, BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
 from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
@@ -298,8 +298,9 @@ def generate_package_content(
     # 收敛后再扫一次限流词,把残留(若预算耗尽仍有)标注给用户。
     compliance: dict[str, Any] = {"enabled": ctx.compliance_enabled, "passed": True, "hits": []}
     if ctx.compliance_enabled:
-        hits = scan_creation_output(generated, ctx.platform, ctx.extra_block_words)
-        compliance = {"enabled": True, "passed": not hits, "hits": hits}
+        niche = getattr(ctx.blogger, "niche", "") or ""
+        compliance = scan_creation(generated, ctx.platform, niche=niche, extra_words=ctx.extra_block_words).creation_dict()
+        hits = compliance["hits"]
         if task_id:
             if hits:
                 record_task_event(db, tenant_id, task_id, "平台合规", "running", f"已尽力规避,还有 {len(hits)} 个限流词建议手动调整")

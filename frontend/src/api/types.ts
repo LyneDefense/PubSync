@@ -830,12 +830,27 @@ export interface AppraisalComplianceHit {
   layer?: string
   quote: string
 }
+// 归并后的一条命中(违规/提示共用):同类合并 + 命中占比 + 样例。
+export interface AppraisalComplianceGroup {
+  category: string
+  severity: string
+  basis: string
+  hint: string
+  matched: string[]
+  coverage?: { hit_notes: number; total_notes: number }
+  samples?: string[]
+}
 export interface AppraisalComplianceResult {
   score: number
   grade: string
-  hits: AppraisalComplianceHit[]
+  hits: AppraisalComplianceHit[] // 兼容:旧报告扁平命中
   by_severity?: Record<string, number>
   has_ban: boolean
+  // 新架构(赛道感知 + 两档):违规(需处置) / 提示(优化建议,不计入违规)
+  violations?: AppraisalComplianceGroup[]
+  advisories?: AppraisalComplianceGroup[]
+  verticals?: string[]
+  vertical_labels?: string[]
 }
 export interface AppraisalReport {
   kind: string

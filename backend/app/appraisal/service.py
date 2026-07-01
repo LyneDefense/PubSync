@@ -22,7 +22,7 @@ from app.account_audit.service import build_account_content
 from app.appraisal.hard import AccountStat, PostStat, hard_dimensions
 from app.appraisal.judge import judge_goal_fit, judge_note_relevance, judge_soft, judge_vertical
 from app.blogger_distillation.service import record_task_event, run_blogger_collection
-from app.compliance import compliance_scan
+from app.compliance import scan_account
 from app.config import Settings
 from app.models import AccountAuditRun, BloggerPost, BloggerProfile
 from app.services.ai_service import AIServiceError, is_ai_enabled
@@ -191,13 +191,17 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         f_vertical = pool.submit(judge_vertical, titles, settings, timeout=tmo)
-        f_comp = pool.submit(compliance_scan, texts, blogger.platform, industry,
-                             settings=settings, use_llm=True, timeout=tmo)
+        f_comp = pool.submit(
+            scan_account, texts, blogger.platform,
+            niche=blogger.niche or "", industry=industry or "",
+            tags=[str(t.get("name") or "") for t in blogger.tags], titles=titles,
+            settings=settings, use_llm=True, timeout=tmo,
+        )
         f_soft = pool.submit(judge_soft, intent, brief, settings, timeout=tmo) if kind == "benchmark" else None
         # 诊断自己 + 填了目标 → 跑「目标契合」(契合度评分 + 针对该目标的整改清单)。
         f_goal = pool.submit(judge_goal_fit, intent, brief, settings, timeout=tmo) if (kind == "self" and has_intent) else None
         vertical = f_vertical.result()
-        comp = f_comp.result()
+        comp = f_comp.result().to_report_dict()
         soft_dims: dict = f_soft.result() if f_soft else {}
         goal_fit = f_goal.result() if f_goal else None
 
