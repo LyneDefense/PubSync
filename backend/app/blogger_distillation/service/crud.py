@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.providers import validate_platform
 from app.models import (
+    AccountAuditRun,
+    AccountMetricSnapshot,
+    BenchmarkDiscoverySession,
+    BenchmarkRecommendationRun,
     BloggerCollectionPost,
     BloggerCollectionRun,
     BloggerDistillationRun,
@@ -16,6 +20,7 @@ from app.models import (
     BloggerSnapshot,
     OperationTask,
     OperationTaskEvent,
+    SkillTrainingRun,
     XhsPublishPackage,
 )
 
@@ -259,12 +264,20 @@ def delete_blogger(db: Session, tenant_id: int, blogger_id: int) -> None:
         )
     )
 
-    db.execute(delete(XhsPublishPackage).where(XhsPublishPackage.tenant_id == tenant_id, XhsPublishPackage.blogger_id == blogger_id))
-    db.execute(delete(BloggerSkill).where(BloggerSkill.tenant_id == tenant_id, BloggerSkill.blogger_id == blogger_id))
-    db.execute(delete(BloggerCollectionPost).where(BloggerCollectionPost.tenant_id == tenant_id, BloggerCollectionPost.blogger_id == blogger_id))
-    db.execute(delete(BloggerDistillationRun).where(BloggerDistillationRun.tenant_id == tenant_id, BloggerDistillationRun.blogger_id == blogger_id))
-    db.execute(delete(BloggerCollectionRun).where(BloggerCollectionRun.tenant_id == tenant_id, BloggerCollectionRun.blogger_id == blogger_id))
-    db.execute(delete(BloggerPost).where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id))
+    # 先清所有外键指向该博主的子表,否则 db.delete(blogger) 会撞 FK 约束(整删失败、报 500)。
+    # blogger 已按 tenant 校验(上方),子表按博主外键删即可(不会跨租户)。
+    db.execute(delete(XhsPublishPackage).where(or_(XhsPublishPackage.blogger_id == blogger_id, XhsPublishPackage.my_account_id == blogger_id)))
+    db.execute(delete(BloggerSkill).where(BloggerSkill.blogger_id == blogger_id))
+    db.execute(delete(SkillTrainingRun).where(SkillTrainingRun.blogger_id == blogger_id))
+    db.execute(delete(BloggerCollectionPost).where(BloggerCollectionPost.blogger_id == blogger_id))
+    db.execute(delete(BloggerDistillationRun).where(BloggerDistillationRun.blogger_id == blogger_id))
+    db.execute(delete(BloggerCollectionRun).where(BloggerCollectionRun.blogger_id == blogger_id))
+    db.execute(delete(BloggerSnapshot).where(BloggerSnapshot.blogger_id == blogger_id))
+    db.execute(delete(AccountMetricSnapshot).where(AccountMetricSnapshot.account_id == blogger_id))
+    db.execute(delete(BenchmarkRecommendationRun).where(BenchmarkRecommendationRun.my_account_id == blogger_id))
+    db.execute(delete(BenchmarkDiscoverySession).where(BenchmarkDiscoverySession.my_account_id == blogger_id))
+    db.execute(delete(AccountAuditRun).where(or_(AccountAuditRun.my_blogger_id == blogger_id, AccountAuditRun.benchmark_blogger_id == blogger_id)))
+    db.execute(delete(BloggerPost).where(BloggerPost.blogger_id == blogger_id))
     db.delete(blogger)
     if task_ids:
         db.execute(delete(OperationTaskEvent).where(OperationTaskEvent.tenant_id == tenant_id, OperationTaskEvent.task_id.in_(task_ids)))

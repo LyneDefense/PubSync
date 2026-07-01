@@ -5,6 +5,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import type { AccountAuditRun, AppraisalIntentQuestion } from '../api/types'
 import {
   currentSocialPlatformName,
@@ -527,10 +528,7 @@ onUnmounted(() => {
         </div>
         <AppraisalCard :report="report" />
       </div>
-      <div v-else-if="diagnosing" class="report-loading card">
-        <span class="spinner"></span>
-        <p>正在诊断「{{ selectedName }}」 —— 看你的硬实力、合规、目标契合,大约需要 1 分钟…</p>
-      </div>
+      <LiveProgress v-else-if="diagnosing" />
       <div v-else class="report-loading card">
         <p>这次诊断没有完成。可能是任务还在后台跑,或中途失败了。</p>
         <button type="button" class="btn-primary" @click="restart">重新诊断</button>

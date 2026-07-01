@@ -187,10 +187,20 @@ function onGlobalSearchKey(e: KeyboardEvent) {
   }
 }
 
+// 账号菜单:点击开合(见 toggleUserMenu),点菜单外部才关闭。
+// 之前用 @mouseleave 关闭 → 鼠标从头像移向「退出登录」时一离开容器就把菜单关了,根本点不中(问题清单 #15)。
+const userMenuRef = ref<HTMLElement | null>(null)
+function onDocPointerDown(event: MouseEvent) {
+  if (showUserMenu.value && userMenuRef.value && !userMenuRef.value.contains(event.target as Node)) {
+    showUserMenu.value = false
+  }
+}
+
 // 应用挂载:注册全局快捷键;已登录则先加载工作空间选项再拉取全部数据,失败则退回登录态。
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('keydown', onGlobalSearchKey)
+  document.addEventListener('mousedown', onDocPointerDown)
   if (isAuthenticated.value) {
     loadTenantOptions()
       .then(loadAll)
@@ -208,6 +218,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('keydown', onGlobalSearchKey)
+  document.removeEventListener('mousedown', onDocPointerDown)
   for (const timer of Object.values(progressTimers)) {
     window.clearInterval(timer)
   }
@@ -264,7 +275,7 @@ onUnmounted(() => {
 
       <span class="sh-div"></span>
 
-      <div class="sh-user" @mouseleave="showUserMenu = false">
+      <div ref="userMenuRef" class="sh-user">
         <button
           type="button"
           class="sh-user-trigger"
