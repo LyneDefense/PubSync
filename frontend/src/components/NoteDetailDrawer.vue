@@ -2,6 +2,7 @@
 // 单篇笔记详情·右侧抽屉。公共组件:博主资产 / 我的账号 共用。
 // 纯展示,状态全在 store —— 由调用方 openNote(post.id) 打开;这里读 activeNotePost 渲染、closeNote 关闭。
 // activeNotePost 会在 bloggerPosts + accountPosts 里找,所以对标博主与我的账号的笔记都能显示。
+import { computed } from 'vue'
 import { bloggerCommentLabel } from '../utils/format'
 import TIcon from './TIcon.vue'
 import {
@@ -13,6 +14,23 @@ import {
   noteTopComments,
   subtypeLabel
 } from '../composables/useWorkspaceStore'
+
+// 视觉层:图内文字(OCR) + 封面解析(visual_digest)。有值才展示这一段。
+const noteVisual = computed(() => {
+  const post = activeNotePost.value
+  if (!post) return null
+  const text = (post.image_text || '').trim()
+  let digest: { cover_hook?: string; layout?: string; style?: string } = {}
+  try {
+    digest = post.visual_digest ? JSON.parse(post.visual_digest) : {}
+  } catch {
+    digest = {}
+  }
+  const hook = (digest.cover_hook || '').trim()
+  const layout = (digest.layout || '').trim()
+  if (!text && !hook && !layout) return null
+  return { text, hook, layout }
+})
 </script>
 
 <template>
@@ -35,6 +53,13 @@ import {
           <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
           <p v-if="noteBodyText(activeNotePost)" class="drawer-text">{{ noteBodyText(activeNotePost) }}</p>
           <p v-else class="empty-region">这篇笔记没有可展示的文字内容。</p>
+        </div>
+
+        <div v-if="noteVisual" class="drawer-section">
+          <h4>图片解析</h4>
+          <p v-if="noteVisual.hook" class="drawer-text"><strong>封面文案：</strong>{{ noteVisual.hook }}</p>
+          <p v-if="noteVisual.layout" class="drawer-meta">版式：{{ noteVisual.layout }}</p>
+          <p v-if="noteVisual.text" class="drawer-text">{{ noteVisual.text }}</p>
         </div>
 
         <div v-if="noteHashtags(activeNotePost).length" class="drawer-section">

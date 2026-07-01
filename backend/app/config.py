@@ -152,6 +152,14 @@ class Settings(BaseSettings):
     tencent_cos_region: str = "ap-guangzhou"
     tencent_cos_bucket: str = ""
     tencent_cos_prefix: str = "pubsync/asr"
+    # 视觉层(图片理解):对图文笔记的封面/正文图跑 VLM,提取图内文字(OCR)+ 视觉摘要(封面话术/版式/风格)。
+    # 与 ASR 对称:ASR 取"视频语音"里的内容,视觉层取"图片"里的内容。全局开关,用户端不暴露。
+    vision_enabled: bool = True
+    vision_provider: str = "glm"
+    vision_model: str = "glm-4.6v"  # 智谱视觉;后台可切 glm-4.5v / glm-4v-plus-0111
+    vision_scope: str = "cover_body"  # cover=仅封面 / cover_body=封面+正文图
+    vision_max_images_per_note: int = 4  # 正文图上限(封面不计),控成本
+    vision_download_fallback: bool = True  # 图 URL 被防盗链挡住(GLM 拉不到)时,下载后转 base64
     public_api_base_url: str = ""
     static_dir: str = "static"
 

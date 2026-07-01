@@ -240,6 +240,40 @@ def glm_text(settings: Settings, prompt: str, model: str | None = None, *, timeo
     raise AIServiceError(f"GLM 文本响应中没有可解析内容：{data}")
 
 
+def glm_vision_chat(
+    settings: Settings,
+    *,
+    image_parts: list[str],
+    instruction: str,
+    model: str | None = None,
+    timeout: int | None = None,
+) -> str:
+    """智谱 GLM 视觉理解(OpenAI 兼容 /chat/completions,多模态 content)。
+
+    image_parts 每项是图片公网 URL 或 data:image/...;base64,... 。返回模型文本回复(由调用方解析)。
+    单请求图片数由调用方控制(GLM 上限 5 张)。用量走 record_text_usage 记账(与 glm_text 一致)。
+    """
+    if not settings.glm_api_key:
+        raise AIServiceError("未配置 GLM_API_KEY")
+    model = model or settings.vision_model
+    content: list[dict[str, Any]] = [{"type": "text", "text": instruction}]
+    for part in image_parts:
+        content.append({"type": "image_url", "image_url": {"url": part}})
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.2,
+    }
+    data = glm_post(settings, "/chat/completions", payload, timeout=timeout or 180)
+    record_text_usage("glm", model, data)
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            return str(message["content"])
+    raise AIServiceError(f"GLM 视觉响应中没有可解析内容：{data}")
+
+
 def supports_minimax_response_format(model: str) -> bool:
     return model.strip().lower() in {"minimax-text-01", "text-01"}
 

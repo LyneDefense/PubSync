@@ -529,6 +529,9 @@ export interface BloggerPost {
   transcript_text: string
   asr_status: string
   asr_error: string
+  image_text?: string
+  visual_digest?: string
+  vision_status?: string
   published_at: string | null
   like_count: number
   favorite_count: number

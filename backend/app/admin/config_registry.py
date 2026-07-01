@@ -27,6 +27,7 @@ GROUPS: list[tuple[str, str]] = [
     ("tikhub", "采集 / TikHub"),
     ("benchmark", "对标博主搜寻"),
     ("asr", "ASR 语音转写"),
+    ("vision", "视觉理解(图片)"),
     ("dashboard", "效果看板"),
 ]
 
@@ -104,6 +105,13 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("tencent_cos_region", "asr", "腾讯 COS Region"),
     ConfigField("tencent_cos_bucket", "asr", "腾讯 COS Bucket"),
     ConfigField("tencent_cos_prefix", "asr", "腾讯 COS 路径前缀"),
+    # —— 视觉理解(图片) ——
+    ConfigField("vision_enabled", "vision", "启用视觉理解(全局;用户端不可选)", "bool"),
+    ConfigField("vision_provider", "vision", "视觉供应商 (glm)"),
+    ConfigField("vision_model", "vision", "视觉模型 (glm-4.6v / glm-4.5v / glm-4v-plus-0111)"),
+    ConfigField("vision_scope", "vision", "解析范围 (cover=仅封面 / cover_body=封面+正文图)"),
+    ConfigField("vision_max_images_per_note", "vision", "每篇正文图上限(封面另计)", "int"),
+    ConfigField("vision_download_fallback", "vision", "图 URL 被拦时下载转 base64", "bool"),
 ]
 
 FIELDS_BY_KEY: dict[str, ConfigField] = {f.key: f for f in OVERRIDABLE}

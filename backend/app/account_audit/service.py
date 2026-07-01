@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.account_audit.agent import AuditContext, build_audit_agent
+from app.blogger_distillation.post_content import visual_digest_dict
 from app.blogger_distillation.service.events import record_task_event
 from app.config import Settings
 from app.models import AccountAuditRun, BloggerPost, BloggerProfile
@@ -144,9 +145,16 @@ def build_account_content(db: Session, tenant_id: int, blogger_id: int, post_ids
         comments += post.comment_count or 0
         body = (post.body_text or "").strip()
         transcript = (post.transcript_text or "").strip()
+        image_text = (post.image_text or "").strip()
+        digest = visual_digest_dict(post)
         piece = f"【{idx}】标题:{post.title or '(无标题)'}\n正文:{body[:600]}"
         if transcript:
             piece += f"\n口播/字幕:{transcript[:400]}"
+        cover_hook = str(digest.get("cover_hook") or "").strip()
+        if cover_hook:
+            piece += f"\n封面文案:{cover_hook}"
+        if image_text:
+            piece += f"\n图内文字:{image_text[:400]}"
         piece += f"\n互动:赞{post.like_count} 藏{post.favorite_count} 评{post.comment_count}"
         blocks.append(piece)
 

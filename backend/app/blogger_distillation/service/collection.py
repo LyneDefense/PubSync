@@ -11,12 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis
 from app.blogger_distillation.asr import ASRError, build_asr_provider
+from app.blogger_distillation.vision import VisionError, build_vision_provider
 from app.blogger_distillation.modality import CONF_AMBIGUOUS, CONF_LLM, candidate_modality, classify_subtype
 from app.blogger_distillation.modality_adjudicator import adjudicate_modality
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import evaluate_post_quality, quality_report
 from app.blogger_distillation.service.asr_step import handle_video_asr
+from app.blogger_distillation.service.vision_step import handle_note_vision
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
     ensure_distillation_not_cancelled,
@@ -196,16 +198,20 @@ def run_blogger_collection(
         to_fetch: list[XhsPostCandidate] = list(new_targets)  # 新笔记
         new_count = len(new_targets)
         backfill_count = 0
+        vision_enabled = settings.vision_enabled
         refresh_only: list[tuple[XhsPostCandidate, BloggerPost]] = []
         for candidate, post in existing_candidates:
-            if candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed"):
-                to_fetch.append(candidate)  # 补转写:视频 URL 易过期,需重抓该条详情
+            # 补转写:视频 URL 易过期,需重抓该条详情;补图片理解:封面/图 URL 同样会过期。
+            need_asr = candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed")
+            need_vision = vision_enabled and post.vision_status != "succeeded"
+            if need_asr or need_vision:
+                to_fetch.append(candidate)
                 backfill_count += 1
             else:
                 refresh_only.append((candidate, post))
         record_task_event(
             db, tenant_id, task_id, "增量分流", "succeeded",
-            f"候选 {len(candidates)} 条：本次新增 {new_count} · 补转写 {backfill_count} · 刷新已有 {len(refresh_only)}"
+            f"候选 {len(candidates)} 条：本次新增 {new_count} · 补采(转写/图片) {backfill_count} · 刷新已有 {len(refresh_only)}"
             + (f"（候选里没采过的只剩 {len(new_candidates)} 条，不足目标 {sample_limit}）" if not fetch_all and len(new_candidates) < sample_limit else ""),
         )
 
@@ -533,6 +539,15 @@ def collect_posts(
     else:
         record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频样本将使用标题、描述、评论和互动数据参与蒸馏")
 
+    vision_provider = None
+    if settings.vision_enabled:
+        try:
+            vision_provider = build_vision_provider(settings)
+            record_task_event(db, tenant_id, task_id, "图片理解", "running", f"图片理解已开启：model={settings.vision_model}")
+        except VisionError as exc:
+            record_task_event(db, tenant_id, task_id, "图片理解", "failed", f"图片理解初始化失败，将降级分析：{exc}")
+            vision_provider = None
+
     total = len(candidates)
     for index, candidate in enumerate(candidates, 1):
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
@@ -542,7 +557,7 @@ def collect_posts(
             task_id,
             "笔记详情",
             "running",
-            "采集",
+            f"正在采集第 {index}/{total} 篇笔记详情",
             {"current": index, "total": total, "type": candidate.note_type, "note_id": candidate.external_id},
         )
         try:
@@ -563,6 +578,10 @@ def collect_posts(
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
             handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider, blogger)
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        # 视觉理解:图文取封面+正文图,视频取封面;失败/无图只降级,不掀翻采集。
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        handle_note_vision(db, tenant_id, task_id, candidate, normalized, vision_provider, blogger, settings)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
         comments = []
         try:
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
@@ -599,7 +618,7 @@ def collect_posts(
             "样本入库",
             "succeeded",
             "已保存样本",
-            {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"]},
+            {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"], "vision": normalized.get("vision_status", "")},
         )
     db.commit()
     # T2 语义裁决:密度判不清的模糊视频(半口播/剧情/卡点),批量交大模型判口播/非口播;

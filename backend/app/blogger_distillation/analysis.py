@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.blogger_distillation.modality import coarse_modality
+from app.blogger_distillation.post_content import visual_digest_dict
 from app.models import BloggerPost
 
 
@@ -338,7 +339,7 @@ def extract_opinion_sentences(posts: list[BloggerPost]) -> list[str]:
     candidates: list[str] = []
     keywords = r"我觉得|我发现|其实|真正|关键|不要|一定|最好|建议|核心|本质"
     for post in posts:
-        source_text = "\n".join(part for part in [post.body_text or "", post.transcript_text or ""] if part)
+        source_text = "\n".join(part for part in [post.body_text or "", post.transcript_text or "", post.image_text or ""] if part)
         sentences = re.split(r"[。！？!?]\s*", source_text)
         for sentence in sentences:
             clean = sentence.strip()
@@ -362,6 +363,9 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         "has_transcript": bool((post.transcript_text or "").strip()),
         "transcript_excerpt": (post.transcript_text or "")[:500],
         "asr_status": post.asr_status,
+        "has_image_text": bool((post.image_text or "").strip()),
+        "image_text_excerpt": (post.image_text or "")[:500],
+        "visual_digest": visual_digest_dict(post),
         "hashtags": json.loads(post.hashtags_json or "[]"),
         "like_count": post.like_count,
         "favorite_count": post.favorite_count,

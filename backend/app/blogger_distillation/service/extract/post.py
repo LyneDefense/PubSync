@@ -68,6 +68,12 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
         "transcript_text": "",
         "asr_status": "pending" if candidate.note_type == "video" else "not_required",
         "asr_error": "",
+        # 视觉层:有图(封面/正文图)就待解析;handle_note_vision 会覆盖这些字段。
+        "image_text": "",
+        "visual_digest": "",
+        "vision_status": "pending" if media_urls else "not_required",
+        "vision_error": "",
+        "vision_image_count": 0,
         "published_at": published_at,
         "like_count": like_count,
         "favorite_count": favorite_count,

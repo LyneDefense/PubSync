@@ -75,6 +75,12 @@ class BloggerPost(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     asr_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_required")
     asr_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 视觉层:图内逐字 OCR + 结构化视觉摘要(封面话术/版式/风格/信息点),与 transcript_text 对称。
+    image_text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    visual_digest: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    vision_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_required", server_default="not_required")
+    vision_error: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    vision_image_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     like_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     favorite_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

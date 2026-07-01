@@ -79,6 +79,7 @@ def handle_video_asr(
     # 小红书常挂中/英多条字幕轨。逐条取,优先用「中文」那条;只有英文(自动翻译)则丢弃改走 ASR。
     subtitle_urls = extract_subtitle_urls(candidate.raw) or extract_subtitle_urls(raw_payload)
     if subtitle_urls:
+        record_task_event(db, tenant_id, task_id, "视频字幕", "running", f"正在采集字幕…（note_id={candidate.external_id}）")
         non_chinese_seen = False
         for subtitle_url in subtitle_urls:
             try:
@@ -130,7 +131,7 @@ def handle_video_asr(
             task_id,
             "视频 ASR",
             "running",
-            f"检测到视频笔记且无字幕，视频大小 {size_label}，开始转写：note_id={candidate.external_id}",
+            f"正在把视频语音转成文字…（视频 {size_label}，note_id={candidate.external_id}）",
         )
         result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id, on_progress=on_progress)
         normalized["transcript_text"] = strip_asr_timestamps(result.text)

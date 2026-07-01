@@ -117,6 +117,9 @@ _LANE_FRAMING: dict[str, str] = {
         "这是**图文笔记**车道。写法藏在:标题、正文结构、封面文案、排版、书面语言 DNA。"
         "body_structures 基于 body_text/body_excerpt 分析正文骨架;video_script_structures 留空数组。"
         "language_dna 每条以「书面：」开头。"
+        "**充分利用视觉信号**:样本里的 visual_digest(cover_hook 封面主文案 / layout 版式 / style 风格 / "
+        "info_points 图内要点)和 image_text_excerpt(图片里的卡片/清单/干货逐字)常常才是真正的内容与钩子——"
+        "据此提炼封面文案公式、图内信息编排、版式套路,别只盯着单薄的正文。"
     ),
     TALKING_VIDEO: (
         "这是**口播视频**车道(人对着镜头讲述/教学,说的话即内容)。写法藏在:口播脚本"
@@ -126,9 +129,10 @@ _LANE_FRAMING: dict[str, str] = {
     ),
     VISUAL_VIDEO: (
         "这是**非口播视频**车道(剧情/卡点/vlog/展示,画面为主、台词很少)。**诚实边界**:"
-        "纯文本只能可靠给出 标题公式 / 封面文案 / 标签策略 / 发布节奏;"
-        "画面、卡点、运镜、BGM 这类视觉 craft **无法从文本蒸出**——相关字段给空数组,"
-        "并在 body_structures 里放一条「视觉打法需人工或视觉模型分析,本次基于文本未覆盖」。"
+        "纯文本可靠给出 标题公式 / 封面文案 / 标签策略 / 发布节奏;若样本带 visual_digest/image_text_excerpt"
+        "(封面/首帧的文字与版式),据此补充封面文案与信息编排;"
+        "但画面、卡点、运镜、BGM 这类动态视觉 craft **仍无法从文本/封面蒸出**——相关字段给空数组,"
+        "并在 body_structures 里放一条「动态视觉打法需逐帧视觉分析,本次未覆盖」。"
         "video_script_structures 若几乎无转写则留空。"
     ),
 }

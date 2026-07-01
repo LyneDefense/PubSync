@@ -164,6 +164,9 @@ class BloggerPostRead(BaseModel):
     transcript_text: str
     asr_status: str
     asr_error: str
+    image_text: str = ""
+    visual_digest: str = ""
+    vision_status: str = "not_required"
     published_at: datetime | None
     like_count: int
     favorite_count: int

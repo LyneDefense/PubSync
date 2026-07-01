@@ -34,7 +34,12 @@ def gold_text(post, modality: Modality) -> str:
         return strip_asr_timestamps(getattr(post, "transcript_text", "") or "")
     title = (getattr(post, "title", "") or "").strip()
     body = (getattr(post, "body_text", "") or "").strip()
-    return f"{title}\n{body}".strip()
+    image_text = (getattr(post, "image_text", "") or "").strip()
+    text = f"{title}\n{body}".strip()
+    if image_text:
+        # 图文号的"内容"常在图里(封面/卡片/清单),把图内文字并进 gold 风格参照。
+        text = f"{text}\n[图内文字]\n{image_text}".strip()
+    return text
 
 
 def build_generation_prompt(skill_markdown: str, topic: str, modality: Modality) -> str:
