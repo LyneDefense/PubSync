@@ -164,6 +164,7 @@ function onSubmit() {
 <style scoped>
 .login-shell {
   display: flex;
+  align-items: stretch;
   min-height: 100vh;
   font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   color: #161b19;

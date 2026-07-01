@@ -791,30 +791,8 @@ button.task-button.running span {
   line-height: 1.25;
 }
 
-.login-shell {
-  display: grid;
-  min-height: 100vh;
-  place-items: center;
-  padding: var(--space-md);
-}
-
-.login-panel {
-  display: grid;
-  gap: var(--space-sm);
-  width: min(420px, 100%);
-  border: var(--rule-hair);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  padding: var(--space-lg);
-  box-shadow: var(--shadow-panel);
-}
-
-.login-panel h1 {
-  margin: var(--space-2xs) 0 0;
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  line-height: 1.15;
-}
+/* 登录页样式已迁到 components/LoginView.vue 的 scoped(左右分屏);此处旧的 .login-shell/.login-panel
+   全局规则已删除——它们与新组件同名的 .login-shell 冲突(place-items:center + padding 泄漏,导致品牌面板不铺满)。 */
 
 h2,
 h3,
