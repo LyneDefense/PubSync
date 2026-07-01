@@ -1,8 +1,10 @@
 """Skill 优化产品服务:跑一次优化(SkillOpt + 我们的 StyleDist 奖励)→ 详细过程 + 前后对比 +
 明确建议(没提升就劝退);用户确认后才把优化版存为新 active Skill。
 
-进度走 operation_task_events(LiveProgress);优化器(reflect/编辑)用 MiniMax,生成(rollout)走
-应用配置的文本供应商。详见 docs/Skill优化_方案设计.md。
+进度走 operation_task_events(LiveProgress)。优化器(reflect/编辑)与生成(rollout)都跟随
+应用配置的文本供应商:provider=glm 时优化器走 SkillOpt 的 qwen_chat 通道指向智谱 GLM
+(两者都是 OpenAI 兼容的 /chat/completions,复用即可,无需改 vendored 库),其余兜底 MiniMax;
+生成始终走 create_json_response(同样跟随全局 provider)。详见 docs/Skill优化_方案设计.md。
 """
 
 from __future__ import annotations
@@ -31,6 +33,32 @@ logger = logging.getLogger(__name__)
 
 IMPROVE_MIN = 1.5   # 相似度提升 ≥ 此值才算"有效",建议采纳
 REGRESS_MAX = -1.0  # 相似度下降 ≤ 此值算"变差"
+
+
+def _skillopt_backend(settings: Settings) -> dict[str, object]:
+    """把应用配置的文本供应商映射到 SkillOpt 后端(优化器与目标同一后端)。
+
+    SkillOpt 内置 openai_chat / claude_chat / qwen_chat / minimax_chat 几种 chat 后端。
+    GLM 与 Qwen 都是 OpenAI 兼容的 /chat/completions,故 provider=glm 时复用 qwen_chat 通道
+    指向智谱 GLM(base_url/api_key/model 全用 glm_*),无需改动 vendored 库;
+    其余(minimax/未识别)沿用 minimax_chat 兜底,保持历史行为。返回 cfg 覆盖片段。
+    """
+    provider = (settings.llm_provider or "").lower()
+    if provider in ("glm", "zhipu", "bigmodel"):
+        return {
+            "target_backend": "qwen_chat", "optimizer_backend": "qwen_chat",
+            "target_model": settings.glm_text_model, "optimizer_model": settings.glm_text_model,
+            "qwen_chat_base_url": settings.glm_base_url, "qwen_chat_api_key": settings.glm_api_key,
+            "qwen_chat_max_tokens": 8000, "qwen_chat_temperature": 0.7,
+            "qwen_chat_enable_thinking": False,
+            "qwen_chat_timeout_seconds": settings.skill_opt_llm_timeout_seconds,
+        }
+    return {
+        "target_backend": "minimax_chat", "optimizer_backend": "minimax_chat",
+        "target_model": settings.minimax_text_model, "optimizer_model": settings.minimax_text_model,
+        "minimax_model": settings.minimax_text_model,
+        "minimax_base_url": settings.minimax_base_url, "minimax_api_key": settings.minimax_api_key,
+    }
 
 
 def _read_changelog(out_root: str) -> tuple[list[dict], list[str]]:
@@ -157,23 +185,10 @@ def run_skill_optimization(
     ev("量基准锚点", "succeeded",
        f"其它博主基线 {floor} 分 · 该博主真笔记天花板 {ceiling} 分(满分100,越高越像本人)")
 
-    # 3) 配后端 + 适配器 + 锚点
+    # 3) 适配器 + 锚点(后端配置全部走 cfg,交给 ReflACTTrainer 在 train() 里统一 configure)
     from skillopt.engine.trainer import ReflACTTrainer
-    from skillopt.model import (
-        configure_minimax_chat, set_optimizer_backend, set_optimizer_deployment,
-        set_target_backend, set_target_deployment,
-    )
-    from app.skill_optimization.skillopt_env import PubSyncStyleAdapter
 
-    configure_minimax_chat(
-        base_url=settings.minimax_base_url, api_key=settings.minimax_api_key,
-        max_tokens=8000, temperature=0.7, enable_thinking=False,
-        timeout_seconds=settings.skill_opt_llm_timeout_seconds,  # 单次调用超时,避免某次调用挂死整轮训练
-    )
-    set_target_backend("minimax_chat")
-    set_optimizer_backend("minimax_chat")
-    set_target_deployment(settings.minimax_text_model)
-    set_optimizer_deployment(settings.minimax_text_model)
+    from app.skill_optimization.skillopt_env import PubSyncStyleAdapter
 
     out_root = tempfile.mkdtemp(prefix=f"skillopt_{blogger_id}_")
     seed_path = os.path.join(out_root, "seed_skill.md")
@@ -214,11 +229,8 @@ def run_skill_optimization(
 
     # 5) 训练(SkillOpt:生成→反思编辑→验证门控)
     cfg = dict(DEFAULT_CFG)
+    cfg.update(_skillopt_backend(settings))  # 优化器/目标后端跟随全局文本供应商(glm→qwen_chat 指向 GLM)
     cfg.update({
-        "target_backend": "minimax_chat", "optimizer_backend": "minimax_chat",
-        "target_model": settings.minimax_text_model, "optimizer_model": settings.minimax_text_model,
-        "minimax_model": settings.minimax_text_model,
-        "minimax_base_url": settings.minimax_base_url, "minimax_api_key": settings.minimax_api_key,
         "num_epochs": epochs, "batch_size": len(split.train),
         "minibatch_size": min(8, len(split.train)), "merge_batch_size": min(8, len(split.train)),
         "analyst_workers": 2, "edit_budget": 3, "min_edit_budget": 1,
