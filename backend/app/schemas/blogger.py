@@ -147,6 +147,10 @@ class BloggerUrlCollectRequest(BaseModel):
     comments_per_post: int = Field(default=20, ge=0, le=100)
 
 
+class BloggerPostsDeleteRequest(BaseModel):
+    post_ids: list[int]
+
+
 class BloggerPostRead(BaseModel):
     id: int
     tenant_id: int

@@ -8,6 +8,7 @@ import TIcon from './TIcon.vue'
 import {
   activeNotePost,
   closeNote,
+  handleDeleteNote,
   formatDate,
   noteBodyText,
   noteHashtags,
@@ -77,6 +78,9 @@ const noteVisual = computed(() => {
               <span>{{ c.content }}</span>
             </li>
           </ul>
+        </div>
+        <div class="drawer-danger">
+          <button type="button" class="drawer-del" @click="handleDeleteNote(activeNotePost)">删除这条笔记</button>
         </div>
       </div>
     </aside>
@@ -205,5 +209,22 @@ const noteVisual = computed(() => {
   gap: 3px;
   color: #e0496b;
   font-variant-numeric: tabular-nums;
+}
+.drawer-danger {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 0.5px solid var(--color-line, #e5e7eb);
+}
+.drawer-del {
+  border: 0;
+  background: transparent;
+  color: var(--color-danger, #dc2626);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.drawer-del:hover {
+  text-decoration: underline;
 }
 </style>

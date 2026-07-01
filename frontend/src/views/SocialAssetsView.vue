@@ -23,6 +23,10 @@ import {
   handleSaveSnapshot,
   handleToggleBloggerFavorite,
   handleUpdateSnapshot,
+  handleDeleteSelectedPosts,
+  manageMode,
+  enterManageMode,
+  exitManageMode,
   isPostSelected,
   isSocialPlatform,
   loadSnapshotIntoSelection,
@@ -138,6 +142,15 @@ function closePicker() {
   clearPostSelection()
   resetSnapshotSuggest()
   needInput.value = ''
+}
+// 从选择模式「存为快照」:保留已选笔记进弹框(不清空),退出选择模式。
+function openPickerFromSelection() {
+  resetSnapshotSuggest()
+  needInput.value = ''
+  pickerName.value = ''
+  pickerSnapshotId.value = null
+  manageMode.value = false
+  pickerOpen.value = true
 }
 async function savePicker() {
   if (!enoughSelected.value) return
@@ -277,12 +290,17 @@ async function deleteDetailSnapshot() {
           <div class="card-head">
             <div class="ch-l">
               <h3>笔记池</h3>
-              <span class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
+              <span v-if="!manageMode" class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
+              <span v-else class="ch-count ch-count--sel">已选 {{ selectedPostCount }} 篇</span>
             </div>
-            <div class="seg">
-              <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
-              <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
+            <div v-if="!manageMode" class="pool-head-actions">
+              <button type="button" class="pool-select-btn" @click="enterManageMode">选择</button>
+              <div class="seg">
+                <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
+                <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
+              </div>
             </div>
+            <button v-else type="button" class="pool-select-btn" @click="exitManageMode">取消</button>
           </div>
           <div v-if="sortedNoteGroups.length" class="note-groups">
             <div v-for="group in sortedNoteGroups" :key="group.subtype" class="note-group">
@@ -290,9 +308,18 @@ async function deleteDetailSnapshot() {
                 <span class="ng-ico" :class="groupIcon(group.label).cls">{{ groupIcon(group.label).ch }}</span>
                 <strong>{{ group.label }}</strong>
                 <span class="ng-count">{{ group.posts.length }} 篇</span>
+                <button v-if="manageMode" type="button" class="ng-all" @click="selectGroupPosts(group.subtype)">全选本类</button>
               </div>
               <div class="note-rows">
-                <button v-for="post in group.posts" :key="post.id" type="button" class="note-row" @click="openNote(post.id)">
+                <button
+                  v-for="post in group.posts"
+                  :key="post.id"
+                  type="button"
+                  class="note-row"
+                  :class="{ 'note-row--sel': manageMode && isPostSelected(post.id) }"
+                  @click="manageMode ? togglePostSelection(post.id) : openNote(post.id)"
+                >
+                  <span v-if="manageMode" class="nr-check" :class="{ on: isPostSelected(post.id) }" aria-hidden="true"></span>
                   <span class="nr-main">
                     <span class="nr-title">
                       {{ post.title || '(无标题)' }}
@@ -301,12 +328,19 @@ async function deleteDetailSnapshot() {
                     </span>
                     <span class="nr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}</span>
                   </span>
-                  <span class="nr-chevron">›</span>
+                  <span v-if="!manageMode" class="nr-chevron">›</span>
                 </button>
               </div>
             </div>
           </div>
           <p v-else class="empty-region pad">这个博主还没有采集到笔记。请到「数据采集」采集。</p>
+          <div v-if="manageMode && selectedPostCount" class="pool-bar">
+            <span class="pb-count">已选 <strong>{{ selectedPostCount }}</strong> 篇</span>
+            <span class="pb-actions">
+              <button type="button" class="pb-snap" @click="openPickerFromSelection">存为快照</button>
+              <button type="button" class="pb-del" @click="handleDeleteSelectedPosts">删除</button>
+            </span>
+          </div>
         </section>
       </div>
       <div v-else class="empty-region card pad detail-empty">请选择一个博主查看资产。</div>
@@ -1233,5 +1267,112 @@ async function deleteDetailSnapshot() {
   .bl-card {
     position: static;
   }
+}
+/* —— 笔记池选择/删除模式 —— */
+.pool-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pool-select-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--color-accent-soft-bd);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-accent-ink);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms var(--ease-out);
+}
+.pool-select-btn:hover {
+  background: var(--color-accent-soft);
+}
+.ch-count--sel {
+  color: var(--color-accent-ink);
+  font-weight: 550;
+}
+.ng-all {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ng-all:hover {
+  text-decoration: underline;
+}
+.nr-check {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid var(--color-line, #d8dce3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nr-check.on {
+  background: var(--color-accent-ink);
+  border-color: var(--color-accent-ink);
+}
+.nr-check.on::after {
+  content: '✓';
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+}
+.note-row--sel,
+.note-row--sel:hover {
+  background: var(--color-accent-soft);
+}
+.pool-bar {
+  position: sticky;
+  bottom: 8px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-accent-soft-bd);
+  box-shadow: 0 4px 16px rgba(20, 24, 28, 0.1);
+}
+.pb-count {
+  font-size: 13px;
+  color: var(--color-ink);
+}
+.pb-actions {
+  display: flex;
+  gap: 8px;
+}
+.pb-snap,
+.pb-del {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 140ms var(--ease-out), filter 140ms var(--ease-out);
+}
+.pb-snap {
+  border-color: var(--color-accent-soft-bd);
+  background: transparent;
+  color: var(--color-accent-ink);
+}
+.pb-snap:hover {
+  background: var(--color-accent-soft);
+}
+.pb-del {
+  background: var(--color-danger);
+  color: #fff;
+}
+.pb-del:hover {
+  filter: brightness(0.95);
 }
 </style>

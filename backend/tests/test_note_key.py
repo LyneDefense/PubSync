@@ -33,6 +33,13 @@ def test_extract_note_key_falls_back_to_note_id():
     assert extract_note_key(raw, raw, "abc") == "abc"
 
 
+def test_extract_note_key_uses_card_id_when_biz_empty():
+    # 真实 bug:biz_id 为空、顶层/列表 note_id 漂移,但笔记卡自身 id 稳定 → 用卡 id 当 note_key 去重。
+    raw = {"id": "68d95a40000000001003f999", "note_id": "68d95a400000000210037ca3", "bizId": ""}
+    # fallback(漂移的 external_id)不该被采用,应取稳定的卡 id。
+    assert extract_note_key(raw, raw, "68d95a400000000210037ca3") == "68d95a40000000001003f999"
+
+
 def _data(external_id: str, note_key: str, title: str):
     return {
         "external_id": external_id,

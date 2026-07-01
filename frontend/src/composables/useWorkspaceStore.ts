@@ -49,6 +49,7 @@ import {
   getWorkspaceConfig,
   listBloggerCollectionPosts,
   listBloggerPosts,
+  deleteBloggerPosts,
   listBloggerCollectionRuns,
   listBloggerRuns,
   listBloggerSnapshots,
@@ -641,6 +642,47 @@ export function selectGroupPosts(subtype: string) {
   const ids = new Set(selectedPostIds.value)
   for (const post of group.posts) ids.add(post.id)
   selectedPostIds.value = [...ids]
+}
+
+// —— 笔记池:选择/删除模式(软删,排除后采集不再翻回) ——
+// 复用 selectedPostIds:进入模式时清空,退出时清空;删除 = 批量或单条(选一条)。
+export const manageMode = ref(false)
+export function enterManageMode() {
+  clearPostSelection()
+  manageMode.value = true
+}
+export function exitManageMode() {
+  clearPostSelection()
+  manageMode.value = false
+}
+export async function handleDeleteSelectedPosts() {
+  const bloggerId = selectedBloggerId.value
+  const ids = [...selectedPostIds.value]
+  if (!bloggerId || !ids.length) return
+  if (!window.confirm(`删除选中的 ${ids.length} 篇笔记？将从笔记池移除，相关快照会同步剔除。`)) return
+  try {
+    await deleteBloggerPosts(bloggerId, ids)
+    showMessage(`已删除 ${ids.length} 篇笔记`)
+    await refreshSelectedBlogger()
+    exitManageMode()
+  } catch (err) {
+    showMessage(err instanceof Error ? err.message : '删除失败', true)
+  }
+}
+// 抽屉里的单条删除:抽屉在对标博主池 + 我的账号缓存两处复用,都本地剔除。
+export async function handleDeleteNote(post: BloggerPost) {
+  if (!window.confirm('删除这条笔记？将从笔记池移除。')) return
+  try {
+    await deleteBloggerPosts(post.blogger_id, [post.id])
+    showMessage('已删除该笔记')
+    bloggerPosts.value = bloggerPosts.value.filter((p) => p.id !== post.id)
+    const acc = accountPosts[post.blogger_id]
+    if (acc) accountPosts[post.blogger_id] = acc.filter((p) => p.id !== post.id)
+    closeNote()
+    if (selectedBloggerId.value === post.blogger_id) await refreshSelectedBlogger()
+  } catch (err) {
+    showMessage(err instanceof Error ? err.message : '删除失败', true)
+  }
 }
 
 // —— 智能选材:AI 按需求预选笔记建快照 ——

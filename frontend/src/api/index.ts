@@ -346,6 +346,13 @@ export function listBloggerPosts(id: number) {
   return request<BloggerPost[]>(`/bloggers/${id}/posts`)
 }
 
+export function deleteBloggerPosts(id: number, postIds: number[]) {
+  return request<{ excluded: number }>(`/bloggers/${id}/posts/delete`, {
+    method: 'POST',
+    body: JSON.stringify({ post_ids: postIds })
+  })
+}
+
 export function collectBlogger(id: number, payload: BloggerCollectRequest) {
   return request<OperationTask>(`/bloggers/${id}/collect`, {
     method: 'POST',

@@ -24,7 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 def extract_note_key(raw: dict[str, Any], detail_payload: dict[str, Any], fallback: str) -> str:
-    """稳定规范键:小红书 biz_id、抖音 aweme_id。note_id 会随端点漂移,这个跨次稳定;取不到则回退 note_id。"""
+    """稳定规范键。优先级:
+    1) 业务键 biz_id / aweme_id(非空);
+    2) **解析后笔记卡自身的 id**——小红书规范笔记 id,跨端点稳定。列表和详情顶层的 note_id/external_id
+       会随端点漂移(同一篇在不同采集拿到不同 note_id → 被当成两篇 → 重复),但笔记卡里的 id 是规范值;
+    3) 兜底 external_id(note_id,可能漂移)。
+    """
     for source in (raw, detail_payload):
         if not isinstance(source, dict):
             continue
@@ -32,6 +37,11 @@ def extract_note_key(raw: dict[str, Any], detail_payload: dict[str, Any], fallba
             value = recursive_find(source, key)
             if isinstance(value, (str, int)) and str(value).strip():
                 return str(value).strip()
+    # raw 已是 resolve_note_card 的结果,其顶层 id 即笔记卡规范 id。
+    if isinstance(raw, dict):
+        card_id = raw.get("id")
+        if isinstance(card_id, (str, int)) and str(card_id).strip():
+            return str(card_id).strip()
     return fallback
 
 

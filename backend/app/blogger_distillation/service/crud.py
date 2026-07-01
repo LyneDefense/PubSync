@@ -283,3 +283,50 @@ def delete_blogger(db: Session, tenant_id: int, blogger_id: int) -> None:
         db.execute(delete(OperationTaskEvent).where(OperationTaskEvent.tenant_id == tenant_id, OperationTaskEvent.task_id.in_(task_ids)))
         db.execute(delete(OperationTask).where(OperationTask.tenant_id == tenant_id, OperationTask.id.in_(task_ids)))
     db.commit()
+
+
+def exclude_posts(db: Session, tenant_id: int, blogger_id: int, post_ids: list[int]) -> int:
+    """软删(排除)博主的若干笔记:标 status='excluded' —— 笔记池隐藏、蒸馏/诊断不选、采集不再翻回。
+
+    同步递减博主 sample_count、从快照 post_ids 里剔除(快照本身保留)。返回实际排除的条数。
+    软删而非硬删:保留历史、可回溯,且采集侧靠 status 判断不再重复采回。
+    """
+    blogger = db.get(BloggerProfile, blogger_id)
+    if not blogger or blogger.tenant_id != tenant_id:
+        raise ValueError("博主不存在或不属于当前工作空间")
+    clean_ids = {int(x) for x in (post_ids or [])}
+    if not clean_ids:
+        raise ValueError("请至少选择一篇笔记")
+    posts = list(
+        db.scalars(
+            select(BloggerPost).where(
+                BloggerPost.tenant_id == tenant_id,
+                BloggerPost.blogger_id == blogger_id,
+                BloggerPost.id.in_(clean_ids),
+                BloggerPost.status != "excluded",
+            )
+        )
+    )
+    if not posts:
+        return 0
+    excluded_ids: set[int] = set()
+    for post in posts:
+        post.status = "excluded"
+        excluded_ids.add(post.id)
+    blogger.sample_count = max(0, (blogger.sample_count or 0) - len(excluded_ids))
+    snapshots = db.scalars(
+        select(BloggerSnapshot).where(
+            BloggerSnapshot.tenant_id == tenant_id,
+            BloggerSnapshot.blogger_id == blogger_id,
+        )
+    )
+    for snap in snapshots:
+        try:
+            ids = json.loads(snap.post_ids_json or "[]")
+        except json.JSONDecodeError:
+            ids = []
+        kept = [i for i in ids if int(i) not in excluded_ids]
+        if len(kept) != len(ids):
+            snap.post_ids_json = json.dumps(kept, ensure_ascii=False)
+    db.commit()
+    return len(excluded_ids)

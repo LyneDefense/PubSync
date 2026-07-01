@@ -225,7 +225,7 @@ def run_blogger_collection(
         # content_subtype 已在 collect_posts 入库前定好,这里只更新生命周期字段。
         for post in fetched:
             post.last_seen_at = now
-            post.status = "active"
+            post.status = "active" if post.status != "excluded" else "excluded"
         # 老笔记轻量刷新:用列表赞藏数更新 + last_seen,不抓详情。
         for candidate, post in refresh_only:
             if candidate.like_count:
@@ -237,7 +237,7 @@ def run_blogger_collection(
             if candidate.share_count:
                 post.share_count = candidate.share_count
             post.last_seen_at = now
-            post.status = "active"
+            post.status = "active" if post.status != "excluded" else "excluded"
 
         # 下架对账:仅当翻到列表底部(看到完整目录)才动。小红书翻页返回不稳定(同一博主两次"翻到底"
         # 拿到的集合可能不同),故需「连续 N 次完整爬取都缺失」才下架,单次缺失只累计、不下架,避免误杀。
@@ -466,7 +466,7 @@ def run_blogger_url_collection(
         # content_subtype 已在 collect_posts 入库前定好,这里只更新生命周期字段。
         for post in posts:
             post.last_seen_at = now
-            post.status = "active"
+            post.status = "active" if post.status != "excluded" else "excluded"
         blogger.sample_count = len(posts)
         for position, post in enumerate(posts, 1):
             db.add(

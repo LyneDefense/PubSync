@@ -8,6 +8,7 @@ from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tena
 from app.blogger_distillation.service import (
     create_blogger,
     delete_blogger,
+    exclude_posts,
     refresh_blogger_profile,
     set_blogger_favorite,
     update_blogger,
@@ -18,6 +19,7 @@ from app.models import BloggerPost, BloggerProfile, BloggerSkill, Tenant
 from app.schemas import (
     BloggerFavoriteUpdate,
     BloggerPostRead,
+    BloggerPostsDeleteRequest,
     BloggerProfileCreate,
     BloggerProfileRead,
     BloggerProfileUpdate,
@@ -136,10 +138,25 @@ def list_blogger_posts_endpoint(
         raise HTTPException(status_code=404, detail="Blogger not found")
     stmt = (
         select(BloggerPost)
-        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id)
+        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id, BloggerPost.status != "excluded")
         .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
     )
     return list(db.scalars(apply_pagination(stmt, limit, offset)))
+
+
+@router.post("/bloggers/{blogger_id}/posts/delete")
+def delete_blogger_posts_endpoint(
+    blogger_id: int,
+    payload: BloggerPostsDeleteRequest,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """软删(排除)博主的若干笔记:单删/批量共用。excluded 后笔记池隐藏、蒸馏/诊断不选、采集不再翻回。"""
+    try:
+        excluded = exclude_posts(db, tenant.id, blogger_id, payload.post_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"excluded": excluded}
 
 
 @router.get("/blogger-skills", response_model=list[BloggerSkillRead])

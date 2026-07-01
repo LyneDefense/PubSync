@@ -38,7 +38,7 @@ def _recent_titles(db: Session, tenant_id: int, blogger_id: int, limit: int = 30
     rows = db.scalars(
         select(BloggerPost.title)
         .where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
-               BloggerPost.status != "delisted")
+               BloggerPost.status.notin_(("delisted", "excluded")))
         .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
         .limit(limit)
     )

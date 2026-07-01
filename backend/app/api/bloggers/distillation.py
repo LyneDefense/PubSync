@@ -62,7 +62,7 @@ def distill_blogger_endpoint(
             .where(
                 BloggerPost.tenant_id == tenant.id,
                 BloggerPost.blogger_id == blogger.id,
-                BloggerPost.status != "delisted",
+                BloggerPost.status.notin_(("delisted", "excluded")),
             )
             .order_by(BloggerPost.score.desc(), BloggerPost.id.desc())
             .limit(settings.blogger_auto_distill_top_n)
@@ -83,7 +83,7 @@ def distill_blogger_endpoint(
                     select(BloggerPost.id).where(
                         BloggerPost.tenant_id == tenant.id,
                         BloggerPost.blogger_id == blogger.id,
-                        BloggerPost.status != "delisted",
+                        BloggerPost.status.notin_(("delisted", "excluded")),
                         BloggerPost.id.in_(payload.post_ids),
                     )
                 )
@@ -130,7 +130,7 @@ def _valid_blogger_post_ids(db: Session, tenant_id: int, blogger_id: int, post_i
             select(BloggerPost.id).where(
                 BloggerPost.tenant_id == tenant_id,
                 BloggerPost.blogger_id == blogger_id,
-                BloggerPost.status != "delisted",
+                BloggerPost.status.notin_(("delisted", "excluded")),
                 BloggerPost.id.in_(post_ids),
             )
         )
@@ -190,7 +190,7 @@ def snapshot_suggest_endpoint(
         raise HTTPException(status_code=404, detail="Blogger not found")
     rows = db.execute(
         select(BloggerPost.id, BloggerPost.title, BloggerPost.content_subtype)
-        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id, BloggerPost.status != "delisted")
+        .where(BloggerPost.tenant_id == tenant.id, BloggerPost.blogger_id == blogger_id, BloggerPost.status.notin_(("delisted", "excluded")))
         .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.id.desc())
         .limit(150)
     ).all()

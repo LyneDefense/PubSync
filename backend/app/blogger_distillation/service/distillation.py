@@ -95,7 +95,7 @@ def run_blogger_distillation(
                     BloggerPost.id.in_(ids),
                     BloggerPost.tenant_id == tenant_id,
                     BloggerPost.blogger_id == blogger.id,
-                    BloggerPost.status != "delisted",
+                    BloggerPost.status.notin_(("delisted", "excluded")),
                 )
                 .order_by(BloggerPost.score.desc(), BloggerPost.created_at.desc())
             )
