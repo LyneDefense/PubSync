@@ -177,6 +177,7 @@ export const intentLoading = ref(false)
 // 意图在这里是内向的——目标 / 痛点 / 阶段(跟对标的「想学什么」不同),复用同一套多选引导件但独立 state。
 export const selfAppraiseForm = reactive<{ blogger_id: number; intent: string }>({ blogger_id: 0, intent: '' })
 export const selfAppraisalRun = ref<AccountAuditRun | null>(null)
+export const selfAppraisalHistory = ref<AccountAuditRun[]>([]) // 我的诊断记录(kind=self,成功且可解析)
 export const selfIntentQuestions = ref<AppraisalIntentQuestion[]>([])
 export const selfIntentSelections = reactive<Record<number, string[]>>({})
 export const selfIntentOthers = reactive<Record<number, string>>({})
@@ -2151,6 +2152,16 @@ export async function refreshSelfAppraisalRun() {
     selfAppraisalRun.value = runs.find((r) => parseAppraisalReport(r)) ?? null
   } catch {
     selfAppraisalRun.value = null
+  }
+}
+
+// 我的诊断记录:已成功且报告可解析的 self runs(最新在前)。
+export async function refreshSelfAppraisalHistory() {
+  try {
+    const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'self')
+    selfAppraisalHistory.value = runs.filter((r) => r.status === 'succeeded' && parseAppraisalReport(r))
+  } catch {
+    selfAppraisalHistory.value = []
   }
 }
 

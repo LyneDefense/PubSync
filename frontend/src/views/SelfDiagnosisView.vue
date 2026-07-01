@@ -2,10 +2,10 @@
 // 诊断我的账号(评估与提升):给自己的号做体检(硬实力 × 合规 × 目标契合,无软实力)。三步向导 ——
 // ① 选我的账号 ② 明确诊断意图(意图录入 → 内嵌进度卡 → 答题打卡) ③ 诊断报告。诊断前自动确保 ≥20 篇笔记。
 // 第 2 步与「对标分析」完全一致:进度卡由两次真实后端往返(读笔记 / 模型出题)点亮,不按时间假装分阶段。
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
-import type { AppraisalIntentQuestion } from '../api/types'
+import type { AccountAuditRun, AppraisalIntentQuestion } from '../api/types'
 import {
   currentSocialPlatformName,
   currentSocialTab,
@@ -19,8 +19,10 @@ import {
   openCreateMyAccountModal,
   parseAppraisalReport,
   pendingAction,
+  refreshSelfAppraisalHistory,
   resetSelfIntentGuide,
   selfAppraiseForm,
+  selfAppraisalHistory,
   selfAppraisalRun,
   selfIntentOthers,
   selfIntentQuestions,
@@ -170,12 +172,47 @@ function avatarStyle(id: number) {
   return { background: AVATAR_BG[i], color: AVATAR_INK[i] }
 }
 
+function accountNameById(id: number | null | undefined): string {
+  if (!id) return ''
+  return myAccounts.value.find((a) => a.id === id)?.display_name || '已删除的账号'
+}
 // 报告署名:用 run 自带的 my_blogger_id 解析(对得上诊断的那个号,不依赖当前选择)。
-const reportAccountName = computed(() => {
-  const id = selfAppraisalRun.value?.my_blogger_id
-  return (id ? myAccounts.value.find((a) => a.id === id)?.display_name : '') || selectedName.value || '我的账号'
-})
+const reportAccountName = computed(() => accountNameById(selfAppraisalRun.value?.my_blogger_id) || selectedName.value || '我的账号')
 const reportDate = computed(() => (selfAppraisalRun.value ? formatDate(selfAppraisalRun.value.created_at) : ''))
+
+function scoreBand(n: number): string {
+  return n >= 75 ? 's-ok' : n >= 60 ? 's-warn' : 's-danger'
+}
+
+// 我的诊断记录:解析一次,带账号名 + 日期(最新在前)。
+const historyItems = computed(() =>
+  selfAppraisalHistory.value
+    .map((run) => ({
+      run,
+      report: parseAppraisalReport(run),
+      name: accountNameById(run.my_blogger_id) || '我的账号',
+      date: formatDate(run.created_at)
+    }))
+    .filter((it) => it.report)
+)
+// 只显示「当前选中账号」的诊断记录(选中某个账号后才出现该账号的历史)。
+const selectedHistory = computed(() =>
+  selfAppraiseForm.blogger_id
+    ? historyItems.value.filter((it) => it.run.my_blogger_id === selfAppraiseForm.blogger_id)
+    : []
+)
+
+// 查看一条历史报告:弹框展示(不动向导当前步、不覆盖当前诊断)。
+const historyModalRun = ref<AccountAuditRun | null>(null)
+const historyModalReport = computed(() => (historyModalRun.value ? parseAppraisalReport(historyModalRun.value) : null))
+const historyModalName = computed(() => (historyModalRun.value ? accountNameById(historyModalRun.value.my_blogger_id) : ''))
+const historyModalDate = computed(() => (historyModalRun.value ? formatDate(historyModalRun.value.created_at) : ''))
+function openHistoryRun(run: AccountAuditRun) {
+  historyModalRun.value = run
+}
+function closeHistoryModal() {
+  historyModalRun.value = null
+}
 
 // 第 2 步意图状态机复位(换账号 / 重新诊断时)。
 function resetIntentFlow() {
@@ -198,6 +235,7 @@ function pickAccount(id: number) {
 async function startDiagnose() {
   step.value = 3
   await handleRunSelfAppraisal()
+  refreshSelfAppraisalHistory() // 新报告进记录
 }
 function restart() {
   resetSelfIntentGuide()
@@ -224,6 +262,9 @@ async function exportImage() {
   }
 }
 
+onMounted(() => {
+  refreshSelfAppraisalHistory()
+})
 onUnmounted(() => {
   stopElapsedTimer()
 })
@@ -280,6 +321,31 @@ onUnmounted(() => {
         <p v-else class="empty-region pad">还没有「我的账号」。<a href="#" @click.prevent="openCreateMyAccountModal">去添加</a></p>
         <div class="card-foot">
           <button type="button" class="btn-primary" :disabled="!selfAppraiseForm.blogger_id" @click="step = 2">下一步 →</button>
+        </div>
+      </section>
+
+      <!-- 我的诊断记录:仅当前选中账号,点一条弹框查看 -->
+      <section v-if="selectedAccount && selectedHistory.length" class="card history">
+        <div class="card-head">
+          <h2>我的诊断记录</h2>
+          <span class="head-hint">点一条查看「{{ selectedName }}」的历史报告</span>
+        </div>
+        <div class="hist-list">
+          <button
+            v-for="it in selectedHistory"
+            :key="it.run.id"
+            type="button"
+            class="hist-row"
+            @click="openHistoryRun(it.run)"
+          >
+            <span class="hist-name">{{ it.name }}</span>
+            <span class="hist-scores">
+              <em :class="scoreBand(it.report!.hard_score)">硬 {{ it.report!.hard_score }}</em>
+              <em v-if="it.report!.goal_fit" :class="scoreBand(it.report!.goal_fit.score)">契合 {{ it.report!.goal_fit.score }}</em>
+              <em :class="scoreBand(it.report!.compliance.score)">合规 {{ it.report!.compliance.score }}</em>
+            </span>
+            <span class="hist-date">{{ it.date }}</span>
+          </button>
         </div>
       </section>
 
@@ -470,6 +536,22 @@ onUnmounted(() => {
         <button type="button" class="btn-primary" @click="restart">重新诊断</button>
       </div>
     </template>
+
+    <!-- 诊断记录弹框:点记录条目在此查看,不跳向导步骤、也不覆盖当前诊断 -->
+    <div v-if="historyModalRun && historyModalReport" class="hist-modal-overlay" @click.self="closeHistoryModal">
+      <div class="hist-modal">
+        <div class="hm-head">
+          <div class="hm-title">
+            <strong>{{ historyModalName || '账号诊断报告' }}</strong>
+            <span>账号诊断 · 基于 {{ historyModalReport.sample_count }} 篇笔记 · {{ historyModalDate }}</span>
+          </div>
+          <button type="button" class="hm-close" aria-label="关闭" @click="closeHistoryModal">✕</button>
+        </div>
+        <div class="hm-body">
+          <AppraisalCard :report="historyModalReport" />
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -1326,6 +1408,148 @@ onUnmounted(() => {
     animation: none;
     width: 100%;
     opacity: 0.5;
+  }
+}
+
+/* 我的诊断记录列表 */
+.hist-list {
+  display: flex;
+  flex-direction: column;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 20px;
+  border: 0;
+  border-top: 1px solid var(--color-paper-3);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.hist-row:first-child {
+  border-top: 0;
+}
+.hist-row:hover {
+  background: #fafbfc;
+}
+.hist-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist-scores {
+  display: flex;
+  gap: 12px;
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hist-scores em {
+  font-style: normal;
+  font-weight: 650;
+}
+.hist-scores .s-ok {
+  color: var(--color-ok);
+}
+.hist-scores .s-warn {
+  color: var(--color-warn);
+}
+.hist-scores .s-danger {
+  color: var(--color-danger);
+}
+.hist-date {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 诊断记录弹框 */
+.hist-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 24, 28, 0.4);
+  animation: hm-fade 160ms var(--ease-out);
+}
+.hist-modal {
+  width: min(920px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.hm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-rule);
+  flex: 0 0 auto;
+}
+.hm-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.hm-title strong {
+  font-size: 16px;
+  font-weight: 680;
+  color: var(--color-ink);
+}
+.hm-title span {
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.hm-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.hm-close:hover {
+  background: var(--color-rule-strong);
+}
+.hm-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+@keyframes hm-fade {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hist-modal-overlay {
+    animation: none;
   }
 }
 
