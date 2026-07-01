@@ -672,7 +672,8 @@ export async function fetchSnapshotSuggestion(need: string): Promise<number | nu
     snapshotSuggestRanked.value = res.items
     snapshotSuggestName.value = res.suggested_name
     for (const k of Object.keys(snapshotSuggestReasons)) delete snapshotSuggestReasons[Number(k)]
-    for (const it of res.items) snapshotSuggestReasons[it.post_id] = it.reason
+    // 只给"相关"的笔记(分>0)挂标注:有理由用理由,否则显示相关度分。
+    for (const it of res.items) if (it.score > 0) snapshotSuggestReasons[it.post_id] = it.reason || `相关度 ${it.score}`
     const poolIds = new Set(bloggerPosts.value.map((p) => p.id))
     const picked = res.items.filter((it) => it.score >= SNAPSHOT_PICK_SCORE && poolIds.has(it.post_id)).map((it) => it.post_id)
     selectedPostIds.value = picked
