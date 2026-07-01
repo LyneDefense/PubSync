@@ -96,7 +96,7 @@ const modalityEntries = computed(() => {
     <div class="section-header">
       <div>
         <h2>效果看板</h2>
-        <p class="toolbar-subtitle">用了 PubSync 帮到了什么——工作台总览 + 分账号成果。</p>
+        <p class="toolbar-subtitle">用了 Cadence 帮到了什么——工作台总览 + 分账号成果。</p>
       </div>
       <div class="dash-range">
         <button v-for="r in RANGES" :key="r.key" type="button" :class="{ active: dashboardRange === r.key }" @click="setDashboardRange(r.key)">{{ r.label }}</button>
@@ -208,7 +208,7 @@ const modalityEntries = computed(() => {
 
             <!-- 活跃 vs 沉默 -->
             <div v-if="dashboardGrowth && (dashboardGrowth.comparison.active_avg_daily !== null || dashboardGrowth.comparison.silent_avg_daily !== null)" class="dash-compare">
-              <span>有使用 PubSync 的周：日均涨粉 <strong>{{ dashboardGrowth.comparison.active_avg_daily ?? '—' }}</strong></span>
+              <span>有使用 Cadence 的周：日均涨粉 <strong>{{ dashboardGrowth.comparison.active_avg_daily ?? '—' }}</strong></span>
               <span>没使用的周：日均涨粉 <strong>{{ dashboardGrowth.comparison.silent_avg_daily ?? '—' }}</strong></span>
             </div>
             <p v-if="dashboardGrowth" class="field-hint dash-disclaimer">{{ dashboardGrowth.disclaimer }}</p>

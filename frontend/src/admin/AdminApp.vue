@@ -84,7 +84,7 @@ function logout() {
   <div v-else class="admin-shell">
     <aside class="admin-aside">
       <div class="admin-brand">
-        <strong>PubSync</strong>
+        <strong>Cadence</strong>
         <span>管理后台</span>
       </div>
       <nav class="admin-nav">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// PubSync 落地页(面向内容创作者/运营)。纯展示;复用 main.css 设计变量。
+// Cadence 落地页(面向内容创作者/运营)。纯展示;复用 main.css 设计变量。(部署路径仍为 /PubSync/,不属品牌名)
 // 进入工作台/登录 = 登录入口 login.html(如 /PubSync/login.html)。
 const appUrl = `${import.meta.env.BASE_URL || '/'}login.html`
 // 检测本地是否已登录:有 token 就把按钮文案换成「进入工作台」,点了直接进工作台(login.html 已登录态直达,跳过登录页)。
@@ -39,7 +39,7 @@ const highlights = [
   <div class="lp">
     <header class="lp-nav">
       <div class="lp-wrap lp-nav__inner">
-        <div class="lp-brand"><strong>PubSync</strong><span>多平台内容自动化</span></div>
+        <div class="lp-brand"><strong>Cadence</strong><span>多平台内容自动化</span></div>
         <a class="link-button primary" :href="appUrl">{{ loggedIn ? '进入工作台' : '登录' }}</a>
       </div>
     </header>
@@ -49,7 +49,7 @@ const highlights = [
         <span class="lp-badge">公众号 · 小红书 · 抖音</span>
         <h1>一个人,运营出一个团队的内容产能</h1>
         <p class="lp-lead">
-          PubSync 把「拆解对标博主 → 诊断账号 → AI 创作 → 多平台发布」串成一条流水线。
+          Cadence 把「拆解对标博主 → 诊断账号 → AI 创作 → 多平台发布」串成一条流水线。
           从找选题到出稿,自动化搞定,把时间还给真正重要的事。
         </p>
         <div class="lp-cta">
@@ -129,7 +129,7 @@ const highlights = [
 
     <footer class="lp-footer">
       <div class="lp-wrap lp-footer__inner">
-        <span>PubSync · 多平台内容自动化</span>
+        <span>Cadence · 多平台内容自动化</span>
         <a :href="appUrl">进入工作台</a>
       </div>
     </footer>

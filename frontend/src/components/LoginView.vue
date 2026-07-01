@@ -65,7 +65,7 @@ function onSubmit() {
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z" /><path d="M4 12l8 4 8-4" /><path d="M4 16.5l8 4 8-4" /></svg>
           </span>
           <div>
-            <strong>PubSync</strong>
+            <strong>Cadence</strong>
             <span>对标驱动的内容创作引擎</span>
           </div>
         </div>
@@ -95,7 +95,7 @@ function onSubmit() {
           <span v-for="p in PROOF" :key="p"><i aria-hidden="true">✓</i>{{ p }}</span>
         </div>
 
-        <p class="brand-copy">© 2025 PubSync · 内容创作工作台</p>
+        <p class="brand-copy">© 2025 Cadence · 内容创作工作台</p>
       </div>
     </aside>
 
