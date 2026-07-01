@@ -23,7 +23,8 @@ const PATHS: Record<string, string> = {
   'arrow-up': '<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',
   'arrow-right': '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
   'chevron-down': '<path d="M6 9l6 6 6-6"/>',
-  check: '<path d="M5 12l4 4 10-10"/>'
+  check: '<path d="M5 12l4 4 10-10"/>',
+  bell: '<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5 2 6H4c.5-1 2-2 2-6z"/><path d="M10 19a2 2 0 0 0 4 0"/>'
 }
 </script>
 
