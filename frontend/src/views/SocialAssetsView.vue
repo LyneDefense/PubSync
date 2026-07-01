@@ -5,19 +5,17 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { bloggerCommentLabel } from '../utils/format'
 import TIcon from '../components/TIcon.vue'
+import NoteDetailDrawer from '../components/NoteDetailDrawer.vue'
 import {
-  activeNotePost,
   benchmarkAccounts,
   bloggerNoteGroups,
   bloggerPosts,
   bloggerSnapshots,
   clearPostSelection,
-  closeNote,
   currentSocialTab,
   delistedNoteCount,
   DISTILL_MIN_SAMPLES,
   DISTILL_RECOMMEND_SAMPLES,
-  formatDate,
   friendlyTime,
   handleDeleteBlogger,
   handleDeleteSnapshot,
@@ -28,9 +26,6 @@ import {
   isPostSelected,
   isSocialPlatform,
   loadSnapshotIntoSelection,
-  noteBodyText,
-  noteHashtags,
-  noteTopComments,
   openEditBloggerModal,
   openNote,
   pendingAction,
@@ -43,6 +38,23 @@ import {
   subtypeLabel,
   togglePostSelection
 } from '../composables/useWorkspaceStore'
+
+// 笔记池排序:最新(按发布时间)/ 最热(按互动量),在每个类型分组内排序。参考「我的账号」的笔记列表。
+type NoteSort = 'recent' | 'hot'
+const noteSort = ref<NoteSort>('recent')
+function interaction(p: { like_count: number; favorite_count: number; comment_count: number }): number {
+  return (p.like_count || 0) + (p.favorite_count || 0) + (p.comment_count || 0)
+}
+const sortedNoteGroups = computed(() =>
+  bloggerNoteGroups.value.map((g) => ({
+    ...g,
+    posts: [...g.posts].sort((a, b) =>
+      noteSort.value === 'hot'
+        ? interaction(b) - interaction(a)
+        : (b.published_at || '').localeCompare(a.published_at || '')
+    )
+  }))
+)
 
 // 「加对标」去「找对标博主」页。
 const route = useRoute()
@@ -246,9 +258,13 @@ async function deleteDetailSnapshot() {
               <h3>笔记池</h3>
               <span class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
             </div>
+            <div class="seg">
+              <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
+              <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
+            </div>
           </div>
-          <div v-if="bloggerNoteGroups.length" class="note-groups">
-            <div v-for="group in bloggerNoteGroups" :key="group.subtype" class="note-group">
+          <div v-if="sortedNoteGroups.length" class="note-groups">
+            <div v-for="group in sortedNoteGroups" :key="group.subtype" class="note-group">
               <div class="ng-head">
                 <span class="ng-ico" :class="groupIcon(group.label).cls">{{ groupIcon(group.label).ch }}</span>
                 <strong>{{ group.label }}</strong>
@@ -351,47 +367,8 @@ async function deleteDetailSnapshot() {
       </div>
     </div>
 
-    <!-- 单篇笔记详情:右侧抽屉 -->
-    <div v-if="activeNotePost" class="drawer-overlay" @click.self="closeNote">
-      <aside class="drawer">
-        <div class="drawer-head">
-          <strong>笔记详情</strong>
-          <button type="button" class="modal-close" aria-label="关闭" @click="closeNote"><TIcon name="x" /></button>
-        </div>
-        <div class="drawer-body">
-          <img v-if="activeNotePost.cover_url" :src="activeNotePost.cover_url" alt="封面" class="drawer-cover" referrerpolicy="no-referrer" />
-          <div v-else class="drawer-cover placeholder"></div>
-          <h3 class="drawer-title">{{ activeNotePost.title || '(无标题)' }}</h3>
-          <p class="drawer-meta">
-            {{ subtypeLabel(activeNotePost.content_subtype) }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
-          </p>
-          <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="drawer-link">打开原帖 <TIcon name="external-link" /></a>
-
-          <div class="drawer-section">
-            <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
-            <p v-if="noteBodyText(activeNotePost)" class="drawer-text">{{ noteBodyText(activeNotePost) }}</p>
-            <p v-else class="empty-region">这篇笔记没有可展示的文字内容。</p>
-          </div>
-
-          <div v-if="noteHashtags(activeNotePost).length" class="drawer-section">
-            <h4>话题标签</h4>
-            <div class="tag-chips">
-              <span v-for="tag in noteHashtags(activeNotePost)" :key="tag" class="tag-chip tag-chip--auto">#{{ tag }}</span>
-            </div>
-          </div>
-
-          <div v-if="noteTopComments(activeNotePost).length" class="drawer-section">
-            <h4>热门评论 TOP{{ noteTopComments(activeNotePost).length }}</h4>
-            <ul class="drawer-comments">
-              <li v-for="(c, i) in noteTopComments(activeNotePost)" :key="i">
-                <span class="dc-like"><TIcon name="heart" /> {{ c.like_count }}</span>
-                <span>{{ c.content }}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </aside>
-    </div>
+    <!-- 单篇笔记详情:右侧抽屉(公共组件,与「我的账号」共用) -->
+    <NoteDetailDrawer />
   </section>
 </template>
 
@@ -1069,113 +1046,30 @@ async function deleteDetailSnapshot() {
 }
 
 /* —— 右侧抽屉 —— */
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(20, 24, 28, 0.4);
-  animation: fade 180ms var(--ease-out);
-}
-.drawer {
-  width: min(460px, 92vw);
-  height: 100%;
-  background: var(--color-surface);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-  animation: slide-in 220ms var(--ease-out);
-}
-@keyframes fade {
-  from { opacity: 0; }
-}
-@keyframes slide-in {
-  from { transform: translateX(24px); opacity: 0.6; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .drawer-overlay,
-  .drawer {
-    animation: none;
-  }
-}
-.drawer-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--color-paper-3);
-}
-.drawer-head strong {
-  font-size: 15px;
-  font-weight: 650;
-}
-.drawer-body {
-  padding: 18px;
-  overflow-y: auto;
-}
-.drawer-cover {
-  width: 100%;
-  max-height: 240px;
-  object-fit: cover;
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-.drawer-cover.placeholder {
-  height: 140px;
-  background: linear-gradient(135deg, var(--color-paper-3), var(--color-accent-soft));
-}
-.drawer-title {
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 650;
-}
-.drawer-meta {
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: var(--color-ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.drawer-link {
-  font-size: 13px;
-  color: var(--color-accent);
-  font-weight: 600;
-}
-.drawer-section {
-  margin-top: 18px;
-}
-.drawer-section h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 650;
-}
-.drawer-text {
-  white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--color-ink-2);
-}
-.drawer-comments {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.drawer-comments li {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.dc-like {
-  flex: 0 0 auto;
+/* 笔记池排序切换(最新/最热) */
+.seg {
   display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: #e0496b;
-  font-variant-numeric: tabular-nums;
+  gap: 2px;
+  padding: 3px;
+  background: var(--color-paper-3);
+  border-radius: 9px;
+}
+.seg button {
+  height: 28px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.seg button.on {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px var(--color-shadow);
 }
 
 @media (max-width: 900px) {

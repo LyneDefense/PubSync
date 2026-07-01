@@ -2,6 +2,7 @@
 // 社媒·我的账号:主从工作台 —— 左栏账号列表,右栏「账号概要卡 + 内容列表卡」。内容缓存,点刷新才重采。
 import { computed, ref, watch } from 'vue'
 import { statusTone } from '../utils/format'
+import NoteDetailDrawer from '../components/NoteDetailDrawer.vue'
 import {
   accountPosts,
   currentSocialPlatformName,
@@ -12,6 +13,7 @@ import {
   loadAccountPosts,
   myAccounts,
   openCreateMyAccountModal,
+  openNote,
   pendingAction
 } from '../composables/useWorkspaceStore'
 
@@ -176,7 +178,7 @@ function asrLabel(s: string): string {
           </div>
 
           <div v-if="sortedPosts.length" class="post-list">
-            <article v-for="(post, i) in sortedPosts" :key="post.id" class="post-row">
+            <article v-for="(post, i) in sortedPosts" :key="post.id" class="post-row" role="button" tabindex="0" @click="openNote(post.id)" @keydown.enter="openNote(post.id)">
               <span class="seq">{{ String(i + 1).padStart(2, '0') }}</span>
               <div class="post-main">
                 <div class="post-title">
@@ -195,6 +197,7 @@ function asrLabel(s: string): string {
                 class="status-chip"
                 :class="`status-chip--${statusTone(post.asr_status)}`"
               >{{ asrLabel(post.asr_status) }}</span>
+              <span class="nr-chevron" aria-hidden="true">›</span>
             </article>
           </div>
           <p v-else class="empty-region pad">这个账号还没有缓存内容。点「刷新(重新采集)」抓取最新内容。</p>
@@ -203,6 +206,9 @@ function asrLabel(s: string): string {
     </div>
 
     <p v-else class="empty-region card pad">还没有我的账号。点「添加我的账号」搜索并保存你的主页。</p>
+
+    <!-- 单篇笔记详情:右侧抽屉(与「博主资产」共用同一组件) -->
+    <NoteDetailDrawer />
   </section>
 </template>
 
@@ -512,8 +518,20 @@ function asrLabel(s: string): string {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 0;
+  padding: 12px 8px;
   border-top: 1px solid var(--color-paper-3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.post-row:hover {
+  background: #fafbfc;
+}
+.nr-chevron {
+  flex: 0 0 auto;
+  color: var(--color-ink-3);
+  font-size: 18px;
+  line-height: 1;
 }
 .post-row:first-child {
   border-top: 0;

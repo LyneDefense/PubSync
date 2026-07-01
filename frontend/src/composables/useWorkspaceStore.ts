@@ -640,7 +640,18 @@ export function selectGroupPosts(subtype: string) {
   selectedPostIds.value = [...ids]
 }
 
-export const activeNotePost = computed(() => bloggerPosts.value.find((p) => p.id === activeNotePostId.value) || null)
+// 详情抽屉的当前笔记:先在对标博主笔记池找,再在「我的账号」缓存里找 —— 两处笔记复用同一个抽屉。
+export const activeNotePost = computed(() => {
+  const id = activeNotePostId.value
+  if (id == null) return null
+  const inBlogger = bloggerPosts.value.find((p) => p.id === id)
+  if (inBlogger) return inBlogger
+  for (const arr of Object.values(accountPosts)) {
+    const hit = arr.find((p) => p.id === id)
+    if (hit) return hit
+  }
+  return null
+})
 export function openNote(id: number) {
   activeNotePostId.value = id
 }
