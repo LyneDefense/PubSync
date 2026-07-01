@@ -15,7 +15,7 @@ from app.blogger_distillation.service import DistillationCancelled
 from app.config import get_settings
 from app.cost.context import cost_capture
 from app.database import SessionLocal
-from app.models import OperationTask, TaskStatus
+from app.models import OperationTask, OperationTaskEvent, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -147,4 +147,7 @@ def mark_task_failed_by_id(db: Session, task_id: str, message: str, error_messag
     task.status = TaskStatus.failed
     task.message = message
     task.error_message = error_message
+    # 落一条「失败」事件:让前端进度时间线明确显示失败(不只靠一闪而过的 toast)。
+    detail = f"{message}：{error_message}" if error_message else message
+    db.add(OperationTaskEvent(tenant_id=task.tenant_id, task_id=task_id, step_name="失败", status="failed", message=detail[:480]))
     db.commit()

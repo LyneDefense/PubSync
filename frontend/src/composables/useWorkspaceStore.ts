@@ -213,6 +213,8 @@ export const selectedTenantId = ref(getTenantId())
 export const { message, isError, showMessage } = useToast()
 export const pendingAction = ref<string | null>(null)
 export const runningTaskId = ref<string | null>(null)
+// 最近一次任务失败(持久展示,不像 toast 一闪而过)。发起新任务时清空;视图按 action 显示错误横幅。
+export const taskFailure = ref<{ action: string; message: string } | null>(null)
 export const taskEvents = ref<OperationTaskEvent[]>([])
 export const taskEventsAction = ref<TaskActionName | null>(null)
 export const taskEventsMainTab = ref<MainTab | null>(null)
@@ -1235,6 +1237,7 @@ export async function runTaskAction(
   timeoutMessage: string
 ) {
   pendingAction.value = name
+  taskFailure.value = null
   taskEventsAction.value = name
   taskEventsMainTab.value = activeMainTab.value
   taskEventsSubTab.value = activeSubTab.value
@@ -1251,7 +1254,9 @@ export async function runTaskAction(
     await pollTaskUntilDone(task.id, name, onSuccess, timeoutMessage)
   } catch (error) {
     stopFakeProgress(name, false)
-    showMessage(error instanceof Error ? error.message : '操作失败', true)
+    const msg = error instanceof Error ? error.message : '操作失败'
+    taskFailure.value = { action: name, message: msg }  // 持久错误横幅,视图据此显示
+    showMessage(msg, true)
   } finally {
     pendingAction.value = null
     runningTaskId.value = null

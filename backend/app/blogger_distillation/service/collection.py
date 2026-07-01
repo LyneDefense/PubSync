@@ -568,7 +568,8 @@ def collect_posts(
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
             raw_comments = anonymize_comments(client.get_note_comments(candidate, comments_per_post))
             comments = [normalize_comment(item) for item in raw_comments]
-        except TikHubError as exc:
+        except (TikHubError, RuntimeError) as exc:
+            # 评论是附属信息:任何采集错误(含端点池全失败)都只跳过这条评论、继续采集,绝不掀翻整批。
             logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
             record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
         normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)

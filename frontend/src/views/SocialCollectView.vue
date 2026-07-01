@@ -31,6 +31,7 @@ import {
   subtypeLabel,
   taskCountProgress,
   taskElapsedLabel,
+  taskFailure,
   urlCollectInput,
   xhsCollectStep,
   xhsCollectStepLabels
@@ -247,12 +248,18 @@ const metrics = computed(() => {
       <p v-if="!selectedBloggerId" class="card-foot">还没选择博主——请回第 1 步「选择博主」选择一个博主。</p>
       <p v-else-if="!collecting" class="card-foot">采集耗时取决于样本数量、评论数量和视频转写。重复采集只补新笔记、刷新老笔记，不会重复扣费。</p>
 
+      <!-- 采集失败:持久错误横幅(不像 toast 一闪而过),点「开始采集」重试会自动清除 -->
+      <div v-if="taskFailure && taskFailure.action === 'collect' && !collecting" class="collect-error" role="alert">
+        <strong>采集失败</strong>
+        <span>{{ taskFailure.message }}</span>
+      </div>
+
       <!-- 采集中:复用真实任务进度,不杜撰数字 -->
       <div v-if="collecting" class="progress-card">
         <div class="pc-head">
           <span class="pulse" aria-hidden="true"></span>
           <strong>采集进行中…</strong>
-          <span class="pc-pct">{{ taskCountProgress.total ? taskCountProgress.pct + '%' : '进行中' }}</span>
+          <span class="pc-pct">{{ taskCountProgress.total ? `第 ${taskCountProgress.current} / ${taskCountProgress.total} 篇 · ${taskCountProgress.pct}%` : '进行中' }}</span>
         </div>
         <div class="pc-track">
           <span class="pc-fill" :class="{ indet: !taskCountProgress.total }" :style="taskCountProgress.total ? { width: taskCountProgress.pct + '%' } : {}"></span>
@@ -853,6 +860,24 @@ const metrics = computed(() => {
   margin: 8px 0 0;
   font-size: 12px;
   color: var(--color-ink-3);
+}
+.collect-error {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border: 1px solid var(--color-danger-bd, #f0b4b4);
+  background: var(--color-danger-bg, #fdecec);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.collect-error strong {
+  color: var(--color-danger, #c0392b);
+}
+.collect-error span {
+  color: var(--color-ink-2);
+  word-break: break-word;
 }
 
 /* 折叠:链接定向采集 */

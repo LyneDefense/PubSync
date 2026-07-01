@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -177,7 +176,11 @@ class EndpointRouter:
             errors.append(f"{endpoint_key} -> 空数据")
             logger.warning("TikHub endpoint 返回空数据：池=%s，端点=%s", pool_name, endpoint_key)
 
-        raise RuntimeError(f"TikHub endpoint 池全部失败：{pool_name}；{'；'.join(errors[-5:])}")
+        # 抛 TikHubError(而非裸 RuntimeError):让上层 `except TikHubError` 的优雅降级(如评论可选)能正确接住。
+        # 延迟导入避免与 tikhub_client 包的循环 import(它反过来 import 本模块)。
+        from app.blogger_distillation.tikhub_client.base import TikHubError
+
+        raise TikHubError(f"TikHub endpoint 池全部失败：{pool_name}；{'；'.join(errors[-5:])}")
 
     @staticmethod
     def _render_params(template: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
