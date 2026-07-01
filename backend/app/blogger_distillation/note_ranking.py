@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -22,6 +23,20 @@ from app.config import Settings
 from app.services.ai_service import create_json_response
 
 logger = logging.getLogger(__name__)
+
+
+def _active_text_model(settings: Settings) -> str:
+    """当前生效文本供应商对应的模型名(仅用于观测日志;对 None/缺字段安全)。"""
+    p = (getattr(settings, "llm_provider", "") or "").lower()
+    if p in ("glm", "zhipu", "bigmodel"):
+        return getattr(settings, "glm_text_model", "") or "?"
+    if p == "minimax":
+        return getattr(settings, "minimax_text_model", "") or "?"
+    if p in ("claude", "anthropic"):
+        return getattr(settings, "anthropic_text_model", "") or "?"
+    if p == "openai":
+        return getattr(settings, "openai_text_model", "") or "?"
+    return "?"
 
 _BATCH_SIZE = 30       # 每批笔记数
 _MAX_WORKERS = 3       # 并行批数上限(过高会让服务商并发挂起)
@@ -96,14 +111,26 @@ def rank_notes_by_need(
                     failed.append(start)
         return failed
 
-    failed = run_round(list(batch_of))
-    if failed:
-        run_round(failed)  # 抖动/超时的批重试一次
+    t0 = time.monotonic()
+    failed1 = run_round(list(batch_of))
+    failed2 = run_round(failed1) if failed1 else []  # 抖动/超时的批重试一次
+    elapsed = time.monotonic() - t0
+
+    # 观测日志:模型/耗时/失败批/召回 —— 当年正是缺这行,超时被 200+空 层层掩盖。保留为常驻观测。
+    logger.info(
+        "智能选材完成 provider=%s model=%s 笔记=%d 批=%d 耗时=%.1fs 首轮失败批=%d 重试后仍失败=%d ≥60分=%d 降级空=%s",
+        (getattr(settings, "llm_provider", "") or "").lower(), _active_text_model(settings), len(notes), len(batch_of),
+        elapsed, len(failed1), len(failed2), sum(1 for v in scores.values() if v >= 60), not bool(scores),
+    )
 
     if not scores:  # 全批都失败 → 退化手动,不假装挑过
         return {"name": "", "items": []}
     items = [{"post_id": n["id"], "score": scores.get(i, 0), "reason": ""} for i, n in enumerate(notes)]
     items.sort(key=lambda it: it["score"], reverse=True)
+    if items and items[0]["score"] > 0:  # Top5(分:标题前20字)便于从日志核对召回
+        title_by_id = {n["id"]: (n.get("title") or "") for n in notes}
+        top = " | ".join(f"{it['score']}:{title_by_id.get(it['post_id'], '')[:20]}" for it in items[:5])
+        logger.info("智能选材 Top5 → %s", top)
     return {"name": _name_from_need(need), "items": items}
 
 
