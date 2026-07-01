@@ -144,8 +144,8 @@ def handle_video_asr(
             task_id,
             "视频 ASR",
             "succeeded",
-            f"视频转写完成：note_id={candidate.external_id}，字数={len(result.text)}，腾讯任务={result.task_id}",
-            {"task_id": result.task_id, "duration_seconds": result.duration_seconds},
+            f"视频转写完成：note_id={candidate.external_id}，字数={len(result.text)}（{result.provider}）",
+            {"task_id": result.task_id, "duration_seconds": result.duration_seconds, "provider": result.provider},
         )
     except Exception as exc:
         normalized["asr_status"] = "skipped" if is_expected_asr_skip(exc) else "failed"

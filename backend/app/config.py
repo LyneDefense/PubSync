@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     glm_api_key: str = ""
     glm_text_model: str = "glm-4.6"
     glm_image_model: str = "cogview-4-250304"  # 智谱文生图 CogView
+    glm_asr_model: str = "glm-asr-2512"  # 智谱语音识别 GLM-ASR(替代腾讯云 ASR，见 asr_provider)
     # 博主蒸馏单独的文本模型（留空=用上面的 *_text_model）。蒸馏对推理要求更高，
     # 可在此指向更强的模型（如更高档的 OpenAI/MiniMax 模型）以提升蒸馏质量。
     distill_text_model: str = ""
@@ -133,7 +134,7 @@ class Settings(BaseSettings):
     tikhub_min_request_interval_seconds: float = 0.0
     # ASR 默认开启,只由后台全局控制;用户端采集不再暴露开关(诊断采样等内部路径仍可显式传 False)。
     asr_enabled: bool = True
-    asr_provider: str = "tencent_rec_task"
+    asr_provider: str = "glm_asr"  # glm_asr(默认,智谱 GLM-ASR,免 COS/轮询)/ tencent_rec_task(旧,需腾讯 COS)
     asr_max_duration_seconds: int = 1800
     asr_poll_interval_seconds: int = 10
     # 识别结果轮询上限:超过则放弃该条并降级(从 30 分钟降到 5 分钟,真卡住的快速降级,不傻等)。

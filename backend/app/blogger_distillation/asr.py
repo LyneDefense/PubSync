@@ -35,6 +35,11 @@ class ASRResult:
 # 识别轮询时,每隔这么多秒回报一次「识别中…已等待 Xs」心跳,让前端/日志不至于看起来卡死。
 ASR_PROGRESS_HEARTBEAT_SECONDS = 15
 
+# GLM-ASR-2512 单请求硬上限 30 秒 / 25MB;留余量按 25 秒切分,长视频逐段转写再拼接。
+GLM_ASR_MAX_CHUNK_SECONDS = 25
+# 单个分段识别失败(网络抖动 / 5xx)时的最大尝试次数;4xx(入参/鉴权)不重试,快速失败。
+GLM_ASR_MAX_RETRIES = 3
+
 ProgressCallback = Callable[[str], None]
 
 
@@ -73,7 +78,7 @@ class TencentRecTaskASRProvider(ASRProvider):
             tmp_path = Path(tmp_dir)
             video_path = tmp_path / "source-video"
             audio_path = tmp_path / "audio.mp3"
-            self.download_video(video_url, video_path)
+            download_video(self.settings, video_url, video_path)
             streams = probe_media_streams(video_path)
             if "audio" not in streams["types"]:
                 codecs = ", ".join(streams["codecs"][:6]) or "unknown"
@@ -89,24 +94,6 @@ class TencentRecTaskASRProvider(ASRProvider):
             elapsed = round(time.perf_counter() - started_at, 2)
             logger.info("腾讯云长音频识别完成：source=%s，task_id=%s，耗时=%ss，文本长度=%s", source_id, task_id, elapsed, len(text))
             return ASRResult(text=text, task_id=task_id, duration_seconds=duration, provider="tencent_rec_task")
-
-    def download_video(self, video_url: str, video_path: Path) -> None:
-        """下载视频:优先 https(快约 3 倍),失败则回退 http 重试一次;带总时长+体积硬上限。"""
-        max_seconds = self.settings.asr_download_max_seconds
-        max_bytes = max(self.settings.asr_download_max_mb, 1) * (1 << 20)
-        https_url = video_url.replace("http://", "https://", 1) if video_url.startswith("http://") else video_url
-        try:
-            download_file(https_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
-            return
-        except httpx.HTTPError as exc:
-            http_url = "http://" + https_url[len("https://") :] if https_url.startswith("https://") else https_url
-            if http_url == https_url:
-                raise ASRError(f"视频下载失败：{exc}") from exc
-            logger.info("https 下载失败,回退 http 重试：%s", exc)
-            try:
-                download_file(http_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
-            except httpx.HTTPError as exc2:
-                raise ASRError(f"视频下载失败(https/http 均失败)：{exc2}") from exc2
 
     def upload_audio(self, audio_path: Path, *, source_id: str = "") -> str:
         from qcloud_cos import CosConfig, CosS3Client
@@ -217,12 +204,120 @@ class TencentRecTaskASRProvider(ASRProvider):
         raise ASRError(f"腾讯云 ASR 任务超时：task_id={task_id}，最后状态={last_payload}")
 
 
+class GlmAsrASRProvider(ASRProvider):
+    """智谱 GLM-ASR-2512：multipart 直传音频，同步返回 text，无需 COS 上传 / 轮询。
+
+    单请求硬上限 30 秒，长视频先在本地把音频切成 <=25s 分段，逐段转写再拼接。
+    复用文本/配图那套 GLM 凭据(glm_base_url + glm_api_key)，不再依赖腾讯云。
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        if not settings.glm_api_key:
+            raise ASRError("未配置智谱 GLM API Key(GLM_API_KEY)，无法使用 GLM-ASR")
+        if not shutil.which("ffmpeg"):
+            raise ASRError("服务器未安装 ffmpeg，无法从视频提取音频")
+
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
+        started_at = time.perf_counter()
+        with tempfile.TemporaryDirectory(prefix="pubsync-asr-") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            video_path = tmp_path / "source-video"
+            audio_path = tmp_path / "audio.mp3"
+            download_video(self.settings, video_url, video_path)
+            streams = probe_media_streams(video_path)
+            if "audio" not in streams["types"]:
+                codecs = ", ".join(streams["codecs"][:6]) or "unknown"
+                raise ASRError(f"下载内容不包含音频流，可能是图片封面或无声视频：codecs={codecs}")
+            duration = probe_duration(video_path)
+            if duration and duration > self.settings.asr_max_duration_seconds:
+                raise ASRError(f"视频时长 {int(duration)} 秒，超过 ASR 上限 {self.settings.asr_max_duration_seconds} 秒")
+            extract_audio(video_path, audio_path)
+            chunks = split_audio_chunks(audio_path, tmp_path, GLM_ASR_MAX_CHUNK_SECONDS)
+            total = len(chunks)
+            texts: list[str] = []
+            last_id = ""
+            for index, chunk_path in enumerate(chunks, start=1):
+                if on_progress is not None and total > 1:
+                    on_progress(f"识别中…第 {index}/{total} 段")
+                chunk_text, chunk_id = self._transcribe_chunk(chunk_path)
+                if chunk_text:
+                    texts.append(chunk_text)
+                if chunk_id:
+                    last_id = chunk_id
+            text = "\n".join(texts).strip()
+            elapsed = round(time.perf_counter() - started_at, 2)
+            logger.info("GLM-ASR 识别完成：source=%s，分段=%s，耗时=%ss，文本长度=%s", source_id, total, elapsed, len(text))
+            return ASRResult(text=text, task_id=last_id, duration_seconds=duration, provider="glm_asr")
+
+    def _transcribe_chunk(self, chunk_path: Path) -> tuple[str, str]:
+        """把单个 <=25s 音频分段传给 GLM-ASR，返回(转写文本, 请求 id)。"""
+        url = self.settings.glm_base_url.rstrip("/") + "/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {self.settings.glm_api_key}"}
+        timeout = httpx.Timeout(connect=15.0, read=120.0, write=120.0, pool=15.0)
+        last_error = ""
+        for attempt in range(1, GLM_ASR_MAX_RETRIES + 1):
+            try:
+                with chunk_path.open("rb") as handle:
+                    response = httpx.post(
+                        url,
+                        headers=headers,
+                        data={"model": self.settings.glm_asr_model},
+                        files={"file": (chunk_path.name, handle, "audio/mpeg")},
+                        timeout=timeout,
+                    )
+            except httpx.HTTPError as exc:
+                last_error = f"网络错误：{exc}"
+                if attempt < GLM_ASR_MAX_RETRIES:
+                    time.sleep(2)
+                    continue
+                break
+            if response.status_code == 200:
+                payload = response.json()
+                text = str(payload.get("text") or "").strip()
+                if not text and payload.get("error"):
+                    raise ASRError(f"GLM-ASR 返回错误：{payload.get('error')}")
+                return text, str(payload.get("id") or "")
+            body = response.text[:300]
+            # 5xx 多为瞬时故障，重试；4xx 是入参/鉴权问题，重试无意义，快速失败。
+            if response.status_code >= 500 and attempt < GLM_ASR_MAX_RETRIES:
+                last_error = f"HTTP {response.status_code} {body}"
+                time.sleep(2)
+                continue
+            raise ASRError(f"GLM-ASR 调用失败：HTTP {response.status_code} {body}")
+        raise ASRError(f"GLM-ASR 调用失败(已重试 {GLM_ASR_MAX_RETRIES} 次)：{last_error}")
+
+
 def build_asr_provider(settings: Settings) -> ASRProvider:
     if not settings.asr_enabled:
         return DisabledASRProvider()
+    if settings.asr_provider == "glm_asr":
+        return GlmAsrASRProvider(settings)
     if settings.asr_provider == "tencent_rec_task":
         return TencentRecTaskASRProvider(settings)
     raise ASRError(f"不支持的 ASR_PROVIDER：{settings.asr_provider}")
+
+
+def download_video(settings: Settings, video_url: str, video_path: Path) -> None:
+    """下载视频:优先 https(快约 3 倍),失败则回退 http 重试一次;带总时长+体积硬上限。
+
+    腾讯与 GLM 两条 ASR 路径共用(原为腾讯 provider 的私有方法，抽出复用)。
+    """
+    max_seconds = settings.asr_download_max_seconds
+    max_bytes = max(settings.asr_download_max_mb, 1) * (1 << 20)
+    https_url = video_url.replace("http://", "https://", 1) if video_url.startswith("http://") else video_url
+    try:
+        download_file(https_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
+        return
+    except httpx.HTTPError as exc:
+        http_url = "http://" + https_url[len("https://") :] if https_url.startswith("https://") else https_url
+        if http_url == https_url:
+            raise ASRError(f"视频下载失败：{exc}") from exc
+        logger.info("https 下载失败,回退 http 重试：%s", exc)
+        try:
+            download_file(http_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
+        except httpx.HTTPError as exc2:
+            raise ASRError(f"视频下载失败(https/http 均失败)：{exc2}") from exc2
 
 
 def download_file(url: str, output_path: Path, *, max_seconds: int = 120, max_bytes: int = 0) -> None:
@@ -331,3 +426,31 @@ def extract_audio(video_path: Path, audio_path: Path) -> None:
         raise ASRError("ffmpeg 提取音频超时(180s)") from exc
     if result.returncode != 0 or not audio_path.exists():
         raise ASRError(f"ffmpeg 提取音频失败：{result.stderr[-800:]}")
+
+
+def split_audio_chunks(audio_path: Path, out_dir: Path, chunk_seconds: int) -> list[Path]:
+    """把(已提取的)音频切成 <= chunk_seconds 的分段，供有 30s 硬上限的 ASR 逐段识别。
+
+    mp3 逐帧独立，`-c copy` 切分足够精确且免重编码(快)；整段本就 <= 上限则直接返回原文件，
+    避免无谓切割。分段命名保证字典序=时间序，上层按序拼接。
+    """
+    duration = probe_duration(audio_path)
+    if duration is not None and duration <= chunk_seconds:
+        return [audio_path]
+    pattern = str(out_dir / "chunk_%04d.mp3")
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(audio_path), "-f", "segment", "-segment_time", str(chunk_seconds), "-c", "copy", pattern],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ASRError("ffmpeg 切分音频超时(180s)") from exc
+    if result.returncode != 0:
+        raise ASRError(f"ffmpeg 切分音频失败：{result.stderr[-800:]}")
+    chunks = sorted(out_dir.glob("chunk_*.mp3"))
+    if not chunks:
+        raise ASRError("ffmpeg 切分音频后未产出分段")
+    return chunks
