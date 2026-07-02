@@ -28,7 +28,7 @@ from app.services.ai_service import AIServiceError, glm_vision_chat
 logger = logging.getLogger(__name__)
 
 # GLM 视觉单请求最多 5 张图。
-GLM_VISION_MAX_IMAGES = 5
+GLM_VISION_MAX_IMAGES = 18  # 单篇送 GLM 的图数硬上限(封面+正文);再多 token/成本/速度明显上升
 
 ProgressCallback = Callable[[str], None]
 
@@ -155,7 +155,8 @@ def select_note_images(cover_url: str, media_urls: list[str], *, scope: str, max
 
     add(cover_url)
     if scope == "cover_body":
-        body_images = [u for u in media_urls if _is_image_url(u)]
+        # 排除已作封面的那张,别让封面占掉一个正文名额(否则 max_body_images=N 实际只多 N-1 张)。
+        body_images = [u for u in media_urls if _is_image_url(u) and u not in seen]
         for url in body_images[: max(max_body_images, 0)]:
             add(url)
     if not ordered:

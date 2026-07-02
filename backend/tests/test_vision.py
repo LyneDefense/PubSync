@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 import app.blogger_distillation.vision as vision_mod
 import app.models  # noqa: F401 - 注册所有表
 from app.blogger_distillation.post_content import assemble_learnable_text, visual_context, visual_digest_dict
+from app.blogger_distillation.service.extract.post import resolve_content_type
 from app.blogger_distillation.service.vision_step import handle_note_vision
 from app.blogger_distillation.vision import (
     DisabledVisionProvider,
@@ -124,10 +125,26 @@ def test_select_images_cover_body_dedup_and_video_filtered():
     assert got == ["http://c/cover.jpg", "http://c/b1.jpg", "http://c/b2.jpg"]  # 去重封面 + 过滤视频
 
 
-def test_select_images_caps_at_five():
-    media = [f"http://c/{i}.jpg" for i in range(10)]
-    got = select_note_images("http://c/cover.jpg", media, scope="cover_body", max_body_images=8)
+def test_select_images_caps_at_18():
+    media = [f"http://c/{i}.jpg" for i in range(30)]
+    got = select_note_images("http://c/cover.jpg", media, scope="cover_body", max_body_images=17)
+    assert len(got) == 18  # 封面 + 17,受 GLM_VISION_MAX_IMAGES=18 硬上限
+
+
+def test_select_images_cover_not_counted_in_body_quota():
+    # 封面在 media 里时,不该占掉正文名额:max_body_images=4 → 封面 + 4 张正文 = 5(不是 4)。
+    media = [f"http://c/{i}.jpg" for i in range(7)]
+    got = select_note_images("http://c/0.jpg", media, scope="cover_body", max_body_images=4)
     assert len(got) == 5
+
+
+def test_resolve_content_type_trusts_list_note_type():
+    # 图文笔记即使附带实况短视频(_16.mp4)也不翻转成视频(问题2根因)
+    assert resolve_content_type("image", True) == "image"
+    assert resolve_content_type("video", False) == "video"
+    # URL 定向采集列表没给类型:靠有无视频流兜底
+    assert resolve_content_type("", True) == "video"
+    assert resolve_content_type("", False) == "image"
 
 
 # —— provider 路由 ——

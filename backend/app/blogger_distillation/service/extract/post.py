@@ -45,6 +45,16 @@ def extract_note_key(raw: dict[str, Any], detail_payload: dict[str, Any], fallba
     return fallback
 
 
+def resolve_content_type(note_type: str, has_video_url: bool) -> str:
+    """判笔记类型:信任列表 note_type(图文/视频);仅列表没给类型(URL 定向采集)时,才用有无视频流兜底。
+
+    关键:图文笔记别因附带的「实况照片」短视频流(_16.mp4)被误翻成视频——否则会落到「未知」模态。
+    """
+    if note_type in ("video", "image"):
+        return note_type
+    return "video" if has_video_url else "image"
+
+
 def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) -> dict[str, Any]:
     payload = unwrap_payload(detail_payload)
     raw = normalize_detail_payload(payload, detail_payload)
@@ -71,7 +81,7 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
         "url": url,
         "title": title[:500] or "未命名笔记",
         "body_text": body,
-        "content_type": "video" if candidate.note_type == "video" or video_url else "image",
+        "content_type": resolve_content_type(candidate.note_type, bool(video_url)),
         "hashtags_json": json.dumps(hashtags, ensure_ascii=False),
         "cover_url": media_urls[0] if media_urls else "",
         "media_urls_json": json.dumps(media_urls, ensure_ascii=False),
