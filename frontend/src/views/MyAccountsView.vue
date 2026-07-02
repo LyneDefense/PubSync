@@ -8,7 +8,8 @@ import {
   currentSocialPlatformName,
   currentSocialTab,
   formatDate,
-  handleCollectAccount,
+  goCollectForBlogger,
+  handleRefreshBlogger,
   isSocialPlatform,
   loadAccountPosts,
   myAccounts,
@@ -153,14 +154,19 @@ function asrLabel(s: string): string {
                 <template v-if="selectedAccount.external_id">小红书号 {{ selectedAccount.external_id }} · </template>最近采集 {{ formatDate(selectedAccount.updated_at) }}
               </div>
             </div>
-            <button
-              type="button"
-              class="refresh"
-              :disabled="Boolean(pendingAction)"
-              @click="handleCollectAccount(selectedAccount.id)"
-            >
-              {{ pendingAction === 'collect' ? '采集中…' : '↻ 刷新' }}
-            </button>
+            <div class="sum-actions">
+              <button
+                type="button"
+                class="act"
+                :disabled="Boolean(pendingAction)"
+                @click="handleRefreshBlogger(selectedAccount)"
+              >
+                {{ pendingAction === 'blogger-refresh' ? '刷新中…' : '↻ 刷新账号资料' }}
+              </button>
+              <button type="button" class="act act--collect" @click="goCollectForBlogger(selectedAccount.id)">
+                采集 / 更新笔记 →
+              </button>
+            </div>
           </div>
 
           <div class="stat-band">
@@ -414,26 +420,35 @@ function asrLabel(s: string): string {
   font-size: 12.5px;
   color: var(--color-ink-3);
 }
-.refresh {
+.sum-actions {
   flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sum-actions .act {
   height: 34px;
-  padding: 0 14px;
-  border: 0;
+  padding: 0 13px;
+  border: 1px solid var(--color-field-border);
   border-radius: 9px;
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--color-surface);
+  color: var(--color-ink-2);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 140ms var(--ease-out);
+  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
-.refresh:hover {
-  background: var(--color-accent-press);
+.sum-actions .act:hover {
+  background: var(--color-paper-3);
 }
-.refresh:disabled {
+.sum-actions .act:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.sum-actions .act--collect {
+  color: var(--color-accent-ink);
+  border-color: var(--color-accent-soft-bd);
 }
 
 /* 统计带:4 格,用 1px 间隙 + 外层底色模拟分隔 */

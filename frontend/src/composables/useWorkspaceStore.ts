@@ -2268,20 +2268,6 @@ export async function loadAccountPosts(id: number, force = false) {
   }
 }
 
-// 刷新某账号内容 = 重新采集一次(消耗 TikHub),完成后重载该账号 posts。
-export async function handleCollectAccount(id: number) {
-  if (!id) return
-  await runTaskAction(
-    'collect',
-    '已提交内容采集任务',
-    () => collectBlogger(id, { sample_limit: 30, comments_per_post: 0 }),
-    async () => {
-      await loadAccountPosts(id, true)
-    },
-    '内容采集仍在后台执行，请稍后点刷新查看'
-  )
-}
-
 export function openCreateMyAccountModal() {
   openCreateBloggerModal()
   bloggerModalAccountType.value = 'mine'
@@ -2670,6 +2656,14 @@ export async function selectBlogger(id: number) {
     xhsCollectStep.value = 2
   }
   await refreshSelectedBlogger()
+}
+
+// 「采集 / 更新笔记」轻入口:切到数据采集向导并预选该博主。
+// collect tab 下 selectBlogger 会自动进第 2 步「配置采集」;博主资产 / 我的账号共用这一个采集入口,
+// 不再各搞一套语义含糊的"刷新"。
+export async function goCollectForBlogger(id: number) {
+  setCurrentSocialTab('collect')
+  await selectBlogger(id)
 }
 
 export async function selectCollectionRun(id: number) {

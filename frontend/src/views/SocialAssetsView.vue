@@ -18,6 +18,7 @@ import {
   DISTILL_RECOMMEND_SAMPLES,
   friendlyTime,
   formatDate,
+  goCollectForBlogger,
   handleDeleteBlogger,
   handleDeleteSnapshot,
   handleRefreshBlogger,
@@ -261,8 +262,9 @@ async function deleteDetailSnapshot() {
             </button>
             <button type="button" class="ha-btn" @click="openEditBloggerModal(selectedBlogger)">编辑信息</button>
             <button type="button" class="ha-btn" :disabled="Boolean(pendingAction)" @click="handleRefreshBlogger(selectedBlogger)">
-              {{ pendingAction === 'blogger-refresh' ? '刷新中…' : '↻ 刷新' }}
+              {{ pendingAction === 'blogger-refresh' ? '刷新中…' : '↻ 刷新博主资料' }}
             </button>
+            <button type="button" class="ha-btn" @click="goCollectForBlogger(selectedBlogger.id)">采集 / 更新笔记 →</button>
             <button type="button" class="ha-del" @click="handleDeleteBlogger(selectedBlogger)">删除博主</button>
           </div>
         </section>

@@ -21,6 +21,7 @@ import {
   lastCollectSummary,
   liveStage,
   liveStageMessage,
+  myAccounts,
   pendingAction,
   selectBlogger,
   selectCollectionRun,
@@ -136,33 +137,58 @@ const metrics = computed(() => {
       </li>
     </ol>
 
-    <!-- 第 1 步:选择博主 -->
+    <!-- 第 1 步:选择账号(我的账号 / 对标博主 分组) -->
     <section v-if="xhsCollectStep === 1" class="card">
       <div class="card-head">
         <div>
-          <span class="eyebrow">01 选择博主</span>
-          <h3>选择要采集的博主</h3>
+          <span class="eyebrow">01 选择账号</span>
+          <h3>选择要采集的账号</h3>
         </div>
         <button type="button" class="btn btn--ghost" @click="setCurrentSocialTab('assets')">去博主资产创建</button>
       </div>
-      <div v-if="benchmarkAccounts.length" class="bca-grid">
-        <button
-          v-for="blogger in benchmarkAccounts"
-          :key="blogger.id"
-          type="button"
-          class="bca"
-          :class="{ sel: selectedBloggerId === blogger.id }"
-          @click="selectBlogger(blogger.id)"
-        >
-          <span class="bca-avatar">{{ (blogger.display_name || '?').slice(0, 1) }}</span>
-          <span class="bca-body">
-            <span class="bca-name">{{ blogger.display_name }}</span>
-            <span class="bca-sub">{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
-          </span>
-          <span class="bca-radio" aria-hidden="true"></span>
-        </button>
-      </div>
-      <p v-else class="empty-region pad">还没有对标博主档案。请到「博主资产」创建博主后再来采集。</p>
+      <template v-if="myAccounts.length || benchmarkAccounts.length">
+        <div v-if="myAccounts.length" class="bca-group">
+          <span class="bca-group-title">我的账号</span>
+          <div class="bca-grid">
+            <button
+              v-for="acc in myAccounts"
+              :key="acc.id"
+              type="button"
+              class="bca"
+              :class="{ sel: selectedBloggerId === acc.id }"
+              @click="selectBlogger(acc.id)"
+            >
+              <span class="bca-avatar">{{ (acc.display_name || '?').slice(0, 1) }}</span>
+              <span class="bca-body">
+                <span class="bca-name">{{ acc.display_name }}</span>
+                <span class="bca-sub">{{ acc.niche || '未设置领域' }} · 样本 {{ acc.sample_count }}</span>
+              </span>
+              <span class="bca-radio" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        <div v-if="benchmarkAccounts.length" class="bca-group">
+          <span class="bca-group-title">对标博主</span>
+          <div class="bca-grid">
+            <button
+              v-for="blogger in benchmarkAccounts"
+              :key="blogger.id"
+              type="button"
+              class="bca"
+              :class="{ sel: selectedBloggerId === blogger.id }"
+              @click="selectBlogger(blogger.id)"
+            >
+              <span class="bca-avatar">{{ (blogger.display_name || '?').slice(0, 1) }}</span>
+              <span class="bca-body">
+                <span class="bca-name">{{ blogger.display_name }}</span>
+                <span class="bca-sub">{{ blogger.niche || '未设置领域' }} · 样本 {{ blogger.sample_count }} · {{ blogger.last_distilled_at ? formatDate(blogger.last_distilled_at) : '未蒸馏' }}</span>
+              </span>
+              <span class="bca-radio" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </template>
+      <p v-else class="empty-region pad">还没有账号档案。请到「博主资产」或「我的账号」创建后再来采集。</p>
     </section>
 
     <!-- 第 2 步:配置采集 -->
@@ -550,7 +576,18 @@ const metrics = computed(() => {
   cursor: not-allowed;
 }
 
-/* 第 1 步:博主网格 */
+/* 第 1 步:分组 + 博主网格 */
+.bca-group + .bca-group {
+  margin-top: 18px;
+}
+.bca-group-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-3);
+}
 .bca-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
