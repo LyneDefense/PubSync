@@ -45,12 +45,17 @@ watch(activeNotePost, () => {
   lightboxOpen.value = false
 })
 
-// 视觉层:图内文字(OCR) + 封面解析(visual_digest)。有值才展示这一段。
+// 视觉层:逐张图片解析(visual_digest.images)+ 封面/版式/风格。有值才展示这一段。
+interface VisualImage {
+  index: number
+  role: string
+  text: string
+  desc: string
+}
 const noteVisual = computed(() => {
   const post = activeNotePost.value
   if (!post) return null
-  const text = (post.image_text || '').trim()
-  let digest: { cover_hook?: string; layout?: string; style?: string } = {}
+  let digest: { cover_hook?: string; layout?: string; style?: string; images?: VisualImage[] } = {}
   try {
     digest = post.visual_digest ? JSON.parse(post.visual_digest) : {}
   } catch {
@@ -59,9 +64,30 @@ const noteVisual = computed(() => {
   const hook = (digest.cover_hook || '').trim()
   const layout = (digest.layout || '').trim()
   const style = (digest.style || '').trim()
-  if (!text && !hook && !layout && !style) return null
-  return { text, hook, layout, style }
+  const imgs = Array.isArray(digest.images)
+    ? digest.images
+        .map((im, i) => ({
+          index: Number(im?.index) || i + 1,
+          role: (im?.role || '').trim(),
+          text: (im?.text || '').trim(),
+          desc: (im?.desc || '').trim()
+        }))
+        .filter((im) => im.text || im.desc)
+    : []
+  // 旧笔记没有结构化 images,image_text 是糅在一起的整段;新笔记结构化展示,不再展示 image_text 兜底。
+  const fallbackText = imgs.length ? '' : (post.image_text || '').trim()
+  if (!hook && !layout && !style && !imgs.length && !fallbackText) return null
+  return { hook, layout, style, images: imgs, fallbackText }
 })
+
+// 点「第N张」跳到画廊对应图(vision 的 index 与画廊顺序一致:封面在前)。
+function focusImage(index: number) {
+  const i = index - 1
+  if (i >= 0 && i < images.value.length) {
+    activeImageIndex.value = i
+    lightboxOpen.value = false
+  }
+}
 </script>
 
 <template>
@@ -113,11 +139,20 @@ const noteVisual = computed(() => {
           </div>
 
           <div v-if="noteVisual" class="nm-section nm-visual">
-            <h4>图片解析</h4>
+            <h4>图片解析<span v-if="noteVisual.images.length" class="nm-visual-count">· 共 {{ noteVisual.images.length }} 张</span></h4>
             <p v-if="noteVisual.hook" class="nm-text"><strong>封面文案：</strong>{{ noteVisual.hook }}</p>
             <p v-if="noteVisual.layout" class="nm-sub">版式：{{ noteVisual.layout }}</p>
             <p v-if="noteVisual.style" class="nm-sub">视觉风格：{{ noteVisual.style }}</p>
-            <p v-if="noteVisual.text" class="nm-text"><strong>图内文字：</strong>{{ noteVisual.text }}</p>
+            <ol v-if="noteVisual.images.length" class="nm-imglist">
+              <li v-for="im in noteVisual.images" :key="im.index" class="nm-imgitem">
+                <button type="button" class="nm-imgitem-head" @click="focusImage(im.index)">
+                  第 {{ im.index }} 张<span v-if="im.role"> · {{ im.role }}</span>
+                </button>
+                <p v-if="im.desc" class="nm-sub">{{ im.desc }}</p>
+                <p v-if="im.text" class="nm-text">{{ im.text }}</p>
+              </li>
+            </ol>
+            <p v-else-if="noteVisual.fallbackText" class="nm-text"><strong>图内文字：</strong>{{ noteVisual.fallbackText }}</p>
           </div>
 
           <div v-if="noteHashtags(activeNotePost).length" class="nm-section">
@@ -314,6 +349,23 @@ const noteVisual = computed(() => {
   padding: 10px 12px;
 }
 .nm-visual h4 { color: var(--color-accent-ink); }
+.nm-visual-count { font-weight: 500; color: var(--color-ink-3); margin-left: 4px; }
+.nm-imglist { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.nm-imgitem { padding-top: 10px; border-top: 1px dashed var(--color-rule, rgba(0, 0, 0, 0.1)); }
+.nm-imgitem:first-child { padding-top: 0; border-top: 0; }
+.nm-imgitem-head {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0 0 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-accent-ink);
+  display: inline-flex;
+  align-items: center;
+}
+.nm-imgitem-head:hover { text-decoration: underline; }
 .nm-comments { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .nm-comments li { display: flex; gap: 8px; font-size: 13px; line-height: 1.5; }
 .dc-like { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; color: #e0496b; font-variant-numeric: tabular-nums; }

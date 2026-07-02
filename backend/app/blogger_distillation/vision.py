@@ -46,14 +46,19 @@ class VisionResult:
 
 
 VISION_PROMPT = (
-    "你是小红书内容分析助手。下面给你一篇笔记的若干张图片(第一张通常是封面)。请完成两件事，"
-    "**只输出一个 JSON 对象**，不要 Markdown、不要解释、不要 <think>：\n"
-    "1) image_text：把图片里出现的所有文字**逐字**转写(封面大字、卡片要点、清单、教程步骤、截图文字、"
-    "数据、联系方式/要求等)，按图片顺序合并；看不清写 [模糊]；**绝不编造或补全**图里没有的文字。\n"
-    "2) visual_digest：一个对象，字段为 cover_hook(封面主文案/钩子，没有则空串)、layout(版式，如 "
-    "卡片/清单/对比/大字/截图/实拍/合集)、style(配色·字体·信息密度·风格调性，一句话)、"
-    "info_points(图片传达的关键信息点数组，≤6 条)。\n"
-    '严格输出：{"image_text":"...","visual_digest":{"cover_hook":"...","layout":"...","style":"...","info_points":["..."]}}'
+    "你是小红书内容分析助手。下面按顺序给你一篇笔记的若干张图片(第一张通常是封面)。"
+    "**只输出一个 JSON 对象**，不要 Markdown、不要解释、不要 <think>。**逐张**分析,结构如下：\n"
+    '{\n'
+    '  "images": [\n'
+    '    {"index": 1, "role": "封面/正文卡片/清单/对比/教程步骤/截图/实拍/合集 等",\n'
+    '     "text": "这张图里出现的所有文字,逐字转写(大字、要点、清单、数据、联系方式/要求等),看不清写[模糊],绝不编造",\n'
+    '     "desc": "这张图在讲什么,一句话"}\n'
+    '  ],\n'
+    '  "cover_hook": "封面主文案/钩子,没有则空串",\n'
+    '  "layout": "整体版式,如 卡片清单/大字/图文混排",\n'
+    '  "style": "配色·字体·信息密度·风格调性,一句话"\n'
+    '}\n'
+    "images 按图片顺序,有几张图就几项;每张的 text 逐字转写、**绝不编造**图里没有的文字。"
 )
 
 
@@ -164,19 +169,50 @@ def select_note_images(cover_url: str, media_urls: list[str], *, scope: str, max
 
 
 def parse_vision_response(raw: str) -> tuple[str, dict[str, Any]]:
-    """把 VLM 回复解析成 (image_text, visual_digest dict)。容错:去代码块围栏、取第一个 JSON 对象;
-    实在解析不出就把整段当作 image_text(不丢内容)。"""
+    """把 VLM 回复解析成 (image_text, visual_digest)。
+
+    新结构:visual_digest = {cover_hook, layout, style, images:[{index, role, text, desc}]};
+    image_text 由各图文字带「第N张(角色)」标签拼接 —— 不再糅成一坨,也便于下游按图引用。
+    兼容旧形态(顶层 image_text / 嵌套 visual_digest / 无 images)与非 JSON 兜底。
+    """
     text = (raw or "").strip()
     if not text:
         return "", {}
     payload = _loads_lenient(text)
-    if isinstance(payload, dict):
-        image_text = str(payload.get("image_text") or "").strip()
-        digest = payload.get("visual_digest")
-        digest = digest if isinstance(digest, dict) else {}
-        return image_text, digest
-    # 非 JSON:整段当图内文字兜底。
-    return text, {}
+    if not isinstance(payload, dict):
+        return text, {}  # 非 JSON:整段当图内文字兜底
+    digest: dict[str, Any] = {}
+    for key in ("cover_hook", "layout", "style"):
+        val = str(payload.get(key) or "").strip()
+        if val:
+            digest[key] = val
+    images = payload.get("images")
+    if isinstance(images, list) and images:
+        norm: list[dict[str, Any]] = []
+        parts: list[str] = []
+        for i, item in enumerate(images, 1):
+            if not isinstance(item, dict):
+                continue
+            raw_idx = item.get("index")
+            idx = int(raw_idx) if isinstance(raw_idx, (int, float)) or (isinstance(raw_idx, str) and raw_idx.isdigit()) else i
+            role = str(item.get("role") or "").strip()
+            body = str(item.get("text") or "").strip()
+            desc = str(item.get("desc") or "").strip()
+            norm.append({"index": idx, "role": role, "text": body, "desc": desc})
+            if body:
+                label = f"第{idx}张" + (f"（{role}）" if role else "")
+                parts.append(f"{label}：{body}")
+        digest["images"] = norm
+        return "\n\n".join(parts).strip(), digest
+    # 兼容旧形态:顶层 image_text + 可能嵌套的 visual_digest。
+    image_text = str(payload.get("image_text") or "").strip()
+    nested = payload.get("visual_digest")
+    if isinstance(nested, dict):
+        for key in ("cover_hook", "layout", "style"):
+            val = str(nested.get(key) or "").strip()
+            if val and key not in digest:
+                digest[key] = val
+    return image_text, digest
 
 
 def _loads_lenient(text: str) -> Any:

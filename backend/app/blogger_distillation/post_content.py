@@ -1,9 +1,9 @@
 """笔记 →「可学文本」的统一装配。
 
 历史上各功能各自拼 body_text + transcript_text(analysis / rollout / account_audit …)。
-这里收口成一处:一篇笔记的完整可学文本 = 标题 + 正文 + 口播/字幕 + 图内文字;外加一个
-紧凑的"视觉"块(封面话术/版式/风格/信息点)。新增模态(如视频关键帧文字)只改这一个文件,
-蒸馏/SkillOpt/对标/诊断即自动受益。
+这里收口成一处:一篇笔记的完整可学文本 = 标题 + 正文 + 口播/字幕 + 图内文字(逐张带
+「第N张」标签);外加一个紧凑的"视觉"块(封面话术/版式/风格/逐张说明)。新增模态(如视频
+关键帧文字)只改这一个文件,蒸馏/SkillOpt/对标/诊断即自动受益。
 """
 
 from __future__ import annotations
@@ -42,7 +42,10 @@ def assemble_learnable_text(post: Any) -> str:
 
 
 def visual_context(post: Any) -> str:
-    """从 visual_digest 拼一个紧凑的"视觉"块,供 prompt 追加;无视觉信息则空串。"""
+    """从 visual_digest 拼一个紧凑的"视觉"块,供 prompt 追加;无视觉信息则空串。
+
+    新形态:封面/版式/风格 + 逐张(第N张·角色·一句话说明);旧形态兜底 info_points 数组。
+    """
     digest = visual_digest_dict(post)
     if not digest:
         return ""
@@ -50,17 +53,33 @@ def visual_context(post: Any) -> str:
     hook = str(digest.get("cover_hook") or "").strip()
     layout = str(digest.get("layout") or "").strip()
     style = str(digest.get("style") or "").strip()
-    points = digest.get("info_points")
     if hook:
         lines.append(f"封面文案：{hook}")
     if layout:
         lines.append(f"版式：{layout}")
     if style:
         lines.append(f"视觉风格：{style}")
-    if isinstance(points, list) and points:
-        joined = "；".join(str(p).strip() for p in points[:6] if str(p).strip())
-        if joined:
-            lines.append(f"图片信息点：{joined}")
+    images = digest.get("images")
+    if isinstance(images, list) and images:
+        for im in images:
+            if not isinstance(im, dict):
+                continue
+            role = str(im.get("role") or "").strip()
+            desc = str(im.get("desc") or "").strip()
+            if not role and not desc:
+                continue
+            idx = im.get("index")
+            label = f"第{idx}张" if idx else "图"
+            if role:
+                label += f"（{role}）"
+            lines.append(f"{label}：{desc}" if desc else label)
+    else:
+        # 旧形态兜底:info_points 数组。
+        points = digest.get("info_points")
+        if isinstance(points, list) and points:
+            joined = "；".join(str(p).strip() for p in points[:6] if str(p).strip())
+            if joined:
+                lines.append(f"图片信息点：{joined}")
     return "\n".join(lines).strip()
 
 

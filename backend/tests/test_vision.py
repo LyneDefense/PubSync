@@ -94,6 +94,23 @@ def test_parse_vision_response_non_json_falls_back_to_text():
     assert digest == {}
 
 
+def test_parse_vision_response_per_image_structure():
+    raw = (
+        '{"images":[{"index":1,"role":"封面","text":"每天拆解一个博主","desc":"封面大字"},'
+        '{"index":2,"role":"清单","text":"要点A 要点B"}],'
+        '"cover_hook":"钩子","layout":"卡片清单","style":"极简"}'
+    )
+    text, digest = parse_vision_response(raw)
+    # image_text 带「第N张(角色)」标签拼接,不再糅成一坨
+    assert "第1张（封面）：每天拆解一个博主" in text
+    assert "第2张（清单）：要点A 要点B" in text
+    assert digest["cover_hook"] == "钩子"
+    assert digest["layout"] == "卡片清单"
+    assert len(digest["images"]) == 2
+    assert digest["images"][0]["role"] == "封面"
+    assert digest["images"][1]["text"] == "要点A 要点B"
+
+
 # —— 选图 ——
 
 def test_select_images_cover_only():
@@ -163,11 +180,23 @@ def test_assemble_learnable_text_includes_image_text():
 
 
 def test_visual_context_from_digest():
+    # 旧形态:info_points 数组仍兜底展示。
     post = _FakePost(visual_digest='{"cover_hook":"钩子","layout":"清单","info_points":["点1","点2"]}')
     ctx = visual_context(post)
     assert "封面文案：钩子" in ctx
     assert "版式：清单" in ctx
     assert "点1" in ctx
+
+
+def test_visual_context_per_image():
+    # 新形态:逐张(第N张·角色·说明)进入下游视觉块。
+    post = _FakePost(
+        visual_digest='{"cover_hook":"钩子","images":[{"index":1,"role":"封面","desc":"大字标题"},{"index":2,"role":"清单","desc":"三步法"}]}'
+    )
+    ctx = visual_context(post)
+    assert "封面文案：钩子" in ctx
+    assert "第1张（封面）：大字标题" in ctx
+    assert "第2张（清单）：三步法" in ctx
 
 
 def test_visual_digest_dict_bad_json():
