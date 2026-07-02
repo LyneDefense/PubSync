@@ -51,9 +51,9 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     counts = merge_interaction_counts(raw, candidate)
     hashtags = extract_hashtags(raw)
     media_urls = extract_media_urls(raw)
+    # 不把视频流塞进 media_urls —— 否则封面会变成 .mp4、图片理解去下整个视频流(慢+read timeout)。
+    # media_urls / cover_url 只留静态图给图片理解;视频流由 ASR 自行从详情选流(见 asr_step)。
     video_url = extract_video_url(raw) or extract_video_url(detail_payload)
-    if video_url and video_url not in media_urls:
-        media_urls.insert(0, video_url)
     title = first_str(raw, ["title", "display_title", "note_title"]) or first_str(candidate.raw, ["display_title", "title"])
     body = first_str(raw, ["desc", "description", "content", "note_desc", "text"])
     url = first_str(raw, ["share_url", "url", "web_url"]) or first_str(candidate.raw, ["share_url", "url"])

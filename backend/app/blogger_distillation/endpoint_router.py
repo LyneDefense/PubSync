@@ -57,8 +57,8 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
         Endpoint("app_v2_no_token", "/api/v1/xiaohongshu/app_v2/get_video_note_detail", {"note_id": "${note_id}"}),
     ],
     "comments": [
-        Endpoint("app", "/api/v1/xiaohongshu/app/get_note_comments", {"note_id": "${note_id}", "cursor": "${cursor}", "num": "${num}"}),
-        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_note_comments", {"note_id": "${note_id}", "cursor": "${cursor}"}),
+        Endpoint("app", "/api/v1/xiaohongshu/app/get_note_comments", {"note_id": "${note_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"}),
+        Endpoint("web_v3", "/api/v1/xiaohongshu/web_v3/fetch_note_comments", {"note_id": "${note_id}", "cursor": "${cursor}", "xsec_token": "${xsec_token}"}),
         Endpoint(
             "app_v2",
             "/api/v1/xiaohongshu/app_v2/get_note_comments",

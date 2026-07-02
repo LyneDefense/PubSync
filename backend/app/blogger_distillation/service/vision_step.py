@@ -50,6 +50,7 @@ def handle_note_vision(
     vision_provider: Any,
     blogger: BloggerProfile,
     settings: Settings,
+    scope: str | None = None,
 ) -> None:
     if _reuse_existing_vision(db, tenant_id, blogger, normalized):
         record_task_event(db, tenant_id, task_id, "图片理解", "succeeded", "命中已解析记录(note_key)，复用图片理解")
@@ -65,7 +66,7 @@ def handle_note_vision(
     images = select_note_images(
         normalized.get("cover_url") or "",
         media_urls if isinstance(media_urls, list) else [],
-        scope=settings.vision_scope,
+        scope=scope or settings.vision_scope,
         max_body_images=settings.vision_max_images_per_note,
     )
     if not images:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import httpx
@@ -10,26 +12,15 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis
-from app.blogger_distillation.asr import ASRError, build_asr_provider
-from app.blogger_distillation.vision import VisionError, build_vision_provider
-from app.blogger_distillation.modality import CONF_AMBIGUOUS, CONF_LLM, candidate_modality, classify_subtype
+from app.blogger_distillation.modality import CONF_AMBIGUOUS, CONF_LLM, candidate_modality
 from app.blogger_distillation.modality_adjudicator import adjudicate_modality
-from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.providers import ensure_collection_provider_available
-from app.blogger_distillation.quality import evaluate_post_quality, quality_report
-from app.blogger_distillation.service.asr_step import handle_video_asr
-from app.blogger_distillation.service.vision_step import handle_note_vision
+from app.blogger_distillation.quality import quality_report
+from app.blogger_distillation.service.note_pipeline import build_collect_providers, process_one_note
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
     ensure_distillation_not_cancelled,
     record_task_event,
-)
-from app.blogger_distillation.service.extract import (
-    extract_video_url,
-    normalize_comment,
-    normalize_post,
-    supplement_video_detail_with_url,
-    upsert_post,
 )
 from app.blogger_distillation.service.usage import apply_usage
 from app.blogger_distillation.tikhub_client import (
@@ -38,9 +29,10 @@ from app.blogger_distillation.tikhub_client import (
     TikHubXhsClient,
     XhsPostCandidate,
 )
-from app.blogger_distillation.tikhub_client.parsers import detect_note_type, parse_xhs_note_link
+from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
 from app.blogger_distillation.search import extract_user_profile
 from app.config import Settings
+from app.database import SessionLocal
 from app.models import BloggerCollectionPost, BloggerCollectionRun, BloggerPost, BloggerProfile
 from app.models.common import utc_now
 from sqlalchemy import func, select
@@ -530,122 +522,79 @@ def collect_posts(
     candidates: list[XhsPostCandidate],
     comments_per_post: int,
 ) -> list[BloggerPost]:
-    posts: list[BloggerPost] = []
-    asr_provider = None
-    if settings.asr_enabled:
-        try:
-            asr_provider = build_asr_provider(settings)
-            record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"ASR 已开启：provider={settings.asr_provider}")
-        except ASRError as exc:
-            record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"ASR 初始化失败，将降级分析视频：{exc}")
-            asr_provider = None
-    else:
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频样本将使用标题、描述、评论和互动数据参与蒸馏")
-
-    vision_provider = None
-    if settings.vision_enabled:
-        try:
-            vision_provider = build_vision_provider(settings)
-            record_task_event(db, tenant_id, task_id, "图片理解", "running", f"图片理解已开启：model={settings.vision_model}")
-        except VisionError as exc:
-            record_task_event(db, tenant_id, task_id, "图片理解", "failed", f"图片理解初始化失败，将降级分析：{exc}")
-            vision_provider = None
-
+    providers = build_collect_providers(db, tenant_id, task_id, settings)
     total = len(candidates)
-    for index, candidate in enumerate(candidates, 1):
-        ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        record_task_event(
-            db,
-            tenant_id,
-            task_id,
-            "笔记详情",
-            "running",
-            f"正在采集第 {index}/{total} 篇笔记详情",
-            {"current": index, "total": total, "type": candidate.note_type, "note_id": candidate.external_id},
-        )
+    concurrency = max(1, settings.collect_concurrency)
+    cancel_event = threading.Event()
+    progress = {"done": 0}
+    progress_lock = threading.Lock()
+
+    def _collect_one(item: tuple[int, XhsPostCandidate]) -> int | None:
+        """并发处理一篇:独立 DB session,进度用完成计数。返回入库 post.id 或 None。"""
+        _, candidate = item
+        if cancel_event.is_set():
+            return None
+        session = SessionLocal()
         try:
-            detail_payload = client.get_image_note_detail(candidate)
-        except TikHubError as exc:
-            logger.warning("图文详情采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
-            record_task_event(db, tenant_id, task_id, "笔记详情", "failed", f"详情采集失败：note_id={candidate.external_id}，错误={exc}")
-            continue
-        # candidate.note_type 可能为空(URL 定向采集),此时从详情体里判定;视频则确保拿到直链。
-        effective_type = candidate.note_type or detect_note_type(detail_payload)
-        if effective_type == "video" and not extract_video_url(detail_payload):
-            detail_payload = supplement_video_detail_with_url(client, candidate, detail_payload)
-        normalized = normalize_post(candidate, detail_payload)
-        if not normalized["title"] and not normalized["body_text"]:
-            record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
-            continue
-        if normalized["content_type"] == "video":
-            ensure_distillation_not_cancelled(db, tenant_id, task_id)
-            handle_video_asr(db, tenant_id, task_id, candidate, normalized, asr_provider, blogger)
-            ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        # 视觉理解:图文取封面+正文图,视频取封面;失败/无图只降级,不掀翻采集。
-        ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        handle_note_vision(db, tenant_id, task_id, candidate, normalized, vision_provider, blogger, settings)
-        ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        comments = []
-        try:
-            ensure_distillation_not_cancelled(db, tenant_id, task_id)
-            raw_comments = anonymize_comments(client.get_note_comments(candidate, comments_per_post))
-            comments = [normalize_comment(item) for item in raw_comments]
-        except (TikHubError, RuntimeError) as exc:
-            # 评论是附属信息:任何采集错误(含端点池全失败)都只跳过这条评论、继续采集,绝不掀翻整批。
-            logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
-            record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
-        normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
-        # 在入库前定模态(T0平台+T1密度):转写/时长此刻已确定,保证每条存库的 content_subtype 与其转写一致。
-        subtype, confidence = classify_subtype(
-            normalized["content_type"],
-            normalized.get("transcript_text", ""),
-            duration_seconds=normalized.get("duration_seconds"),
-            density_high_cps=settings.modality_density_high_cps,
-            density_low_cps=settings.modality_density_low_cps,
-            min_transcript_chars=settings.talking_video_min_transcript_chars,
-        )
-        normalized["content_subtype"] = subtype
-        normalized["content_subtype_confidence"] = confidence
-        post_quality = evaluate_post_quality(normalized)
-        if post_quality.level == "failed":
-            logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
-            continue
-        if post_quality.level == "partial":
-            logger.info("笔记质量部分可用：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
-        post = upsert_post(db, tenant_id, blogger, normalized)
-        posts.append(post)
-        record_task_event(
-            db,
-            tenant_id,
-            task_id,
-            "样本入库",
-            "succeeded",
-            "已保存样本",
-            {"current": index, "total": total, "post_id": post.id, "note_id": candidate.external_id, "asr": normalized["asr_status"], "vision": normalized.get("vision_status", "")},
-        )
-    db.commit()
-    # T2 语义裁决:密度判不清的模糊视频(半口播/剧情/卡点),批量交大模型判口播/非口播;
-    # 仅少数、成本有界,失败则保留 T1 密度猜测,绝不阻断采集。
-    if settings.modality_llm_adjudicate_enabled:
-        ambiguous = [p for p in posts if p.content_subtype_confidence == CONF_AMBIGUOUS]
-        if ambiguous:
-            record_task_event(db, tenant_id, task_id, "模态裁决", "running", f"{len(ambiguous)} 条视频密度判不清,语义裁决中…")
-            verdicts = adjudicate_modality(
-                [{"id": p.id, "title": p.title, "transcript": p.transcript_text, "duration": p.duration_seconds} for p in ambiguous],
-                settings,
+            with progress_lock:
+                progress["done"] += 1
+                current = progress["done"]
+            post = process_one_note(
+                session, tenant_id, task_id, blogger, client, settings, candidate, comments_per_post, providers,
+                current=current, total=total,
             )
-            changed = 0
-            for p in ambiguous:
-                verdict = verdicts.get(p.id)
-                if not verdict:
-                    continue
-                if verdict != p.content_subtype:
-                    changed += 1
-                p.content_subtype = verdict
-                p.content_subtype_confidence = CONF_LLM
-            db.commit()
-            record_task_event(
-                db, tenant_id, task_id, "模态裁决", "succeeded",
-                f"语义裁决完成:{len(verdicts)}/{len(ambiguous)} 条判定,{changed} 条修正",
-            )
+            session.commit()
+            return post.id if post is not None else None
+        except DistillationCancelled:
+            cancel_event.set()  # 取消:标记后让剩余任务快速跳过
+            session.rollback()
+            return None
+        except Exception:  # noqa: BLE001 — 单篇异常隔离,不掀翻整批(管线内已记事件)
+            session.rollback()
+            logger.exception("采集单篇失败:note_id=%s", candidate.external_id)
+            return None
+        finally:
+            session.close()
+
+    # 每篇独立 session 并发处理:IO 密集(TikHub/CDN/GLM 等待),GIL 不挡网络;并发度即 GLM 视觉并发闸。
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        post_ids = list(executor.map(_collect_one, enumerate(candidates, 1)))
+    if cancel_event.is_set():
+        raise DistillationCancelled("用户已请求停止流程，流程安全退出；已采集样本会保留")
+
+    # 子线程 session 已关闭、post 对象 detached;用主 session 按 id 重取,供模态裁决/后续 run 逻辑使用。
+    ids = [pid for pid in post_ids if pid is not None]
+    posts = list(db.scalars(select(BloggerPost).where(BloggerPost.id.in_(ids)))) if ids else []
+    _adjudicate_ambiguous_modality(db, tenant_id, task_id, posts, settings)
     return posts
+
+
+def _adjudicate_ambiguous_modality(
+    db: Session, tenant_id: int, task_id: str, posts: list[BloggerPost], settings: Settings
+) -> None:
+    """T2 语义裁决:密度判不清的模糊视频(半口播/剧情/卡点),批量交大模型判口播/非口播;
+    仅少数、成本有界,失败则保留 T1 密度猜测,绝不阻断采集。"""
+    if not settings.modality_llm_adjudicate_enabled:
+        return
+    ambiguous = [p for p in posts if p.content_subtype_confidence == CONF_AMBIGUOUS]
+    if not ambiguous:
+        return
+    record_task_event(db, tenant_id, task_id, "模态裁决", "running", f"{len(ambiguous)} 条视频密度判不清,语义裁决中…")
+    verdicts = adjudicate_modality(
+        [{"id": p.id, "title": p.title, "transcript": p.transcript_text, "duration": p.duration_seconds} for p in ambiguous],
+        settings,
+    )
+    changed = 0
+    for p in ambiguous:
+        verdict = verdicts.get(p.id)
+        if not verdict:
+            continue
+        if verdict != p.content_subtype:
+            changed += 1
+        p.content_subtype = verdict
+        p.content_subtype_confidence = CONF_LLM
+    db.commit()
+    record_task_event(
+        db, tenant_id, task_id, "模态裁决", "succeeded",
+        f"语义裁决完成:{len(verdicts)}/{len(ambiguous)} 条判定,{changed} 条修正",
+    )

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
 import httpx
+
 from app.blogger_distillation.tikhub_client import first_int
 from app.blogger_distillation.tikhub_client import recursive_find
 
 
 # 选流编码偏好:同体积下 h265 最省,其次 av1,最后 h264。
 _CODEC_PRIORITY = {"h265": 0, "av1": 1, "h264": 2}
+
+# 小红书直链命名 _<stream_type>.mp4。已 ffprobe 实测:stream_type 16 是无音频纯视频流
+# (hevc,无 aac),ASR 拿它必降级;带音频的是 _178/_258 等。选流时把 16 降权垫底。
+_AUDIOLESS_STREAM_TYPES = {"16"}
 
 
 def to_https(url: str) -> str:
@@ -188,6 +195,12 @@ def is_subtitle_path(path_text: str) -> bool:
     return any(marker in path_text for marker in ("subtitle", "caption", "subrip", "srt", "vtt", "danmaku"))
 
 
+def stream_type_suffix(url: str) -> str:
+    """从小红书 _<stream_type>.mp4 直链取 stream_type 后缀;拿不到返回空串。"""
+    match = re.search(r"_(\d+)\.mp4", url or "")
+    return match.group(1) if match else ""
+
+
 def video_url_score(url: str) -> int:
     lowered = url.lower()
     score = 0
@@ -196,4 +209,7 @@ def video_url_score(url: str) -> int:
             score += 10
     if "sns-video" in lowered:
         score += 20
+    # 无音频流(如 stream_type 16)大幅降权,让带音频的流优先;仍保留作兜底(万一只有它)。
+    if stream_type_suffix(lowered) in _AUDIOLESS_STREAM_TYPES:
+        score -= 1000
     return score

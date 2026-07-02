@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     vision_model: str = "glm-4.6v"  # 智谱视觉;后台可切 glm-4.5v / glm-4v-plus-0111
     vision_scope: str = "cover_body"  # cover=仅封面 / cover_body=封面+正文图
     vision_max_images_per_note: int = 4  # 正文图上限(封面不计),控成本
+    collect_concurrency: int = 4  # 采集时并发处理的笔记数(线程池);IO 密集(TikHub/CDN/GLM 等待),也是 GLM 视觉的并发闸,受配额约束,保守起步
     public_api_base_url: str = ""
     static_dir: str = "static"
 

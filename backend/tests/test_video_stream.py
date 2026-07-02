@@ -5,6 +5,11 @@ from app.blogger_distillation.service.extract import (
     strip_asr_timestamps,
     to_https,
 )
+from app.blogger_distillation.service.extract.video import (
+    collect_video_url_candidates,
+    stream_type_suffix,
+    video_url_score,
+)
 
 
 def test_is_mostly_chinese():
@@ -109,3 +114,30 @@ def test_pick_video_stream_no_size_still_returns():
     # 都无 size 无码率时,按编码偏好 h265 优先。
     assert best["codec"] == "h265"
     assert best["url"] == "https://x.com/h265.mp4"
+
+
+def test_stream_type_suffix():
+    assert stream_type_suffix("https://x.com/abc_16.mp4") == "16"
+    assert stream_type_suffix("https://x.com/abc_258.mp4") == "258"
+    assert stream_type_suffix("https://x.com/nostream.mp4") == ""
+
+
+def test_audioless_stream_16_ranked_below_audio_stream():
+    # _16 无音频、_258 带音频:选流打分应让带音频的更高。
+    assert video_url_score("https://sns-video.rednotecdn.com/x_258.mp4") > video_url_score(
+        "https://sns-video.rednotecdn.com/x_16.mp4"
+    )
+
+
+def test_collect_video_url_candidates_prefers_audio_stream():
+    # 同一视频既有无音频的 _16 又有带音频的 _258,应把带音频的排前、_16 垫底(仍保留作兜底)。
+    raw = {
+        "video": {
+            "media_16": "http://sns-v8.rednotecdn.com/stream/1/10/16/x_16.mp4",
+            "media_258": "http://sns-v8.rednotecdn.com/stream/1/110/258/x_258.mp4",
+        }
+    }
+    got = collect_video_url_candidates(raw)
+    assert len(got) == 2
+    assert got[0].endswith("_258.mp4")
+    assert got[-1].endswith("_16.mp4")

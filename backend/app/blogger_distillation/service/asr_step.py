@@ -66,11 +66,6 @@ def handle_video_asr(
         normalized["asr_error"] = "ASR 未开启或初始化失败"
         record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", f"跳过视频转写：note_id={candidate.external_id}")
         return
-    media_urls = []
-    try:
-        media_urls = json.loads(normalized.get("media_urls_json") or "[]")
-    except json.JSONDecodeError:
-        media_urls = []
     raw_payload = {}
     try:
         raw_payload = json.loads(normalized.get("raw_json") or "{}")
@@ -108,10 +103,12 @@ def handle_video_asr(
                 db, tenant_id, task_id, "视频字幕", "succeeded",
                 f"只找到非中文字幕（疑似自动翻译），改走 ASR：note_id={candidate.external_id}",
             )
+    # 选视频流:优先结构化 media.stream(pick_video_stream 含 size);否则从详情按「带音频优先」选——
+    # extract_video_url → collect_video_url_candidates 已把无音频的 stream_type 16 排到最后(见 G1)。
     stream_info = pick_video_stream(candidate.raw) or pick_video_stream(raw_payload)
-    candidate_video_url = extract_video_url(candidate.raw)
-    candidate_urls = [stream_info["url"] if stream_info else "", candidate_video_url, *media_urls]
-    video_url = next((url for url in candidate_urls if is_video_url_candidate(url)), "")
+    video_url = (stream_info["url"] if stream_info else "") or extract_video_url(raw_payload) or extract_video_url(candidate.raw)
+    if not is_video_url_candidate(video_url):
+        video_url = ""
     if not video_url:
         normalized["asr_status"] = "skipped"
         normalized["asr_error"] = "未提取到可转写的视频 URL"
