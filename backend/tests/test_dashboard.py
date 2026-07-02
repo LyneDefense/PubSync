@@ -108,7 +108,8 @@ def test_growth_snapshot_and_curve(db):
     db.add(AccountMetricSnapshot(tenant_id=1, account_id=20, captured_on=date(2026, 6, 2),
                                  follower_count=1100, note_total=6, total_interactions=0))
     db.commit()
-    out = build_account_growth(db, 1, 20)
+    # 用 "all"(不设时间窗):固定种子日期不会随"今天"漂移出 30 天窗口(否则测试跨月边界会偶发失败)。
+    out = build_account_growth(db, 1, 20, "all")
     assert len(out["points"]) == 2
     assert out["points"][0]["follower_count"] == 1000
     assert out["points"][-1]["follower_count"] == 1100

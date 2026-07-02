@@ -17,6 +17,7 @@ import {
   DISTILL_MIN_SAMPLES,
   DISTILL_RECOMMEND_SAMPLES,
   friendlyTime,
+  formatDate,
   handleDeleteBlogger,
   handleDeleteSnapshot,
   handleRefreshBlogger,
@@ -336,7 +337,7 @@ async function deleteDetailSnapshot() {
                       <span v-if="post.content_type === 'video' && transcriptTone(post) !== 'none'" class="asr-pill" :class="`asr-pill--${transcriptTone(post)}`">{{ transcriptLabel(post) }}</span>
                       <span v-if="post.status === 'delisted'" class="delisted">已下架</span>
                     </span>
-                    <span class="nr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}</span>
+                    <span class="nr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}<template v-if="post.published_at"> · {{ formatDate(post.published_at) }}</template></span>
                   </span>
                   <span v-if="!manageMode" class="nr-chevron">›</span>
                 </button>
