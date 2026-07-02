@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 社媒·博主资产:主从工作台 —— 左博主列表 + 右(HERO / 选材快照 / 笔记池) + 三浮层(选取 picker / 快照详情 / 笔记抽屉)。
 // 纯展示重构:所有状态/方法沿用 useWorkspaceStore,蒸馏仍在独立「蒸馏」页。
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { bloggerCommentLabel } from '../utils/format'
 import TIcon from '../components/TIcon.vue'
@@ -66,6 +66,12 @@ const sortedNoteGroups = computed(() =>
         : (b.published_at || '').localeCompare(a.published_at || '')
     )
   }))
+)
+// 笔记类型 tab:'' = 全部;否则只显示该 subtype 一组。切博主时重置到全部。
+const activeNoteType = ref<string>('')
+watch(selectedBloggerId, () => { activeNoteType.value = '' })
+const visibleNoteGroups = computed(() =>
+  activeNoteType.value ? sortedNoteGroups.value.filter((g) => g.subtype === activeNoteType.value) : sortedNoteGroups.value
 )
 
 // 「加对标」去「找对标博主」页。
@@ -303,7 +309,11 @@ async function deleteDetailSnapshot() {
             <button v-else type="button" class="pool-select-btn" @click="exitManageMode">取消</button>
           </div>
           <div v-if="sortedNoteGroups.length" class="note-groups">
-            <div v-for="group in sortedNoteGroups" :key="group.subtype" class="note-group">
+            <div v-if="sortedNoteGroups.length > 1 || activeNoteType" class="note-type-tabs">
+              <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ selectedBlogger.sample_count }}</button>
+              <button v-for="g in sortedNoteGroups" :key="g.subtype" type="button" :class="{ on: activeNoteType === g.subtype }" @click="activeNoteType = g.subtype">{{ g.label }} {{ g.posts.length }}</button>
+            </div>
+            <div v-for="group in visibleNoteGroups" :key="group.subtype" class="note-group">
               <div class="ng-head">
                 <span class="ng-ico" :class="groupIcon(group.label).cls">{{ groupIcon(group.label).ch }}</span>
                 <strong>{{ group.label }}</strong>
@@ -1268,6 +1278,31 @@ async function deleteDetailSnapshot() {
     position: static;
   }
 }
+/* —— 笔记类型 tab —— */
+.note-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.note-type-tabs button {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 0.5px solid var(--color-line, #e5e7eb);
+  background: transparent;
+  color: var(--color-ink-2, #666);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.note-type-tabs button.on {
+  background: var(--color-accent-ink);
+  border-color: var(--color-accent-ink);
+  color: #fff;
+  font-weight: 500;
+}
+
 /* —— 笔记池选择/删除模式 —— */
 .pool-head-actions {
   display: flex;

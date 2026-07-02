@@ -1076,6 +1076,45 @@ export const collectBreakdown = computed(() => {
   return null
 })
 
+// 采集中断/失败后的"已采成果":从「样本入库」事件聚合(每条带 post_id/asr/vision),配合笔记池取标题与图数。
+// 中断时 run 未定稿(post_count=0),但笔记已增量入库、事件也在,故用事件重建成果供前端展示(见 #20)。
+export const collectPartialResult = computed(() => {
+  const saved: Array<{ postId: number; asr: string; vision: string }> = []
+  for (const ev of visibleTaskEvents.value) {
+    if (ev.step_name === '样本入库' && ev.status === 'succeeded') {
+      const p = parseEventPayload(ev)
+      if (p?.post_id) saved.push({ postId: Number(p.post_id), asr: String(p.asr || ''), vision: String(p.vision || '') })
+    }
+  }
+  if (!saved.length) return null
+  const byId = new Map(bloggerPosts.value.map((p) => [p.id, p]))
+  const items = saved.map((s) => {
+    const post = byId.get(s.postId)
+    const isVideo = post ? post.content_type === 'video' : s.asr !== 'not_required' && s.asr !== ''
+    let capture: string
+    let ok: boolean
+    if (isVideo) {
+      ok = s.asr === 'subtitle' || s.asr === 'succeeded'
+      capture = s.asr === 'subtitle' ? '字幕已采' : s.asr === 'succeeded' ? '语音转写成功' : '文字未采到'
+    } else {
+      const n = post?.vision_image_count || 0
+      ok = s.vision === 'succeeded'
+      capture = ok ? (n ? `图片理解 · ${n} 张` : '图片理解成功') : '图片未识别'
+    }
+    return { title: post?.title || '(已保存笔记)', isVideo, capture, ok }
+  })
+  const videoNotes = items.filter((i) => i.isVideo).length
+  return {
+    total: items.length,
+    imageNotes: items.length - videoNotes,
+    videoNotes,
+    visionOk: saved.filter((s) => s.vision === 'succeeded').length,
+    subtitleOk: saved.filter((s) => s.asr === 'subtitle').length,
+    asrOk: saved.filter((s) => s.asr === 'succeeded').length,
+    items
+  }
+})
+
 // 逐条高频事件(采集那几个)折叠进进度条,不进时间线,避免刷屏。
 const TIMELINE_SPAM_STEPS = new Set(['笔记详情', '样本入库', '视频 ASR', '视频字幕', '评论采集'])
 // 统一时间线:通俗步骤名 + 原始文案,最新在上。

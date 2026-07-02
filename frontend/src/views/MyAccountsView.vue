@@ -14,15 +14,18 @@ import {
   myAccounts,
   openCreateMyAccountModal,
   openNote,
-  pendingAction
+  pendingAction,
+  subtypeLabel
 } from '../composables/useWorkspaceStore'
 
 const selectedId = ref<number | null>(null)
 const selectedAccount = computed(() => myAccounts.value.find((acc) => acc.id === selectedId.value) || null)
 const sort = ref<'recent' | 'hot'>('recent')
+const activeNoteType = ref<string>('') // 笔记类型 tab:'' = 全部
 
 function pick(id: number) {
   selectedId.value = id
+  activeNoteType.value = ''
   loadAccountPosts(id)
 }
 
@@ -69,6 +72,20 @@ const sortedPosts = computed(() => {
   if (sort.value === 'hot') return arr.sort((a, b) => interaction(b) - interaction(a))
   return arr.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
 })
+
+// 类型 tab:按 content_subtype 分组计数(固定顺序),选中只显示该类。
+const NOTE_TYPE_ORDER = ['image_text', 'talking_video', 'visual_video', 'unknown']
+const noteTypeTabs = computed(() => {
+  const counts = new Map<string, number>()
+  for (const p of posts.value) {
+    const t = p.content_subtype || 'unknown'
+    counts.set(t, (counts.get(t) || 0) + 1)
+  }
+  return NOTE_TYPE_ORDER.filter((t) => counts.has(t)).map((t) => ({ subtype: t, label: subtypeLabel(t), count: counts.get(t) || 0 }))
+})
+const filteredPosts = computed(() =>
+  activeNoteType.value ? sortedPosts.value.filter((p) => (p.content_subtype || 'unknown') === activeNoteType.value) : sortedPosts.value
+)
 
 // 互动热度(相对本账号最高):0–100 → 色带 + 点亮的格数(信号条样式)。
 function heatPct(p: { like_count: number; favorite_count: number; comment_count: number }): number {
@@ -177,8 +194,12 @@ function asrLabel(s: string): string {
             </div>
           </div>
 
+          <div v-if="noteTypeTabs.length > 1 || activeNoteType" class="note-type-tabs">
+            <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ posts.length }}</button>
+            <button v-for="t in noteTypeTabs" :key="t.subtype" type="button" :class="{ on: activeNoteType === t.subtype }" @click="activeNoteType = t.subtype">{{ t.label }} {{ t.count }}</button>
+          </div>
           <div v-if="sortedPosts.length" class="post-list">
-            <article v-for="(post, i) in sortedPosts" :key="post.id" class="post-row" role="button" tabindex="0" @click="openNote(post.id)" @keydown.enter="openNote(post.id)">
+            <article v-for="(post, i) in filteredPosts" :key="post.id" class="post-row" role="button" tabindex="0" @click="openNote(post.id)" @keydown.enter="openNote(post.id)">
               <span class="seq">{{ String(i + 1).padStart(2, '0') }}</span>
               <div class="post-main">
                 <div class="post-title">
@@ -619,5 +640,28 @@ function asrLabel(s: string): string {
   .acct-card {
     position: static;
   }
+}
+.note-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.note-type-tabs button {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 0.5px solid var(--color-line, #e5e7eb);
+  background: transparent;
+  color: var(--color-ink-2, #666);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.note-type-tabs button.on {
+  background: var(--color-accent-ink, #2f6b54);
+  border-color: var(--color-accent-ink, #2f6b54);
+  color: #fff;
+  font-weight: 500;
 }
 </style>

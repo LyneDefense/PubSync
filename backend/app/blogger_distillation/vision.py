@@ -109,8 +109,9 @@ class GlmVisionProvider(VisionProvider):
                     logger.info("视觉下载单图失败,跳过：url=%s，原因=%s", url[:80], exc)
                     continue
                 try:
+                    # 缩到 ≤1280px(等比,高取偶数):降内存/上传体积/GLM tokens,也更快。视频取首帧。
                     subprocess.run(
-                        ["ffmpeg", "-y", "-i", str(src), "-frames:v", "1", str(dst)],
+                        ["ffmpeg", "-y", "-i", str(src), "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", str(dst)],
                         capture_output=True,
                         text=True,
                         check=False,

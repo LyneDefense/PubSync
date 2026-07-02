@@ -175,6 +175,7 @@ class BloggerPostRead(BaseModel):
     image_text: str = ""
     visual_digest: str = ""
     vision_status: str = "not_required"
+    vision_image_count: int = 0
     published_at: datetime | None
     like_count: int
     favorite_count: int

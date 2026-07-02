@@ -15,6 +15,21 @@ class DistillationCancelled(Exception):
     pass
 
 
+def is_control_flow_exception(exc: BaseException) -> bool:
+    """是否为"应放行、不该被业务 except 吞掉"的控制流异常:任务取消 / RQ 作业超时。
+
+    子步骤(视觉、ASR)的 `except Exception` 若把这些也当"单条失败"吞掉,任务会带病续跑成孤儿,
+    最终静默、被 20 分钟看门狗误判(见 #20)。这些异常必须一路上抛,让任务干净失败。
+    """
+    if isinstance(exc, DistillationCancelled):
+        return True
+    try:
+        from rq.timeouts import JobTimeoutException
+    except ImportError:
+        return False
+    return isinstance(exc, JobTimeoutException)
+
+
 def record_task_event(
     db: Session,
     tenant_id: int,

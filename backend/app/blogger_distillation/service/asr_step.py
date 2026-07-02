@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.blogger_distillation.service.events import record_task_event
+from app.blogger_distillation.service.events import is_control_flow_exception, record_task_event
 from app.blogger_distillation.service.extract import (
     extract_subtitle_urls,
     extract_video_url,
@@ -149,6 +149,8 @@ def handle_video_asr(
             {"task_id": result.task_id, "duration_seconds": result.duration_seconds, "provider": result.provider},
         )
     except Exception as exc:
+        if is_control_flow_exception(exc):
+            raise  # 任务取消/超时不当作单条失败吞掉,一路上抛让任务干净失败(见 #20)
         normalized["asr_status"] = "skipped" if is_expected_asr_skip(exc) else "failed"
         normalized["asr_error"] = str(exc)
         event_status = "succeeded" if normalized["asr_status"] == "skipped" else "failed"

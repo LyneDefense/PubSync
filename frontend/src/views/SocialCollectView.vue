@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 社媒·数据采集:四步向导(选择博主 → 配置采集 → 执行采集 → 查看结果)。
 // 纯展示重构:状态/方法全部沿用 useWorkspaceStore;采集实时进度复用全站任务事件(taskCountProgress/liveStage)。
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import StatusChip from '../components/StatusChip.vue'
 import {
   benchmarkAccounts,
@@ -31,6 +31,8 @@ import {
   subtypeLabel,
   taskCountProgress,
   collectBreakdown,
+  collectPartialResult,
+  refreshSelectedBlogger,
   taskElapsedLabel,
   taskFailure,
   urlCollectInput,
@@ -40,6 +42,14 @@ import {
 
 const collecting = computed(() => pendingAction.value === 'collect')
 const urlOpen = ref(false)
+
+// 采集失败/中断后拉一次该博主笔记池,让"已采成果卡"能对上标题与图数。
+watch(
+  () => Boolean(taskFailure.value && taskFailure.value.action === 'collect' && !collecting.value),
+  (failed) => {
+    if (failed && selectedBloggerId.value) refreshSelectedBlogger()
+  }
+)
 
 // 步骤条:点已完成节点回退(采集中禁止跳转)。
 function goToStep(n: number) {
@@ -253,6 +263,26 @@ const metrics = computed(() => {
       <div v-if="taskFailure && taskFailure.action === 'collect' && !collecting" class="collect-error" role="alert">
         <strong>采集失败</strong>
         <span>{{ taskFailure.message }}</span>
+      </div>
+
+      <!-- 采集中断/失败,也展示已采成果(数据已增量入库) -->
+      <div v-if="taskFailure && taskFailure.action === 'collect' && !collecting && collectPartialResult" class="partial-card">
+        <div class="pcard-head">
+          <strong>本次已采集 {{ collectPartialResult.total }} 篇</strong>
+          <span class="pcard-sub">已保存到笔记池，可直接重新采集（增量，自动跳过已采）</span>
+        </div>
+        <div class="pcard-sum">
+          <span>图文 {{ collectPartialResult.imageNotes }} · 图片理解 {{ collectPartialResult.visionOk }}</span>
+          <span>视频 {{ collectPartialResult.videoNotes }} · 字幕 {{ collectPartialResult.subtitleOk }} / 转写 {{ collectPartialResult.asrOk }}</span>
+        </div>
+        <ul class="pcard-list">
+          <li v-for="(it, i) in collectPartialResult.items.slice(0, 12)" :key="i">
+            <span class="pcard-type">{{ it.isVideo ? '视频' : '图文' }}</span>
+            <span class="pcard-title">{{ it.title }}</span>
+            <span class="pcard-cap" :class="{ ok: it.ok }">{{ it.capture }}</span>
+          </li>
+        </ul>
+        <p v-if="collectPartialResult.total > 12" class="pcard-more">仅显示前 12 条 · 全部在笔记池</p>
       </div>
 
       <!-- 采集中:复用真实任务进度,不杜撰数字 -->
@@ -855,6 +885,78 @@ const metrics = computed(() => {
 .pcs-elapsed {
   color: var(--color-ink-3);
   font-variant-numeric: tabular-nums;
+}
+.partial-card {
+  margin-top: 12px;
+  border: 0.5px solid var(--color-line, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--color-surface, #fff);
+}
+.pcard-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.pcard-head strong {
+  font-size: 15px;
+}
+.pcard-sub {
+  font-size: 12px;
+  color: var(--color-ink-3, #999);
+}
+.pcard-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-ink-2, #666);
+  background: var(--color-bg-2, #f7f8fa);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.pcard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pcard-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  border-top: 0.5px solid var(--color-line, #eee);
+  font-size: 13px;
+}
+.pcard-type {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--color-bg-2, #f0f1f3);
+  color: var(--color-ink-2, #666);
+}
+.pcard-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcard-cap {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color-ink-3, #999);
+}
+.pcard-cap.ok {
+  color: var(--color-accent-ink, #1d9e75);
+}
+.pcard-more {
+  font-size: 12px;
+  color: var(--color-ink-3, #999);
+  margin: 8px 0 0;
 }
 .collect-error {
   display: flex;

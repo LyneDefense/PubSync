@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     use_task_queue: bool = False
     redis_url: str = "redis://localhost:6379/0"
     task_queue_name: str = "pubsync"
-    task_job_timeout_seconds: int = 3600
+    task_job_timeout_seconds: int = 10800  # RQ 单任务硬超时 3h;视觉+ASR 的大采集/回填可能跑很久,别被 1h 砍断(真卡死有 20min 无进展看门狗兜底)
     llm_provider: str = "openai"
     image_provider: str = "openai"
     openai_base_url: str = "https://api.openai.com/v1"
