@@ -496,6 +496,7 @@ export interface BloggerCollectRequest {
   content_types?: string[]
   order?: 'top_liked' | 'latest'
   fetch_all?: boolean
+  backfill?: boolean
 }
 
 export interface BloggerUrlCollectRequest {
@@ -507,6 +508,7 @@ export interface CollectEstimate {
   sample_limit: number
   comments_per_post: number
   request_estimate: number
+  backfill_pending?: number
   cost_usd: number
   cost_usd_min: number
   cost_usd_max: number

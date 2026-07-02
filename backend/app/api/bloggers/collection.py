@@ -1,7 +1,7 @@
 """笔记采集:主页增量采集 / 粘贴 URL 定向采集(均异步)+ 采集批次查询 + 成本预估。"""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
@@ -55,6 +55,7 @@ def collect_blogger_endpoint(
         payload.content_types,
         payload.order,
         payload.fetch_all,
+        payload.backfill,
     )
     return task
 
@@ -133,15 +134,37 @@ def list_blogger_collection_posts_endpoint(
 def collect_estimate_endpoint(
     sample_limit: int = Query(default=50, ge=5, le=200),
     comments_per_post: int = Query(default=20, ge=0, le=100),
-    _: Tenant = Depends(current_tenant),
+    blogger_id: int | None = Query(default=None),
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
 ) -> CollectEstimate:
     # 每条样本约：1 次详情请求 +（评论开启时）1 次评论请求；再加搜索/资料/列表分页约 4 次固定开销。
     per_post = 1 + (1 if comments_per_post > 0 else 0)
     request_estimate = sample_limit * per_post + 4
+    # 存量"待补采"数(上限估算,DB 计数):图片理解未成功 或 视频转写 skipped/failed。>阈值时前端弹确认。
+    backfill_pending = 0
+    if blogger_id is not None:
+        conds = []
+        if settings.vision_enabled:
+            conds.append(BloggerPost.vision_status != "succeeded")
+        if settings.asr_enabled:
+            conds.append(and_(BloggerPost.content_type == "video", BloggerPost.asr_status.in_(("skipped", "failed"))))
+        if conds:
+            backfill_pending = db.scalar(
+                select(func.count())
+                .select_from(BloggerPost)
+                .where(
+                    BloggerPost.tenant_id == tenant.id,
+                    BloggerPost.blogger_id == blogger_id,
+                    BloggerPost.status.notin_(("excluded", "delisted")),
+                    or_(*conds),
+                )
+            ) or 0
     return CollectEstimate(
         sample_limit=sample_limit,
         comments_per_post=comments_per_post,
         request_estimate=request_estimate,
+        backfill_pending=backfill_pending,
         cost_usd=round(request_estimate * settings.tikhub_request_price_usd, 4),
         cost_usd_min=round(request_estimate * settings.tikhub_min_request_price_usd, 4),
         cost_usd_max=round(request_estimate * settings.tikhub_max_request_price_usd, 4),

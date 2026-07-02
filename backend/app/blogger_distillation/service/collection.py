@@ -122,6 +122,7 @@ def run_blogger_collection(
     content_types: list[str] | None = None,
     order: str = "top_liked",
     fetch_all: bool = False,
+    backfill: bool = True,
 ) -> CollectionResult:
     blogger = db.get(BloggerProfile, blogger_id)
     if not blogger or blogger.tenant_id != tenant_id:
@@ -202,8 +203,9 @@ def run_blogger_collection(
         refresh_only: list[tuple[XhsPostCandidate, BloggerPost]] = []
         for candidate, post in existing_candidates:
             # 补转写:视频 URL 易过期,需重抓该条详情;补图片理解:封面/图 URL 同样会过期。
-            need_asr = candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed")
-            need_vision = vision_enabled and post.vision_status != "succeeded"
+            # backfill=False(用户在大回填确认框选了"否")时,存量一律只走轻量刷新,不回填。
+            need_asr = backfill and candidate.note_type == "video" and asr_enabled and post.asr_status in ("skipped", "failed")
+            need_vision = backfill and vision_enabled and post.vision_status != "succeeded"
             if need_asr or need_vision:
                 to_fetch.append(candidate)
                 backfill_count += 1
@@ -213,6 +215,7 @@ def run_blogger_collection(
             db, tenant_id, task_id, "增量分流", "succeeded",
             f"候选 {len(candidates)} 条：本次新增 {new_count} · 补采(转写/图片) {backfill_count} · 刷新已有 {len(refresh_only)}"
             + (f"（候选里没采过的只剩 {len(new_candidates)} 条，不足目标 {sample_limit}）" if not fetch_all and len(new_candidates) < sample_limit else ""),
+            {"new": new_count, "backfill": backfill_count, "refresh": len(refresh_only), "total": len(to_fetch)},
         )
 
         # 抓详情(仅新笔记 + 补 ASR);老笔记不重抓,只用列表数据刷新。

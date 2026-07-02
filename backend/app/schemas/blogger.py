@@ -124,6 +124,8 @@ class CollectEstimate(BaseModel):
     sample_limit: int
     comments_per_post: int
     request_estimate: int
+    # 本次采集会顺带"补采"(补图片理解/转写)的存量笔记数(上限估算,DB 计数);前端据此>阈值弹确认。
+    backfill_pending: int = 0
     cost_usd: float
     cost_usd_min: float
     cost_usd_max: float
@@ -139,6 +141,8 @@ class BloggerCollectRequest(BaseModel):
     order: str = Field(default="top_liked", pattern="^(top_liked|latest)$")
     # 数量:False=取 sample_limit 条,True=全部到系统上限。
     fetch_all: bool = False
+    # 是否给存量笔记补采(补图片理解/转写)。False=只采新增的 N 条,不回填(用户在大回填确认框选了"否"时)。
+    backfill: bool = True
 
 
 class BloggerUrlCollectRequest(BaseModel):

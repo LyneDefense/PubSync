@@ -89,6 +89,7 @@ def run_blogger_collection_task(
     content_types: list[str] | None = None,
     order: str = "top_liked",
     fetch_all: bool = False,
+    backfill: bool = True,
 ) -> None:
     def work(db: Session, task: OperationTask) -> None:
         mark_task_running(db, task, "正在采集小红书样本")
@@ -104,6 +105,7 @@ def run_blogger_collection_task(
             content_types=content_types,
             order=order,
             fetch_all=fetch_all,
+            backfill=backfill,
         )
         mark_task_succeeded(db, task, f"样本采集完成，采集 {result.run.post_count} 条")
         logger.info("任务成功：任务ID=%s，类型=博主样本采集，采集批次ID=%s", task_id, result.run.id)

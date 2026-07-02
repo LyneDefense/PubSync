@@ -28,6 +28,7 @@ import {
   clearAuthToken,
   clearTenantId,
   collectBlogger,
+  getCollectEstimate,
   collectBloggerByUrls,
   appraiseBlogger,
   listAccountAuditRuns,
@@ -1058,6 +1059,21 @@ export const taskCountProgress = computed(() => {
     }
   }
   return { current: 0, total: 0, pct: 0 }
+})
+
+// 采集分流明细:从「增量分流」事件读 新增/补采,用于诚实展示进度——避免用户只看到被回填撑大的总数(如"10 条"变 74)。
+export const collectBreakdown = computed(() => {
+  for (let index = visibleTaskEvents.value.length - 1; index >= 0; index -= 1) {
+    const ev = visibleTaskEvents.value[index]
+    if (ev.step_name === '增量分流') {
+      const payload = parseEventPayload(ev)
+      const backfill = Number(payload?.backfill)
+      if (payload && !Number.isNaN(backfill)) {
+        return { new: Number(payload.new) || 0, backfill: backfill || 0, refresh: Number(payload.refresh) || 0 }
+      }
+    }
+  }
+  return null
 })
 
 // 逐条高频事件(采集那几个)折叠进进度条,不进时间线,避免刷屏。
@@ -2535,6 +2551,20 @@ export async function handleCollectBlogger() {
     xhsCollectStep.value = 1
     return
   }
+  // 大回填确认:存量"待补采(图片理解/转写)"> 50 条时先问,否则一次"采 N 条"会被回填撑成上百篇。
+  let backfill = true
+  try {
+    const est = await getCollectEstimate(bloggerDistillForm.sample_limit, bloggerDistillForm.comments_per_post, selectedBloggerId.value)
+    const pending = est.backfill_pending || 0
+    if (pending > 50) {
+      const amount = collectFetchAll.value ? '全部' : `${bloggerDistillForm.sample_limit} 条`
+      backfill = window.confirm(
+        `系统升级后新增了「图片信息采集」。本次采集会顺带把该博主约 ${pending} 条已有笔记重新采集一遍来补齐图片理解，耗时和调用会明显增加。\n\n「确定」= 采新的 + 回填这 ${pending} 条；「取消」= 只采新的（${amount}），以后再补齐。`
+      )
+    }
+  } catch {
+    backfill = true // 估算失败不阻断采集,默认按原行为回填
+  }
   await runTaskAction(
     'collect',
     '已提交样本采集任务',
@@ -2544,7 +2574,8 @@ export async function handleCollectBlogger() {
         comments_per_post: bloggerDistillForm.comments_per_post,
         content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video'],
         order: collectOrder.value,
-        fetch_all: collectFetchAll.value
+        fetch_all: collectFetchAll.value,
+        backfill
       }),
     async () => {
       await refreshSelectedBlogger()

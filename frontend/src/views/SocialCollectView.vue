@@ -30,6 +30,7 @@ import {
   setCurrentSocialTab,
   subtypeLabel,
   taskCountProgress,
+  collectBreakdown,
   taskElapsedLabel,
   taskFailure,
   urlCollectInput,
@@ -259,7 +260,7 @@ const metrics = computed(() => {
         <div class="pc-head">
           <span class="pulse" aria-hidden="true"></span>
           <strong>采集进行中…</strong>
-          <span class="pc-pct">{{ taskCountProgress.total ? `第 ${taskCountProgress.current} / ${taskCountProgress.total} 篇 · ${taskCountProgress.pct}%` : '进行中' }}</span>
+          <span class="pc-pct">{{ taskCountProgress.total ? `第 ${taskCountProgress.current} / ${taskCountProgress.total} 篇 · ${taskCountProgress.pct}%` : '进行中' }}<template v-if="collectBreakdown && collectBreakdown.backfill"> · 新增 {{ collectBreakdown.new }} 补采 {{ collectBreakdown.backfill }}</template></span>
         </div>
         <div class="pc-track">
           <span class="pc-fill" :class="{ indet: !taskCountProgress.total }" :style="taskCountProgress.total ? { width: taskCountProgress.pct + '%' } : {}"></span>
@@ -269,7 +270,6 @@ const metrics = computed(() => {
           <span class="pcs-msg">{{ liveStageMessage }}</span>
           <span class="pcs-elapsed">{{ taskElapsedLabel }}</span>
         </div>
-        <p class="pc-note">采集在后台进行，离开本页时顶部会出现一条迷你进度提醒；成功后自动进入「查看结果」。</p>
       </div>
 
       <!-- 链接定向采集(折叠) -->
@@ -855,11 +855,6 @@ const metrics = computed(() => {
 .pcs-elapsed {
   color: var(--color-ink-3);
   font-variant-numeric: tabular-nums;
-}
-.pc-note {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--color-ink-3);
 }
 .collect-error {
   display: flex;

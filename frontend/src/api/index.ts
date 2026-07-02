@@ -371,8 +371,9 @@ export function listBloggerCollectionRuns(id: number) {
   return request<BloggerCollectionRun[]>(`/bloggers/${id}/collection-runs`)
 }
 
-export function getCollectEstimate(sampleLimit: number, commentsPerPost: number) {
-  const query = `sample_limit=${sampleLimit}&comments_per_post=${commentsPerPost}`
+export function getCollectEstimate(sampleLimit: number, commentsPerPost: number, bloggerId?: number) {
+  let query = `sample_limit=${sampleLimit}&comments_per_post=${commentsPerPost}`
+  if (bloggerId != null) query += `&blogger_id=${bloggerId}`
   return request<CollectEstimate>(`/bloggers/collect-estimate?${query}`)
 }
 
