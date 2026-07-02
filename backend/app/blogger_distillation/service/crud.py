@@ -87,6 +87,12 @@ def delete_snapshot(db: Session, tenant_id: int, snapshot_id: int) -> None:
     snapshot = db.get(BloggerSnapshot, snapshot_id)
     if not snapshot or snapshot.tenant_id != tenant_id:
         raise ValueError("快照不存在或不属于当前工作空间")
+    # 先解绑引用该快照的蒸馏记录(snapshot_id 外键),否则删快照会撞外键约束删不掉;
+    # 蒸馏产出(skill / 报告)独立于快照存在,保留、只把来源快照置空。
+    db.query(BloggerDistillationRun).filter(
+        BloggerDistillationRun.tenant_id == tenant_id,
+        BloggerDistillationRun.snapshot_id == snapshot_id,
+    ).update({"snapshot_id": None})
     db.delete(snapshot)
     db.commit()
 
