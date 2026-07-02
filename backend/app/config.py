@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     vision_scope: str = "cover_body"  # cover=仅封面 / cover_body=封面+正文图
     vision_max_images_per_note: int = 17  # 正文图上限(封面另计);默认尽量全采(封面+17=18,覆盖绝大多数图文笔记)
     collect_concurrency: int = 4  # 采集时并发处理的笔记数(线程池);IO 密集(TikHub/CDN/GLM 等待),也是 GLM 视觉的并发闸,受配额约束,保守起步
+    vision_download_concurrency: int = 6  # 图片下载全局并发闸(所有并发笔记共用);防「篇并发×每篇多图」打爆小红书图片 CDN 致 read timeout
+    vision_download_read_timeout: float = 12.0  # 单张图 read 超时(短→快失败快重试);视频下载仍用长超时
+    vision_download_retries: int = 2  # 单张图下载失败重试次数(CDN 瞬时限流/超时,换连接重试常能成)
     public_api_base_url: str = ""
     static_dir: str = "static"
 

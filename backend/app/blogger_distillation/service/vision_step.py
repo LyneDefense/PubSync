@@ -99,3 +99,37 @@ def handle_note_vision(
         normalized["vision_status"] = "failed"
         normalized["vision_error"] = str(exc)
         record_task_event(db, tenant_id, task_id, "图片理解", "failed", f"图片理解未执行，降级分析：note_id={candidate.external_id}，原因={exc}")
+
+
+def revise_post_vision(post: BloggerPost, vision_provider: Any, settings: Settings) -> bool:
+    """收尾补采:对已入库、图片理解失败的 post 当场重跑一次(此时采集并发峰值已过,成功率高)。
+
+    直接改 post 的视觉字段;commit 由调用方负责。成功返回 True。控制流异常(取消/超时)照常上抛。
+    """
+    if vision_provider is None:
+        return False
+    try:
+        media_urls = json.loads(post.media_urls_json or "[]")
+    except json.JSONDecodeError:
+        media_urls = []
+    scope = "cover" if post.content_type == "video" else settings.vision_scope
+    images = select_note_images(
+        post.cover_url or "",
+        media_urls if isinstance(media_urls, list) else [],
+        scope=scope,
+        max_body_images=settings.vision_max_images_per_note,
+    )
+    if not images:
+        return False
+    try:
+        result = vision_provider.analyze_images(images, source_id=post.external_id)
+    except Exception as exc:
+        if is_control_flow_exception(exc):
+            raise
+        return False
+    post.image_text = result.image_text
+    post.visual_digest = json.dumps(result.visual_digest, ensure_ascii=False) if result.visual_digest else ""
+    post.vision_status = "succeeded"
+    post.vision_error = ""
+    post.vision_image_count = result.image_count
+    return True

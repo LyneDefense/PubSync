@@ -17,6 +17,7 @@ from app.blogger_distillation.modality_adjudicator import adjudicate_modality
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import quality_report
 from app.blogger_distillation.service.note_pipeline import build_collect_providers, process_one_note
+from app.blogger_distillation.service.vision_step import revise_post_vision
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
     ensure_distillation_not_cancelled,
@@ -565,8 +566,26 @@ def collect_posts(
     # 子线程 session 已关闭、post 对象 detached;用主 session 按 id 重取,供模态裁决/后续 run 逻辑使用。
     ids = [pid for pid in post_ids if pid is not None]
     posts = list(db.scalars(select(BloggerPost).where(BloggerPost.id.in_(ids)))) if ids else []
+    _retry_failed_vision(db, tenant_id, task_id, posts, providers.vision, settings)
     _adjudicate_ambiguous_modality(db, tenant_id, task_id, posts, settings)
     return posts
+
+
+def _retry_failed_vision(db: Session, tenant_id: int, task_id: str, posts: list[BloggerPost], vision_provider, settings: Settings) -> None:
+    """收尾补采:主流程跑完后,对图片理解 failed 的笔记当场再试一轮(并发峰值已过、又走重试+限并发,成功率高)。"""
+    if vision_provider is None:
+        return
+    failed = [p for p in posts if p.vision_status == "failed"]
+    if not failed:
+        return
+    record_task_event(db, tenant_id, task_id, "图片理解", "running", f"收尾补采 {len(failed)} 条图片理解失败的笔记…")
+    fixed = 0
+    for post in failed:
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        if revise_post_vision(post, vision_provider, settings):
+            fixed += 1
+    db.commit()
+    record_task_event(db, tenant_id, task_id, "图片理解", "succeeded", f"收尾补采完成:{fixed}/{len(failed)} 条补齐")
 
 
 def _adjudicate_ambiguous_modality(

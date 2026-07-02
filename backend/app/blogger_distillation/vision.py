@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,6 +82,8 @@ class GlmVisionProvider(VisionProvider):
             raise VisionError("未配置智谱 GLM API Key(GLM_API_KEY)，无法使用视觉理解")
         if not shutil.which("ffmpeg"):
             raise VisionError("服务器未安装 ffmpeg，无法转换图片格式")
+        # 图片下载全局并发闸:此 provider 被所有并发笔记共享,信号量跨线程限住同时下载的图数,别打爆小红书 CDN。
+        self._download_sem = threading.Semaphore(max(1, settings.vision_download_concurrency))
 
     def analyze_images(self, image_urls: list[str], *, source_id: str = "", on_progress: ProgressCallback | None = None) -> VisionResult:
         urls = [u for u in image_urls if isinstance(u, str) and u.startswith("http")][:GLM_VISION_MAX_IMAGES]
@@ -108,10 +111,7 @@ class GlmVisionProvider(VisionProvider):
             for index, url in enumerate(urls):
                 src = Path(tmp_dir) / f"src_{index}"
                 dst = Path(tmp_dir) / f"img_{index}.jpg"
-                try:
-                    download_file(url, src, max_seconds=60, max_bytes=max_bytes)
-                except (httpx.HTTPError, OSError, RuntimeError) as exc:
-                    logger.info("视觉下载单图失败,跳过：url=%s，原因=%s", url[:80], exc)
+                if not self._download_image(url, src, max_bytes):
                     continue
                 try:
                     # 缩到 ≤1280px(等比,高取偶数):降内存/上传体积/GLM tokens,也更快。视频取首帧。
@@ -130,6 +130,22 @@ class GlmVisionProvider(VisionProvider):
                     continue
                 parts.append("data:image/jpeg;base64," + base64.b64encode(dst.read_bytes()).decode("ascii"))
         return parts
+
+    def _download_image(self, url: str, dst_path: Path, max_bytes: int) -> bool:
+        """下一张图:限全局并发 + 短 read 超时 + 失败重试。成功 True;重试耗尽返回 False(跳过该图)。
+
+        小红书图片 CDN 在高并发下偶发 read timeout;短超时快失败、换连接重试常能成,信号量避免打爆。
+        """
+        attempts = 1 + max(0, self.settings.vision_download_retries)
+        for i in range(attempts):
+            try:
+                with self._download_sem:
+                    download_file(url, dst_path, max_seconds=25, max_bytes=max_bytes, read_timeout=self.settings.vision_download_read_timeout)
+                return True
+            except (httpx.HTTPError, OSError, RuntimeError) as exc:
+                if i == attempts - 1:
+                    logger.info("视觉下载单图失败(重试 %s 次后跳过)：url=%s，原因=%s", attempts - 1, url[:80], exc)
+        return False
 
 
 def build_vision_provider(settings: Settings) -> VisionProvider:

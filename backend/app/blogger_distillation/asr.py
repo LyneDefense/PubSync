@@ -320,13 +320,14 @@ def download_video(settings: Settings, video_url: str, video_path: Path) -> None
             raise ASRError(f"视频下载失败(https/http 均失败)：{exc2}") from exc2
 
 
-def download_file(url: str, output_path: Path, *, max_seconds: int = 120, max_bytes: int = 0) -> None:
+def download_file(url: str, output_path: Path, *, max_seconds: int = 120, max_bytes: int = 0, read_timeout: float = 30.0) -> None:
     """流式下载,带总墙钟时长 + 文件体积硬上限。超限抛 ASRError(上层据此降级)。
 
     httpx 的 timeout 是「单块读取」超时,对慢速涓流不生效;必须额外用总时长 deadline 兜底。
+    read_timeout 可调:图片下载用短超时(快失败快重试),视频保持长。
     """
     deadline = time.monotonic() + max_seconds if max_seconds and max_seconds > 0 else None
-    timeout = httpx.Timeout(connect=15.0, read=30.0, write=30.0, pool=15.0)
+    timeout = httpx.Timeout(connect=15.0, read=read_timeout, write=30.0, pool=15.0)
     total = 0
     with httpx.stream("GET", url, timeout=timeout, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 PubSync/1.0"}) as response:
         response.raise_for_status()
