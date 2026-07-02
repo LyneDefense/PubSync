@@ -32,11 +32,7 @@ XHS_ENDPOINT_POOLS: dict[str, list[Endpoint]] = {
             "/api/v1/xiaohongshu/app_v2/get_user_posted_notes",
             {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"},
         ),
-        Endpoint(
-            "web_v3",
-            "/api/v1/xiaohongshu/web_v3/fetch_user_notes",
-            {"user_id": "${user_id}", "cursor": "${cursor}", "num": "${num}", "xsec_token": "${xsec_token}"},
-        ),
+        # web_v3/fetch_user_notes 已被 TikHub 下架(HTTP 410),移除以免每次白试 + 日志噪音;app/app_v2 已足够兜底。
         Endpoint(
             "app_v2_share",
             "/api/v1/xiaohongshu/app_v2/get_user_posted_notes",
