@@ -30,6 +30,7 @@ CONTENT_LABELS = {
     "language_dna": "语言 DNA",
     "cta_strategy": "CTA / 互动引导",
     "cover_text_rules": "封面文案",
+    "visual_layout_patterns": "图内信息编排 / 版式",
     "hashtag_strategy": "标签策略",
 }
 

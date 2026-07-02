@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     synthesis_max_revise_iterations: int = 1
     synthesis_min_quality_score: int = 80
     synthesis_llm_critic_enabled: bool = True
+    # 蒸馏喂料:给 LLM 的"证据"字符预算。旧实现整包 json.dumps 后盲砍 16000,实测 82% 被丢、图内文字仅 20% 进模型;
+    # 改为结构化证据装配(evidence.py)后按优先级填充到此预算。调大更全但更慢更贵,GLM 上下文足够。
+    distill_evidence_char_budget: int = 28000
+    distill_evidence_legacy: bool = False  # A/B 旁路:True=退回旧的 json.dumps(stats)[:16000],供新旧对照
     # 对标博主搜寻(智能推荐/单博主评分):综合分四项权重 + 候选池上限 + 列表取数 + 搜索词扩展数 + 活跃度阈值。
     benchmark_weight_relevance: float = 0.4
     benchmark_weight_learnability: float = 0.25

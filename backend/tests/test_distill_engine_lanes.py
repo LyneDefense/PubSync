@@ -14,10 +14,11 @@ from app.blogger_distillation.service.distill_engine import (
 )
 
 _BL = N(display_name="阿甜", homepage_url="http://x", niche="运营", description="", platform="xhs")
+_SETTINGS = N(distill_evidence_char_budget=28000, distill_evidence_legacy=False)
 
 
 def _ctx(stats, lane=None, mode="A"):
-    return DistillContext(blogger=_BL, user_info={}, stats=stats, mode=mode, lane=lane)
+    return DistillContext(blogger=_BL, user_info={}, stats=stats, mode=mode, settings=_SETTINGS, lane=lane)
 
 
 def test_core_prompt_has_cognitive_not_content():

@@ -59,6 +59,8 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("synthesis_max_revise_iterations", "model", "蒸馏-最大修订次数", "int"),
     ConfigField("synthesis_min_quality_score", "model", "蒸馏-质量阈值", "int"),
     ConfigField("synthesis_llm_critic_enabled", "model", "蒸馏-启用 LLM 评审", "bool"),
+    ConfigField("distill_evidence_char_budget", "model", "蒸馏-证据字符预算", "int"),
+    ConfigField("distill_evidence_legacy", "model", "蒸馏-用旧证据供给(A/B对照)", "bool"),
     ConfigField("creation_max_revise_iterations", "model", "创作-最大修订次数", "int"),
     ConfigField("creation_min_quality_score", "model", "创作-质量阈值", "int"),
     ConfigField("creation_llm_critic_enabled", "model", "创作-启用 LLM 评审", "bool"),

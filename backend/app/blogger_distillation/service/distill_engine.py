@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from app.blogger_distillation.evidence import render_stats_digest
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
     TALKING_VIDEO,
@@ -45,6 +46,7 @@ class DistillContext:
     user_info: dict[str, Any]
     stats: dict[str, Any]
     mode: str
+    settings: Settings
     lane: str | None = None
 
 
@@ -72,7 +74,8 @@ def build_core_prompt(ctx: DistillContext) -> str:
 硬边界：
 - 不能冒充原博主、不能复制原文原标题原经历;只提炼公开内容里的信念、立场、思维、运营策略。
 - 输出必须是合法 JSON 对象,不要 Markdown/HTML/解释/<think>。
-- 每条结论尽量贴着“代码统计与代表样本”的事实与数字,不要正确的废话;空缺给空数组,不要编造。
+- 每条结论尽量贴着“下方证据”的事实与数字,不要正确的废话;空缺给空数组,不要编造。
+- 图内文字以内容性要点为准;装饰/引导字(点赞收藏关注、水印、背景杂字)不要当方法论。
 
 博主：
 {json.dumps({"display_name": blogger.display_name, "homepage_url": blogger.homepage_url, "niche": blogger.niche, "description": blogger.description, "platform": blogger.platform}, ensure_ascii=False)}
@@ -80,8 +83,8 @@ def build_core_prompt(ctx: DistillContext) -> str:
 TikHub 用户信息摘要：
 {json.dumps(ctx.user_info, ensure_ascii=False, default=str)[:2500]}
 
-代码统计与代表样本(全账号,跨模态)：
-{json.dumps(ctx.stats, ensure_ascii=False, default=str)[:16000]}
+证据(全账号·跨模态;已按优先级装配:账号概览/观点金句池/爆款证据块/代表样本)：
+{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="core", legacy=ctx.settings.distill_evidence_legacy)}
 
 只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
 {{
@@ -117,9 +120,9 @@ _LANE_FRAMING: dict[str, str] = {
         "这是**图文笔记**车道。写法藏在:标题、正文结构、封面文案、排版、书面语言 DNA。"
         "body_structures 基于 body_text/body_excerpt 分析正文骨架;video_script_structures 留空数组。"
         "language_dna 每条以「书面：」开头。"
-        "**充分利用视觉信号**:样本里的 visual_digest(cover_hook 封面主文案 / layout 版式 / style 风格 / "
-        "info_points 图内要点)和 image_text_excerpt(图片里的卡片/清单/干货逐字)常常才是真正的内容与钩子——"
-        "据此提炼封面文案公式、图内信息编排、版式套路,别只盯着单薄的正文。"
+        "**充分利用视觉证据**:每条爆款证据块给了「封面钩子 / 版式 / 图内要点(逐张) / 正文摘要」,"
+        "图内要点常常才是真正的内容与钩子——据此提炼封面文案公式(cover_text_rules)、"
+        "图内信息编排与版式套路(visual_layout_patterns),别只盯着单薄的正文。"
     ),
     TALKING_VIDEO: (
         "这是**口播视频**车道(人对着镜头讲述/教学,说的话即内容)。写法藏在:口播脚本"
@@ -129,7 +132,7 @@ _LANE_FRAMING: dict[str, str] = {
     ),
     VISUAL_VIDEO: (
         "这是**非口播视频**车道(剧情/卡点/vlog/展示,画面为主、台词很少)。**诚实边界**:"
-        "纯文本可靠给出 标题公式 / 封面文案 / 标签策略 / 发布节奏;若样本带 visual_digest/image_text_excerpt"
+        "纯文本可靠给出 标题公式 / 封面文案 / 标签策略 / 发布节奏;若证据块带封面钩子/图内要点"
         "(封面/首帧的文字与版式),据此补充封面文案与信息编排;"
         "但画面、卡点、运镜、BGM 这类动态视觉 craft **仍无法从文本/封面蒸出**——相关字段给空数组,"
         "并在 body_structures 里放一条「动态视觉打法需逐帧视觉分析,本次未覆盖」。"
@@ -147,12 +150,12 @@ def build_lane_prompt(ctx: DistillContext) -> str:
 
 车道说明:{framing}
 
-硬边界：合法 JSON;不复制原文原标题;贴“该车道统计与代表样本”的事实;空缺给空数组,不编造。
+硬边界：合法 JSON;不复制原文原标题;贴“下方证据”的事实;空缺给空数组,不编造;图内文字以内容性要点为准,装饰/引导字(点赞收藏关注、水印)不当方法论。
 
 博主：{ctx.blogger.display_name}（{ctx.blogger.platform}）｜车道：{subtype_label(lane)}
 
-该车道统计与代表样本(含 hot_posts 爆款,可用 title/external_id/score 标来源)：
-{json.dumps(ctx.stats, ensure_ascii=False, default=str)[:16000]}
+该车道证据(已按优先级装配;爆款证据块用「来源:external_id」标来源)：
+{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="lane", legacy=ctx.settings.distill_evidence_legacy)}
 
 只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
 {{
@@ -164,6 +167,7 @@ def build_lane_prompt(ctx: DistillContext) -> str:
   "language_dna": ["语言 DNA：高频表达、句式节奏、人称策略、口头禅（按车道说明加「书面：」/「口播：」前缀）"],
   "cta_strategy": ["CTA/互动引导策略，结合 cta_patterns"],
   "cover_text_rules": ["封面文案规律"],
+  "visual_layout_patterns": ["图内信息编排/版式套路：图内要点如何分屏/分卡/分步编排（图文车道；非图文留空数组）"],
   "hashtag_strategy": ["标签策略，结合 frequent_hashtags"],
   "top_post_breakdowns": [
     {{"rank": 1, "title_ref": "该车道爆款样本标题(可截断)", "source": "external_id 或标题", "why_viral": "为什么火（贴数据）", "reusable_tactic": "可复用的具体技巧"}}
@@ -262,7 +266,7 @@ def distill_core(
 ) -> tuple[dict[str, Any], SynthesisTrace]:
     """内核蒸馏(认知/策略/人设),吃全账号 stats。返回 (内核结果, 轨迹)。"""
     mode = normalize_mode(mode)
-    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=stats, mode=mode, lane=None)
+    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=stats, mode=mode, settings=settings, lane=None)
     model = (settings.distill_text_model or "").strip() or None
     guide = TaskGuide(name="内核蒸馏", build_prompt=build_core_prompt, normalize=lambda d, c: normalize_core(d, c.mode))
     sensors = [CoreSchemaSensor(), CoreQualitySensor()]
@@ -280,7 +284,7 @@ def distill_lane(
     on_event: Any = None,
 ) -> tuple[dict[str, Any], SynthesisTrace]:
     """某条模态车道的内容层蒸馏,只吃该车道 stats。返回 (内容层结果, 轨迹)。"""
-    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=lane_stats, mode=normalize_mode(mode), lane=lane)
+    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=lane_stats, mode=normalize_mode(mode), settings=settings, lane=lane)
     model = (settings.distill_text_model or "").strip() or None
     guide = TaskGuide(name=f"内容层·{subtype_label(lane)}", build_prompt=build_lane_prompt, normalize=lambda d, c: normalize_lane(d))
     sensors = [LaneSchemaSensor(), LaneQualitySensor()]
@@ -296,7 +300,7 @@ _CORE_LAYERS: dict[str, list[str]] = {
 }
 _LANE_LIST_KEYS = [
     "title_formulas", "opening_templates", "body_structures", "video_script_structures",
-    "emotional_rhythm", "language_dna", "cta_strategy", "cover_text_rules", "hashtag_strategy",
+    "emotional_rhythm", "language_dna", "cta_strategy", "cover_text_rules", "visual_layout_patterns", "hashtag_strategy",
 ]
 
 
