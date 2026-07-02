@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 单篇笔记详情·右侧抽屉。公共组件:博主资产 / 我的账号 共用。
+// 单篇笔记详情·居中大弹窗。公共组件:博主资产 / 我的账号 共用。
 // 纯展示,状态全在 store —— 由调用方 openNote(post.id) 打开;这里读 activeNotePost 渲染、closeNote 关闭。
-// activeNotePost 会在 bloggerPosts + accountPosts 里找,所以对标博主与我的账号的笔记都能显示。
-import { computed } from 'vue'
+// 左侧多图画廊(主图 + 缩略图切换 + 点图放大看原图),右侧正文 / 图片解析 / 标签 / 评论。
+import { computed, ref, watch } from 'vue'
 import { bloggerCommentLabel } from '../utils/format'
 import TIcon from './TIcon.vue'
 import {
@@ -15,6 +15,35 @@ import {
   noteTopComments,
   subtypeLabel
 } from '../composables/useWorkspaceStore'
+
+function isImageUrl(u: unknown): u is string {
+  return typeof u === 'string' && u.startsWith('http') && !/(\.mp4|\.m3u8|\.mov)(\?|$)/i.test(u) && !/\/video\//i.test(u)
+}
+
+// 图片列表:从 media_urls_json 取所有图片(过滤视频直链);封面若是图片补到最前。视频笔记可能没有静态图。
+const images = computed<string[]>(() => {
+  const post = activeNotePost.value
+  if (!post) return []
+  let urls: unknown[] = []
+  try {
+    urls = JSON.parse(post.media_urls_json || '[]')
+  } catch {
+    urls = []
+  }
+  const imgs = urls.filter(isImageUrl)
+  if (isImageUrl(post.cover_url) && !imgs.includes(post.cover_url)) imgs.unshift(post.cover_url)
+  return imgs
+})
+
+const activeImageIndex = ref(0)
+const activeImage = computed(() => images.value[activeImageIndex.value] || '')
+const lightboxOpen = ref(false)
+
+// 换笔记时重置到第一张、关灯箱。
+watch(activeNotePost, () => {
+  activeImageIndex.value = 0
+  lightboxOpen.value = false
+})
 
 // 视觉层:图内文字(OCR) + 封面解析(visual_digest)。有值才展示这一段。
 const noteVisual = computed(() => {
@@ -29,106 +58,141 @@ const noteVisual = computed(() => {
   }
   const hook = (digest.cover_hook || '').trim()
   const layout = (digest.layout || '').trim()
-  if (!text && !hook && !layout) return null
-  return { text, hook, layout }
+  const style = (digest.style || '').trim()
+  if (!text && !hook && !layout && !style) return null
+  return { text, hook, layout, style }
 })
 </script>
 
 <template>
-  <div v-if="activeNotePost" class="drawer-overlay" @click.self="closeNote">
-    <aside class="drawer">
-      <div class="drawer-head">
+  <div v-if="activeNotePost" class="nm-overlay" @click.self="closeNote">
+    <div class="nm-modal" role="dialog" aria-modal="true" aria-label="笔记详情">
+      <div class="nm-head">
         <strong>笔记详情</strong>
         <button type="button" class="modal-close" aria-label="关闭" @click="closeNote"><TIcon name="x" /></button>
       </div>
-      <div class="drawer-body">
-        <img v-if="activeNotePost.cover_url" :src="activeNotePost.cover_url" alt="封面" class="drawer-cover" referrerpolicy="no-referrer" />
-        <div v-else class="drawer-cover placeholder"></div>
-        <h3 class="drawer-title">{{ activeNotePost.title || '(无标题)' }}</h3>
-        <p class="drawer-meta">
-          {{ subtypeLabel(activeNotePost.content_subtype) }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
-        </p>
-        <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="drawer-link">打开原帖 <TIcon name="external-link" /></a>
 
-        <div class="drawer-section">
-          <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
-          <p v-if="noteBodyText(activeNotePost)" class="drawer-text">{{ noteBodyText(activeNotePost) }}</p>
-          <p v-else class="empty-region">这篇笔记没有可展示的文字内容。</p>
-        </div>
-
-        <div v-if="noteVisual" class="drawer-section">
-          <h4>图片解析</h4>
-          <p v-if="noteVisual.hook" class="drawer-text"><strong>封面文案：</strong>{{ noteVisual.hook }}</p>
-          <p v-if="noteVisual.layout" class="drawer-meta">版式：{{ noteVisual.layout }}</p>
-          <p v-if="noteVisual.text" class="drawer-text">{{ noteVisual.text }}</p>
-        </div>
-
-        <div v-if="noteHashtags(activeNotePost).length" class="drawer-section">
-          <h4>话题标签</h4>
-          <div class="tag-chips">
-            <span v-for="tag in noteHashtags(activeNotePost)" :key="tag" class="tag-chip tag-chip--auto">#{{ tag }}</span>
+      <div class="nm-body">
+        <!-- 左:多图画廊 -->
+        <div class="nm-gallery">
+          <button v-if="activeImage" type="button" class="nm-main" :aria-label="`放大第 ${activeImageIndex + 1} 张`" @click="lightboxOpen = true">
+            <img :src="activeImage" alt="笔记图片" referrerpolicy="no-referrer" />
+            <span v-if="images.length > 1" class="nm-counter">{{ activeImageIndex + 1 }} / {{ images.length }}</span>
+            <span class="nm-zoom"><TIcon name="external-link" /> 看原图</span>
+          </button>
+          <div v-else class="nm-main nm-main--empty">
+            <TIcon name="image" />
+            <span>{{ activeNotePost.content_type === 'video' ? '视频笔记' : '暂无图片' }}</span>
+          </div>
+          <div v-if="images.length > 1" class="nm-thumbs">
+            <button
+              v-for="(img, i) in images"
+              :key="i"
+              type="button"
+              class="nm-thumb"
+              :class="{ on: i === activeImageIndex }"
+              @click="activeImageIndex = i"
+            >
+              <img :src="img" alt="" referrerpolicy="no-referrer" />
+            </button>
           </div>
         </div>
 
-        <div v-if="noteTopComments(activeNotePost).length" class="drawer-section">
-          <h4>热门评论 TOP{{ noteTopComments(activeNotePost).length }}</h4>
-          <ul class="drawer-comments">
-            <li v-for="(c, i) in noteTopComments(activeNotePost)" :key="i">
-              <span class="dc-like"><TIcon name="heart" /> {{ c.like_count }}</span>
-              <span>{{ c.content }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="drawer-danger">
-          <button type="button" class="drawer-del" @click="handleDeleteNote(activeNotePost)">删除这条笔记</button>
+        <!-- 右:内容(可滚动) -->
+        <div class="nm-content">
+          <h3 class="nm-title">{{ activeNotePost.title || '(无标题)' }}</h3>
+          <p class="nm-meta">
+            {{ subtypeLabel(activeNotePost.content_subtype) }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
+          </p>
+          <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="nm-link">打开原帖 <TIcon name="external-link" /></a>
+
+          <div class="nm-section">
+            <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
+            <p v-if="noteBodyText(activeNotePost)" class="nm-text">{{ noteBodyText(activeNotePost) }}</p>
+            <p v-else class="empty-region">这篇笔记没有可展示的文字内容。</p>
+          </div>
+
+          <div v-if="noteVisual" class="nm-section nm-visual">
+            <h4>图片解析</h4>
+            <p v-if="noteVisual.hook" class="nm-text"><strong>封面文案：</strong>{{ noteVisual.hook }}</p>
+            <p v-if="noteVisual.layout" class="nm-sub">版式：{{ noteVisual.layout }}</p>
+            <p v-if="noteVisual.style" class="nm-sub">视觉风格：{{ noteVisual.style }}</p>
+            <p v-if="noteVisual.text" class="nm-text"><strong>图内文字：</strong>{{ noteVisual.text }}</p>
+          </div>
+
+          <div v-if="noteHashtags(activeNotePost).length" class="nm-section">
+            <h4>话题标签</h4>
+            <div class="tag-chips">
+              <span v-for="tag in noteHashtags(activeNotePost)" :key="tag" class="tag-chip tag-chip--auto">#{{ tag }}</span>
+            </div>
+          </div>
+
+          <div v-if="noteTopComments(activeNotePost).length" class="nm-section">
+            <h4>热门评论 TOP{{ noteTopComments(activeNotePost).length }}</h4>
+            <ul class="nm-comments">
+              <li v-for="(c, i) in noteTopComments(activeNotePost)" :key="i">
+                <span class="dc-like"><TIcon name="heart" /> {{ c.like_count }}</span>
+                <span>{{ c.content }}</span>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
-    </aside>
+
+      <div class="nm-foot">
+        <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="nm-link">打开原帖 <TIcon name="external-link" /></a>
+        <span v-else></span>
+        <button type="button" class="nm-del" @click="handleDeleteNote(activeNotePost)">删除这条笔记</button>
+      </div>
+    </div>
+
+    <!-- 灯箱:点主图放大看原图 -->
+    <div v-if="lightboxOpen && activeImage" class="nm-lightbox" @click="lightboxOpen = false">
+      <button type="button" class="nm-lightbox-close" aria-label="关闭大图"><TIcon name="x" /></button>
+      <img :src="activeImage" alt="原图" referrerpolicy="no-referrer" @click.stop />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.drawer-overlay {
+.nm-overlay {
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: flex;
-  justify-content: flex-end;
-  background: rgba(20, 24, 28, 0.4);
-  animation: fade 180ms var(--ease-out);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 24, 28, 0.45);
+  animation: nm-fade 160ms var(--ease-out);
 }
-.drawer {
-  width: min(460px, 92vw);
-  height: 100%;
-  background: var(--color-surface);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-  animation: slide-in 220ms var(--ease-out);
-}
-@keyframes fade {
+@keyframes nm-fade {
   from { opacity: 0; }
 }
-@keyframes slide-in {
-  from { transform: translateX(24px); opacity: 0.6; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .drawer-overlay,
-  .drawer {
-    animation: none;
-  }
+  .nm-overlay { animation: none; }
 }
-.drawer-head {
+.nm-modal {
+  width: min(880px, 96vw);
+  max-height: 88vh;
+  background: var(--color-surface);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  overflow: hidden;
+}
+.nm-head,
+.nm-foot {
+  display: flex;
   align-items: center;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--color-paper-3);
+  justify-content: space-between;
+  padding: 12px 18px;
+  flex: 0 0 auto;
 }
-.drawer-head strong {
-  font-size: 15px;
-  font-weight: 650;
-}
+.nm-head { border-bottom: 1px solid var(--color-paper-3); }
+.nm-foot { border-top: 1px solid var(--color-paper-3); }
+.nm-head strong { font-size: 15px; font-weight: 650; }
 .modal-close {
   display: grid;
   place-items: center;
@@ -140,91 +204,158 @@ const noteVisual = computed(() => {
   color: var(--color-ink-2);
   cursor: pointer;
 }
-.modal-close:hover {
-  background: var(--color-rule-strong);
+.modal-close:hover { background: var(--color-rule-strong); }
+
+.nm-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 18px;
+  padding: 16px 18px;
+  overflow: hidden;
 }
-.drawer-body {
-  padding: 18px;
-  overflow-y: auto;
-}
-.drawer-cover {
-  width: 100%;
-  max-height: 240px;
-  object-fit: cover;
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-.drawer-cover.placeholder {
-  height: 140px;
-  background: linear-gradient(135deg, var(--color-paper-3), var(--color-accent-soft));
-}
-.drawer-title {
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 650;
-}
-.drawer-meta {
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: var(--color-ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.drawer-link {
-  font-size: 13px;
-  color: var(--color-accent);
-  font-weight: 600;
-}
-.drawer-section {
-  margin-top: 18px;
-}
-.drawer-section h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 650;
-}
-.drawer-text {
-  white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--color-ink-2);
-}
-.drawer-comments {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+/* 左:画廊 */
+.nm-gallery {
+  flex: 0 0 44%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.drawer-comments li {
-  display: flex;
   gap: 8px;
-  font-size: 13px;
-  line-height: 1.5;
+  min-width: 0;
 }
-.dc-like {
-  flex: 0 0 auto;
+.nm-main {
+  position: relative;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-paper-2, #f3f3f0);
+  cursor: zoom-in;
+  aspect-ratio: 3 / 4;
+}
+.nm-main img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.nm-main--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-ink-3);
+  font-size: 13px;
+  cursor: default;
+}
+.nm-counter {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(20, 24, 28, 0.55);
+  color: #fff;
+}
+.nm-zoom {
+  position: absolute;
+  left: 8px;
+  top: 8px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: #e0496b;
-  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(20, 24, 28, 0.5);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out);
 }
-.drawer-danger {
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 0.5px solid var(--color-line, #e5e7eb);
+.nm-main:hover .nm-zoom { opacity: 1; }
+.nm-thumbs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
-.drawer-del {
-  border: 0;
-  background: transparent;
-  color: var(--color-danger, #dc2626);
-  font-size: 13px;
-  font-weight: 550;
+.nm-thumb {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
-  padding: 4px 0;
+  background: var(--color-paper-2, #f3f3f0);
 }
-.drawer-del:hover {
-  text-decoration: underline;
+.nm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nm-thumb.on { border-color: var(--color-accent); }
+
+/* 右:内容 */
+.nm-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.nm-title { margin: 0 0 6px; font-size: 17px; font-weight: 650; line-height: 1.4; }
+.nm-meta { margin: 0 0 10px; font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
+.nm-link { font-size: 13px; color: var(--color-accent); font-weight: 600; }
+.nm-section { margin-top: 16px; }
+.nm-section h4 { margin: 0 0 8px; font-size: 13px; font-weight: 650; }
+.nm-text { white-space: pre-wrap; font-size: 13px; line-height: 1.7; color: var(--color-ink-2); margin: 0 0 4px; }
+.nm-sub { margin: 0 0 4px; font-size: 12px; color: var(--color-ink-3); }
+.nm-visual {
+  background: var(--color-accent-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.nm-visual h4 { color: var(--color-accent-ink); }
+.nm-comments { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.nm-comments li { display: flex; gap: 8px; font-size: 13px; line-height: 1.5; }
+.dc-like { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; color: #e0496b; font-variant-numeric: tabular-nums; }
+.nm-del { border: 0; background: transparent; color: var(--color-danger, #dc2626); font-size: 13px; font-weight: 550; cursor: pointer; padding: 4px 0; }
+.nm-del:hover { text-decoration: underline; }
+
+/* 灯箱 */
+.nm-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.nm-lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 4px; }
+.nm-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* 移动端:上下堆叠 */
+@media (max-width: 720px) {
+  .nm-overlay { padding: 0; align-items: stretch; }
+  .nm-modal { width: 100%; max-height: 100vh; border-radius: 0; }
+  .nm-body { flex-direction: column; overflow-y: auto; }
+  .nm-gallery { flex: 0 0 auto; }
+  .nm-main { aspect-ratio: 4 / 3; max-height: 44vh; }
+  .nm-content { overflow: visible; }
+  .nm-foot .nm-link { display: none; }
 }
 </style>
