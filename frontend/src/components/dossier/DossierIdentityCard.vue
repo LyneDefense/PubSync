@@ -22,6 +22,7 @@ const tagNames = computed(() => (props.blogger.tags || []).map((t) => t.name).sl
         · 粉丝 {{ blogger.follower_count.toLocaleString() }}
         <template v-if="blogger.note_total != null">· 平台笔记 {{ blogger.note_total }}</template>
       </p>
+      <p v-if="blogger.signature" class="dossier-identity__sig" :title="blogger.signature">{{ blogger.signature }}</p>
       <div v-if="tagNames.length" class="dossier-identity__tags">
         <span v-for="tag in tagNames" :key="tag">{{ tag }}</span>
       </div>
@@ -62,6 +63,17 @@ const tagNames = computed(() => (props.blogger.tags || []).map((t) => t.name).sl
 .dossier-identity__main { flex: 1; min-width: 0; }
 .dossier-identity__main h2 { margin: 0; font-size: 17px; }
 .dossier-identity__meta { margin: 4px 0 0; font-size: 13px; color: var(--color-ink-2); }
+.dossier-identity__sig {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .dossier-identity__tags { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .dossier-identity__tags span {
   font-size: 11px;

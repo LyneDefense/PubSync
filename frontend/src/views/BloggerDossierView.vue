@@ -5,11 +5,12 @@
 import { computed } from 'vue'
 
 import DossierAssetsPanel from '../components/dossier/DossierAssetsPanel.vue'
+import DossierCompliance from '../components/dossier/DossierCompliance.vue'
+import DossierHabits from '../components/dossier/DossierHabits.vue'
 import DossierIdentityCard from '../components/dossier/DossierIdentityCard.vue'
 import DossierPortraits from '../components/dossier/DossierPortraits.vue'
 import DossierStatsPanel from '../components/dossier/DossierStatsPanel.vue'
 import DossierTrajectory from '../components/dossier/DossierTrajectory.vue'
-import type { DossierPortrait } from '../api/types'
 import {
   attributionRunning,
   dossier,
@@ -17,14 +18,12 @@ import {
   dossierLoading,
   handleBuildDossier,
   handleRunAttribution,
-  loadDossier,
 } from '../composables/useDossier'
 import {
   benchmarkAccounts,
   currentSocialTab,
   goCollectForBlogger,
   handleDeleteBlogger,
-  handleDistillFromSnapshot,
   handleRefreshBlogger,
   handleToggleBloggerFavorite,
   isSocialPlatform,
@@ -40,10 +39,9 @@ const visible = computed(() => isSocialPlatform.value && ['dossier', 'assets'].i
 const busy = computed(() => dossierBusy())
 const hasPool = computed(() => (dossier.value?.pool.total || 0) > 0)
 
-async function redistill(portrait: DossierPortrait) {
-  if (!portrait.snapshot_id) return
-  await handleDistillFromSnapshot(portrait.snapshot_id)
-  await loadDossier()
+// 去多画像:重新蒸馏 = 重跑一键建档(重新系统选样 + 覆盖唯一画像),不再走快照。
+async function redistill() {
+  await handleBuildDossier()
 }
 </script>
 
@@ -106,6 +104,7 @@ async function redistill(portrait: DossierPortrait) {
               可升级详情并自动蒸馏。
             </div>
             <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
+            <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
             <DossierTrajectory
               v-if="dossier.trajectory"
               :trajectory="dossier.trajectory"
@@ -115,6 +114,7 @@ async function redistill(portrait: DossierPortrait) {
               :busy="busy"
               @run-attribution="handleRunAttribution"
             />
+            <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
             <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="redistill" />
           </template>
 

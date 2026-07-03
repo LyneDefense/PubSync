@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 档案页·数据面板:账号事实(全量笔记池算)。主指标大数字 + 图文vs视频对比条 + 次指标行。
+// 档案页·数据面板:账号事实(全量池算)。覆盖率对 + 主指标 + 图文/视频环图。互动率已下线(小红书无浏览量)。
 import { computed } from 'vue'
 
 const props = defineProps<{ stats: Record<string, unknown> }>()
@@ -13,36 +13,39 @@ function fmt(v: number | null): string {
   return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v >= 1000 ? v.toLocaleString() : String(v)
 }
 
-const heroCards = computed(() => {
-  const engagement = num('engagement_rate')
-  return [
-    { label: '篇均点赞', value: fmt(num('average_like')), sub: `均藏 ${fmt(num('average_favorite'))} · 均评 ${fmt(num('average_comment'))}` },
-    { label: '藏赞比', value: num('favorite_like_ratio') != null ? String(num('favorite_like_ratio')) : '—', sub: '越高越"值得收藏"，干货信号' },
-    { label: '互动率', value: engagement != null ? `${(engagement * 100).toFixed(1)}%` : '—', sub: engagement != null ? '（赞+藏+评）÷ 浏览' : '暂无浏览量数据' },
-  ]
+// 共 N · 已收录 M · 覆盖率。总数拿不到时只显示已收录。
+const coverage = computed(() => {
+  const total = num('note_total')
+  const got = num('note_count') ?? 0
+  const pct = total && total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null
+  return { total, got, pct }
 })
 
-// 图文 vs 视频均赞对比条。
+const tiles = computed(() => [
+  { label: '获赞与收藏', value: fmt(num('liked_collected_count')), sub: '账号累计（全部笔记）' },
+  { label: '篇均点赞', value: fmt(num('average_like')), sub: `均藏 ${fmt(num('average_favorite'))} · 均评 ${fmt(num('average_comment'))}` },
+  { label: '赞藏比', value: num('favorite_like_ratio') != null ? String(num('favorite_like_ratio')) : '—', sub: '越高越"值得收藏"' },
+])
+
+// 图文 vs 视频环图(按已收录计)。
 const modality = computed(() => {
   const by = props.stats.by_modality as Record<string, { count?: number; average_like?: number }> | undefined
-  const image = by?.image
-  const video = by?.video
-  if (!image?.count || !video?.count) return null
-  const max = Math.max(image.average_like || 0, video.average_like || 0, 1)
-  return [
-    { label: '图文', count: image.count, avg: image.average_like || 0, pct: ((image.average_like || 0) / max) * 100 },
-    { label: '视频', count: video.count, avg: video.average_like || 0, pct: ((video.average_like || 0) / max) * 100 },
-  ]
-})
-
-const secondary = computed(() => {
-  const freq = props.stats.frequency_info as { pattern?: string; avg_days_between?: number } | undefined
-  const trend = props.stats.growth_trend as { summary?: string } | undefined
-  const items: { label: string; value: string }[] = []
-  if (num('note_count') != null) items.push({ label: '入池笔记', value: `${num('note_count')} 篇（详情级 ${num('full_count') ?? 0}）` })
-  if (freq?.pattern) items.push({ label: '发布节奏', value: freq.avg_days_between != null ? `${freq.pattern} · 均隔 ${freq.avg_days_between} 天` : freq.pattern })
-  if (trend?.summary) items.push({ label: '近期趋势', value: trend.summary })
-  return items
+  const image = by?.image?.count || 0
+  const video = by?.video?.count || 0
+  const total = image + video
+  if (!total) return null
+  const videoPct = (video / total) * 100
+  const C = 2 * Math.PI * 46
+  return {
+    total, image, video,
+    imageAvg: by?.image?.average_like || 0,
+    videoAvg: by?.video?.average_like || 0,
+    videoDash: (videoPct / 100) * C,
+    imageDash: ((100 - videoPct) / 100) * C,
+    imageOffset: -(videoPct / 100) * C,
+    circumference: C,
+    videoPctLabel: Math.round(videoPct),
+  }
 })
 </script>
 
@@ -53,54 +56,73 @@ const secondary = computed(() => {
       <span class="dossier-block__hint">按全量笔记池计算 · 池更新后自动重算</span>
     </header>
 
-    <div class="ds-hero">
-      <div v-for="card in heroCards" :key="card.label" class="ds-hero__card">
-        <span class="ds-hero__label">{{ card.label }}</span>
-        <strong class="ds-hero__value">{{ card.value }}</strong>
-        <span class="ds-hero__sub">{{ card.sub }}</span>
+    <div class="ds-coverage">
+      <span class="ds-coverage__text">
+        <template v-if="coverage.total != null">共 {{ coverage.total }} 篇 · 已收录 {{ coverage.got }} 篇</template>
+        <template v-else>已收录 {{ coverage.got }} 篇</template>
+      </span>
+      <span v-if="coverage.pct != null" class="ds-coverage__track"><span class="ds-coverage__bar" :style="{ width: `${coverage.pct}%` }"></span></span>
+      <span v-if="coverage.pct != null" class="ds-coverage__pct">覆盖 {{ coverage.pct }}%</span>
+    </div>
+
+    <div class="ds-tiles">
+      <div v-for="t in tiles" :key="t.label" class="ds-tile">
+        <span class="ds-tile__label">{{ t.label }}</span>
+        <strong class="ds-tile__value">{{ t.value }}</strong>
+        <span class="ds-tile__sub">{{ t.sub }}</span>
       </div>
     </div>
 
     <div v-if="modality" class="ds-modality">
-      <div v-for="m in modality" :key="m.label" class="ds-modality__row">
-        <span class="ds-modality__label">{{ m.label }} · {{ m.count }} 篇</span>
-        <span class="ds-modality__track"><span class="ds-modality__bar" :style="{ width: `${Math.max(m.pct, 4)}%` }"></span></span>
-        <span class="ds-modality__value">均赞 {{ fmt(m.avg) }}</span>
+      <svg viewBox="0 0 120 120" class="ds-donut" role="img" :aria-label="`内容形态：视频 ${modality.video} 篇，图文 ${modality.image} 篇`">
+        <g transform="rotate(-90 60 60)" fill="none" stroke-width="15">
+          <circle cx="60" cy="60" r="46" stroke="var(--color-accent)" :stroke-dasharray="`${modality.videoDash} ${modality.circumference}`"></circle>
+          <circle cx="60" cy="60" r="46" stroke="var(--color-ok)" :stroke-dasharray="`${modality.imageDash} ${modality.circumference}`" :stroke-dashoffset="modality.imageOffset"></circle>
+        </g>
+        <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="700" fill="var(--color-ink)">{{ modality.total }}</text>
+        <text x="60" y="73" text-anchor="middle" font-size="10" fill="var(--color-ink-3)">已收录</text>
+      </svg>
+      <div class="ds-legend">
+        <span class="ds-legend__row"><i class="ds-dot ds-dot--v"></i>视频笔记 · {{ modality.video }} 篇 · 均赞 {{ fmt(modality.videoAvg) }}</span>
+        <span class="ds-legend__row"><i class="ds-dot ds-dot--i"></i>图文笔记 · {{ modality.image }} 篇 · 均赞 {{ fmt(modality.imageAvg) }}</span>
+        <span class="ds-legend__hint">类型随列表逐篇判定 · 按已收录 {{ modality.total }} 篇计</span>
       </div>
-    </div>
-
-    <div v-if="secondary.length" class="ds-secondary">
-      <span v-for="item in secondary" :key="item.label" class="ds-secondary__item">
-        <em>{{ item.label }}</em>{{ item.value }}
-      </span>
     </div>
   </section>
 </template>
 
 <style scoped>
-.ds-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-.ds-hero__card {
+.ds-coverage { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ds-coverage__text { font-size: 13px; color: var(--color-ink); white-space: nowrap; }
+.ds-coverage__track { flex: 1; height: 6px; border-radius: 999px; background: var(--color-paper-3); overflow: hidden; }
+.ds-coverage__bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
+.ds-coverage__pct { font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.ds-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ds-tile {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 14px 16px;
-  border-radius: 12px;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: linear-gradient(180deg, var(--color-paper-2), var(--color-paper-3));
   border: 1px solid var(--color-rule);
   border-left: 3px solid var(--color-accent);
 }
-.ds-hero__label { font-size: 12px; color: var(--color-ink-3); letter-spacing: 0.02em; }
-.ds-hero__value { font-size: 26px; font-weight: 700; color: var(--color-ink); font-family: var(--font-display); line-height: 1.2; }
-.ds-hero__sub { font-size: 11.5px; color: var(--color-ink-3); }
+.ds-tile__label { font-size: 12px; color: var(--color-ink-3); }
+.ds-tile__value { font-size: 24px; font-weight: 700; color: var(--color-ink); font-family: var(--font-display); line-height: 1.25; }
+.ds-tile__sub { font-size: 11.5px; color: var(--color-ink-3); }
 
-.ds-modality { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
-.ds-modality__row { display: flex; align-items: center; gap: 10px; }
-.ds-modality__label { width: 92px; font-size: 12px; color: var(--color-ink-2); flex-shrink: 0; }
-.ds-modality__track { flex: 1; height: 8px; border-radius: 999px; background: var(--color-paper-3); overflow: hidden; }
-.ds-modality__bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); opacity: 0.85; }
-.ds-modality__value { width: 96px; font-size: 12px; color: var(--color-ink-2); text-align: right; flex-shrink: 0; }
+.ds-modality { display: flex; align-items: center; gap: 20px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--color-rule); }
+.ds-donut { width: 96px; height: 96px; flex-shrink: 0; }
+.ds-legend { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.ds-legend__row { display: flex; align-items: center; gap: 8px; color: var(--color-ink-2); }
+.ds-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.ds-dot--v { background: var(--color-accent); }
+.ds-dot--i { background: var(--color-ok); }
+.ds-legend__hint { font-size: 11.5px; color: var(--color-ink-3); }
 
-.ds-secondary { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--color-rule); }
-.ds-secondary__item { font-size: 12.5px; color: var(--color-ink-2); }
-.ds-secondary__item em { font-style: normal; color: var(--color-ink-3); margin-right: 6px; font-size: 12px; }
+@media (max-width: 560px) {
+  .ds-tiles { grid-template-columns: 1fr; }
+}
 </style>

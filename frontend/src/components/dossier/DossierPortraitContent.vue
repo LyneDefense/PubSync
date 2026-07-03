@@ -76,14 +76,16 @@ const COGNITIVE_KEYS: { key: string; label: string }[] = [
       </div>
     </div>
 
-    <div v-if="angle && (list(angle, 'topic_angles').length || list(angle, 'trend_hijacking').length)" class="pc-cols">
-      <div v-if="list(angle, 'topic_angles').length" class="pc-col">
-        <h5>选题角度</h5>
-        <ul><li v-for="(item, i) in list(angle, 'topic_angles').slice(0, 4)" :key="i">{{ item }}</li></ul>
+    <!-- 选题思路:单独成块、方法为主(最高杠杆的创作决策) -->
+    <div v-if="angle && (list(angle, 'topic_method').length || list(angle, 'topic_angles').length || list(angle, 'trend_hijacking').length)" class="pc-topic">
+      <h5 class="pc-topic__h">选题思路 <span>· 最高杠杆</span></h5>
+      <div v-if="list(angle, 'topic_method').length" class="pc-topic__method">
+        <span class="pc-topic__tag">方法</span>
+        <ul><li v-for="(item, i) in list(angle, 'topic_method').slice(0, 3)" :key="i">{{ item }}</li></ul>
       </div>
-      <div v-if="list(angle, 'trend_hijacking').length" class="pc-col">
-        <h5>蹭热点 / 借势</h5>
-        <ul><li v-for="(item, i) in list(angle, 'trend_hijacking').slice(0, 4)" :key="i">{{ item }}</li></ul>
+      <div class="pc-topic__sub">
+        <p v-if="list(angle, 'topic_angles').length"><em>常用角度</em>{{ list(angle, 'topic_angles').slice(0, 5).join(' · ') }}</p>
+        <p v-if="list(angle, 'trend_hijacking').length"><em>借势</em>{{ list(angle, 'trend_hijacking').slice(0, 4).join(' · ') }}</p>
       </div>
     </div>
     <!-- 旧形态兜底:策略层 -->
@@ -148,4 +150,16 @@ const COGNITIVE_KEYS: { key: string; label: string }[] = [
 .pc-lane-tabs button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-ink); }
 .pc-lane { display: flex; flex-direction: column; gap: 10px; }
 .pc-missing { margin: 8px 0 0; font-size: 12px; color: var(--color-ink-3); }
+
+/* 选题思路:强调块 */
+.pc-topic { border-top: 2px solid var(--color-accent); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pc-topic__h { margin: 0; font-size: 13px; color: var(--color-accent-ink); font-weight: 600; }
+.pc-topic__h span { color: var(--color-ink-3); font-weight: 400; font-size: 11px; }
+.pc-topic__method { display: flex; gap: 8px; align-items: flex-start; }
+.pc-topic__tag { flex-shrink: 0; font-size: 11px; padding: 1px 7px; border-radius: 5px; background: var(--color-accent-soft); color: var(--color-accent-ink); margin-top: 2px; }
+.pc-topic__method ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.pc-topic__method li { font-size: 13px; color: var(--color-ink); line-height: 1.6; }
+.pc-topic__sub { display: flex; flex-direction: column; gap: 4px; }
+.pc-topic__sub p { margin: 0; font-size: 12.5px; color: var(--color-ink-2); line-height: 1.5; }
+.pc-topic__sub em { font-style: normal; color: var(--color-ink-3); margin-right: 6px; }
 </style>

@@ -333,8 +333,10 @@ export interface BloggerProfile {
   avatar_url: string
   follower_count: number
   note_total: number | null
+  liked_collected_count: number | null
   niche: string
   description: string
+  signature: string
   tags: BloggerTag[]
   is_favorite: boolean
   sample_count: number
@@ -912,6 +914,7 @@ export interface AppraisalIntentContext {
 
 export interface DossierPoolInfo {
   total: number
+  note_total: number | null
   full_count: number
   list_count: number
   synced_at: string | null
@@ -948,12 +951,60 @@ export interface DossierTrajectoryPoint {
   view: number
 }
 
+export interface DossierBucket {
+  period: string
+  start: string
+  end: string
+  median_like: number
+  note_count: number
+}
+
+export interface DossierPhase {
+  label: string
+  start: string
+  end: string
+  note_count: number
+  avg_like: number
+  volatility?: string
+}
+
+export interface DossierLevelUp {
+  date: string
+  from_avg: number
+  to_avg: number
+  trigger: { post_id: number; external_id: string; title: string; like: number; date: string } | null
+}
+
 export interface DossierTrajectory {
   points: DossierTrajectoryPoint[]
+  buckets: DossierBucket[]
   bursts: { post_id: number; date: string; like: number; title: string }[]
-  phases: { label: string; start: string; end: string; note_count: number; avg_like: number }[]
+  phases: DossierPhase[]
+  level_ups: DossierLevelUp[]
   recent_trend: string
+  granularity: string
+  low_frequency: boolean
   summary: string
+}
+
+export interface DossierHabits {
+  coverage: { pool: number; detail: number }
+  posting_rhythm: { pattern: string; avg_days_between: number | null }
+  modality_pref: Record<string, unknown>
+  genre: { listicle: number; total: number; ratio: number | null }
+  comment_guide: { count: number; total: number; ratio: number | null }
+  author_reply: { replied: number; with_comments: number; ratio: number | null }
+}
+
+export interface DossierCompliance {
+  score: number
+  grade: string
+  has_ban: boolean
+  vertical_labels: string[]
+  violations: { word: string; field: string; rule: string; severity: string }[]
+  advisories: { word: string; field: string; rule: string; severity: string }[]
+  hits: { word: string; field: string; rule: string; severity: string }[]
+  coverage: { pool: number; title_level: number; full_text: number }
 }
 
 export interface DossierAttribution {
@@ -967,6 +1018,8 @@ export interface BloggerDossier {
   blogger_id: number
   pool: DossierPoolInfo
   stats: Record<string, unknown> | null
+  habits: DossierHabits | null
+  compliance: DossierCompliance | null
   trajectory: DossierTrajectory | null
   attribution: DossierAttribution | null
   portraits: DossierPortrait[]
