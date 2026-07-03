@@ -382,6 +382,7 @@ def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, An
     note_total = deep_first_int(
         payload,
         [
+            "ndiscovery",  # 小红书 user_info 的笔记数键(实测)
             "notes_count", "note_count", "noteCount", "notes_num", "notesNum",
             "aweme_count", "awemeCount", "works_count", "worksCount", "video_count", "videoCount", "note_total",
         ],
@@ -399,10 +400,17 @@ def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, An
 
 
 def _liked_collected(payload: Any) -> int | None:
-    """账号级"获赞与收藏"总数:抖音看 total_favorited;小红书从 interactions 列表里找「获赞/收藏」项。取不到 None(不硬编)。"""
+    """账号级"获赞与收藏"总数。取不到 None(不硬编)。
+    - 抖音:total_favorited(总获赞)。
+    - 小红书(实测):顶层 liked + collected 两个键相加(小红书主页把"获赞与收藏"显示成一个合计数)。
+    - 兜底:interactions 列表里找「获赞/收藏」项。"""
     direct = deep_first_int(payload, ["total_favorited", "totalFavorited", "liked_collected", "likedCollected", "interaction_count"])
     if direct:
         return direct
+    liked = deep_first_int(payload, ["liked"])
+    collected = deep_first_int(payload, ["collected"])
+    if liked or collected:
+        return liked + collected
     found: list[int] = []
 
     def visit(node: Any) -> None:
