@@ -18,6 +18,7 @@ import {
   dossierLoading,
   handleBuildDossier,
   handleRunAttribution,
+  loadDossier,
 } from '../composables/useDossier'
 import {
   benchmarkAccounts,
@@ -42,6 +43,13 @@ const hasPool = computed(() => (dossier.value?.pool.total || 0) > 0)
 // 去多画像:重新蒸馏 = 重跑一键建档(重新系统选样 + 覆盖唯一画像),不再走快照。
 async function redistill() {
   await handleBuildDossier()
+}
+
+// 刷新资料后要重载档案聚合(数据面板的 note_total/获赞收藏来自聚合接口,不重拉不更新)。
+async function refreshProfile() {
+  if (!selectedBlogger.value) return
+  await handleRefreshBlogger(selectedBlogger.value)
+  await loadDossier()
 }
 </script>
 
@@ -78,7 +86,7 @@ async function redistill() {
             <div class="dossier-view__id-actions">
               <button type="button" class="ghost" @click="handleToggleBloggerFavorite(selectedBlogger)">{{ selectedBlogger.is_favorite ? '取消标记' : '⭐ 标记' }}</button>
               <button type="button" class="ghost" @click="openEditBloggerModal(selectedBlogger)">编辑</button>
-              <button type="button" class="ghost" :disabled="Boolean(pendingAction)" @click="handleRefreshBlogger(selectedBlogger)">刷新资料</button>
+              <button type="button" class="ghost" :disabled="Boolean(pendingAction)" @click="refreshProfile">刷新资料</button>
               <button type="button" class="ghost" @click="goCollectForBlogger(selectedBlogger.id)">采集笔记 →</button>
               <button type="button" class="ghost dossier-view__danger" @click="handleDeleteBlogger(selectedBlogger)">删除</button>
             </div>
