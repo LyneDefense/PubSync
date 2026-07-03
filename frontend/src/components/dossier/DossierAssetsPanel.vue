@@ -183,8 +183,8 @@ async function deleteDetailSnapshot() {
 
 <template>
   <div v-if="selectedBlogger">
-    <!-- 选材快照(可折叠) -->
-    <section class="card">
+    <!-- 选材快照已下线:去多画像后系统自动选样,用户不再手动建快照/选笔记。 -->
+    <section v-if="false" class="card">
       <div class="card-head">
         <button type="button" class="fold-toggle" :class="{ open: snapsOpen }" @click="snapsOpen = !snapsOpen" aria-label="展开/收起快照">›</button>
         <div class="ch-l"><h3>选材快照</h3><span class="ch-count">{{ bloggerSnapshots.length }} 个</span></div>
