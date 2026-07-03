@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from app.blogger_dossier import compliance, habits, pool, stats, trajectory
 from app.blogger_dossier.attribution import parse_attribution, run_attribution
 from app.blogger_distillation.service.collection import refresh_blogger_profile, run_blogger_collection
-from app.blogger_distillation.service.crud import create_snapshot
 from app.blogger_distillation.service.distillation import run_blogger_distillation
 from app.blogger_distillation.service.events import record_task_event
 from app.config import Settings
@@ -85,27 +84,35 @@ def build_dossier(db: Session, settings: Settings, task_id: str, tenant_id: int,
             db, tenant_id, task_id, "建档·数据与轨迹", "succeeded",
             f"数据面板与成长轨迹已就绪：{len(posts)} 篇入池，{len(traj.get('bursts') or [])} 个爆发点",
         )
-        # 阶段4 最新 N 篇升详情级(复用采集管线:order=latest 会优先升级最新的 list 级行)
-        target = max(1, settings.dossier_default_full_count)
-        record_task_event(db, tenant_id, task_id, "建档·详情升级", "running", f"升级最新 {target} 篇为详情级(正文/转写/图文理解/评论)")
+        # 阶段4 系统选样升详情级:最新 N 篇(基本盘/近期)+ 历史高赞 M 篇(爆文),两批并起来 = 分层样本。
+        # 采样由系统定,用户不选;历史爆文进样是为了让画像学到"爆文怎么写"(选题思路那块最值钱的料)。
+        recent_n = max(1, settings.dossier_default_full_count)
+        hot_n = max(0, settings.dossier_hot_count)
+        record_task_event(db, tenant_id, task_id, "建档·详情升级", "running",
+                          f"升级最新 {recent_n} 篇 + 历史高赞 {hot_n} 篇为详情级(正文/转写/图文理解/评论)")
         run_blogger_collection(
             db, settings, task_id, tenant_id, blogger_id,
-            sample_limit=target, comments_per_post=20, asr_enabled=settings.asr_enabled,
+            sample_limit=recent_n, comments_per_post=20, asr_enabled=settings.asr_enabled,
             content_types=None, order="latest", fetch_all=False, backfill=True,
         )
-        # 阶段5 自动蒸馏默认画像(最新 N 篇详情级)
-        ids = _latest_full_post_ids(db, tenant_id, blogger_id, target)
+        if hot_n:
+            run_blogger_collection(
+                db, settings, task_id, tenant_id, blogger_id,
+                sample_limit=hot_n, comments_per_post=20, asr_enabled=settings.asr_enabled,
+                content_types=None, order="top_liked", fetch_all=False, backfill=True,
+            )
+        # 阶段5 自动蒸馏唯一画像(系统选样的详情级笔记;去多画像 = 重蒸即覆盖,不建快照)
+        ids = _sample_post_ids(db, tenant_id, blogger_id)
         distilled = False
         if len(ids) < settings.distill_min_samples:
             record_task_event(
-                db, tenant_id, task_id, "建档·默认画像", "succeeded",
+                db, tenant_id, task_id, "建档·创作画像", "succeeded",
                 f"详情级笔记仅 {len(ids)} 篇（<{settings.distill_min_samples}），本次跳过自动蒸馏，可稍后手动蒸馏",
             )
         else:
-            snapshot = create_snapshot(db, tenant_id, blogger_id, f"默认画像 · 最新{len(ids)}篇", ids)
             run_blogger_distillation(
                 db, settings, task_id, tenant_id, blogger_id,
-                post_ids=ids, source="dossier", snapshot_id=snapshot.id, mode="A",
+                post_ids=ids, source="dossier", snapshot_id=None, mode="A",
             )
             distilled = True
         return {"pool": sync, "full_selected": len(ids), "distilled": distilled}
@@ -117,7 +124,11 @@ def build_dossier(db: Session, settings: Settings, task_id: str, tenant_id: int,
             db.commit()
 
 
-def _latest_full_post_ids(db: Session, tenant_id: int, blogger_id: int, limit: int) -> list[int]:
+def _sample_post_ids(db: Session, tenant_id: int, blogger_id: int) -> list[int]:
+    """系统选样 = 建档已升级为详情级的全部在架笔记(最新 N 批 + 历史高赞批)。
+
+    两批升级已把样本定住(近期基本盘 + 历史爆文),这里全取即可;下游证据装配器再按预算截断。
+    """
     rows = db.scalars(
         select(BloggerPost)
         .where(
@@ -127,7 +138,6 @@ def _latest_full_post_ids(db: Session, tenant_id: int, blogger_id: int, limit: i
             BloggerPost.detail_level == "full",
         )
         .order_by(BloggerPost.published_at.desc().nullslast(), BloggerPost.created_at.desc())
-        .limit(limit)
     )
     return [p.id for p in rows]
 

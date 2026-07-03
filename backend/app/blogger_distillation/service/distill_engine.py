@@ -99,6 +99,7 @@ TikHub 用户信息摘要：
     "value_stance": ["价值立场"]
   }},
   "angle_layer": {{
+    "topic_method": ["选题方法/思路（最高杠杆、可迁移到别的赛道）：TA 怎么**决定做什么题**，如'从已验证爆款反推可复用结构，再套自己话术二次表达'"],
     "topic_angles": ["从观点张力推出的选题角度（可迁移的'从什么角度切'，不是具体标题）"],
     "trend_hijacking": ["蹭热点/借势方式"]
   }},
@@ -293,7 +294,7 @@ def distill_lane(
 
 _CORE_LAYERS: dict[str, list[str]] = {
     "cognitive_layer": ["core_beliefs", "opinion_tensions", "value_stance"],
-    "angle_layer": ["topic_angles", "trend_hijacking"],
+    "angle_layer": ["topic_method", "topic_angles", "trend_hijacking"],
 }
 _COGNITIVE_KEYS = ("core_beliefs", "opinion_tensions", "value_stance")
 _LANE_LIST_KEYS = [
@@ -377,8 +378,8 @@ def evaluate_core_quality(core: dict[str, Any], stats: dict[str, Any], mode: str
     voice = core.get("voice", {}) if isinstance(core.get("voice"), dict) else {}
     cognitive_items = sum(len(cognitive.get(k) or []) for k in _COGNITIVE_KEYS)
     deduct(30, "认知层覆盖", cognitive_items >= 3, f"认知层共 {cognitive_items} 条，建议 ≥3 条")
-    angle_items = sum(len(angle.get(k) or []) for k in ("topic_angles", "trend_hijacking"))
-    deduct(15, "角度层覆盖", angle_items >= 2, f"角度层共 {angle_items} 条，建议 ≥2 条(选题角度是选题器的原料)")
+    angle_items = sum(len(angle.get(k) or []) for k in ("topic_method", "topic_angles", "trend_hijacking"))
+    deduct(15, "选题思路覆盖", angle_items >= 2, f"选题思路共 {angle_items} 条，建议 ≥2 条(选题方法/角度是选题器的原料)")
     has_voice = bool(str(voice.get("self_ref") or "").strip() or voice.get("catchphrases"))
     deduct(10, "人设声音", has_voice, "voice 为空:至少给出自称方式或口头禅(创作借声要用)")
     if not str(core.get("one_glance") or "").strip():

@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     distill_evidence_legacy: bool = False  # A/B 旁路:True=退回旧的 json.dumps(stats)[:16000],供新旧对照
     # 博主档案(建档/笔记池/画像过时阈值)。
     dossier_default_full_count: int = 80        # 建档默认升级详情级的「最新 N 篇」(不足全采)
+    dossier_hot_count: int = 10                 # 建档额外升级的「历史高赞 N 篇」(封顶爆文样本,画像学"爆文怎么写")
     dossier_incremental_known_streak: int = 25  # 笔记池增量:尾部连续遇到 N 条已知笔记即停(约一页+缓冲)
     portrait_stale_new_posts: int = 20          # 画像过时提示:蒸馏后池新增 ≥N 篇
     portrait_stale_days: int = 60               # 画像过时提示:距蒸馏超 N 天

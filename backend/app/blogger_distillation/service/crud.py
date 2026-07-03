@@ -97,24 +97,17 @@ def delete_snapshot(db: Session, tenant_id: int, snapshot_id: int) -> None:
     db.commit()
 
 
-def archive_active_skills(db: Session, tenant_id: int, blogger_id: int, *, snapshot_id: int | None) -> None:
-    """归档「同一快照来源」的旧 active 画像(版本迭代=覆盖);不同快照的画像并存(多画像)。
+def archive_active_skills(db: Session, tenant_id: int, blogger_id: int, *, snapshot_id: int | None = None) -> None:
+    """归档该博主的**全部** active 画像 —— 一个博主只保留一份创作画像,重蒸即覆盖(去多画像)。
 
-    snapshot_id=None 只归档同为 None(自动蒸馏)的旧版,不动有快照的画像。
+    snapshot_id 形参仅为兼容旧调用签名,不再用于限定作用域。
     """
-    snapshot_cond = (
-        BloggerDistillationRun.snapshot_id == snapshot_id
-        if snapshot_id is not None
-        else BloggerDistillationRun.snapshot_id.is_(None)
-    )
+    _ = snapshot_id
     active_skills = db.scalars(
-        select(BloggerSkill)
-        .join(BloggerDistillationRun, BloggerSkill.run_id == BloggerDistillationRun.id)
-        .where(
+        select(BloggerSkill).where(
             BloggerSkill.tenant_id == tenant_id,
             BloggerSkill.blogger_id == blogger_id,
             BloggerSkill.status == "active",
-            snapshot_cond,
         )
     )
     for skill in active_skills:
