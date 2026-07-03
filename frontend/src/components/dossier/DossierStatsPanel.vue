@@ -13,12 +13,12 @@ function fmt(v: number | null): string {
   return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v >= 1000 ? v.toLocaleString() : String(v)
 }
 
-// 共 N · 已收录 M · 覆盖率。总数拿不到时只显示已收录。
+// 共 N · 已收录 M · 覆盖率。总数拿不到时:翻到底=已全部,否则=未翻到底(诚实)。
 const coverage = computed(() => {
   const total = num('note_total')
   const got = num('note_count') ?? 0
   const pct = total && total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null
-  return { total, got, pct }
+  return { total, got, pct, reachedEnd: props.stats.reached_end === true }
 })
 
 const tiles = computed(() => [
@@ -59,7 +59,8 @@ const modality = computed(() => {
     <div class="ds-coverage">
       <span class="ds-coverage__text">
         <template v-if="coverage.total != null">共 {{ coverage.total }} 篇 · 已收录 {{ coverage.got }} 篇</template>
-        <template v-else>已收录 {{ coverage.got }} 篇</template>
+        <template v-else-if="coverage.reachedEnd">已收录 {{ coverage.got }} 篇 · 已翻到底（即全部）</template>
+        <template v-else>已收录 {{ coverage.got }} 篇 · 未翻到底</template>
       </span>
       <span v-if="coverage.pct != null" class="ds-coverage__track"><span class="ds-coverage__bar" :style="{ width: `${coverage.pct}%` }"></span></span>
       <span v-if="coverage.pct != null" class="ds-coverage__pct">覆盖 {{ coverage.pct }}%</span>
@@ -76,8 +77,8 @@ const modality = computed(() => {
     <div v-if="modality" class="ds-modality">
       <svg viewBox="0 0 120 120" class="ds-donut" role="img" :aria-label="`内容形态：视频 ${modality.video} 篇，图文 ${modality.image} 篇`">
         <g transform="rotate(-90 60 60)" fill="none" stroke-width="15">
-          <circle cx="60" cy="60" r="46" stroke="var(--color-accent)" :stroke-dasharray="`${modality.videoDash} ${modality.circumference}`"></circle>
-          <circle cx="60" cy="60" r="46" stroke="var(--color-ok)" :stroke-dasharray="`${modality.imageDash} ${modality.circumference}`" :stroke-dashoffset="modality.imageOffset"></circle>
+          <circle cx="60" cy="60" r="46" stroke="#3d84d6" :stroke-dasharray="`${modality.videoDash} ${modality.circumference}`"></circle>
+          <circle cx="60" cy="60" r="46" stroke="#1d9e75" :stroke-dasharray="`${modality.imageDash} ${modality.circumference}`" :stroke-dashoffset="modality.imageOffset"></circle>
         </g>
         <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="700" fill="var(--color-ink)">{{ modality.total }}</text>
         <text x="60" y="73" text-anchor="middle" font-size="10" fill="var(--color-ink-3)">已收录</text>
@@ -118,8 +119,8 @@ const modality = computed(() => {
 .ds-legend { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .ds-legend__row { display: flex; align-items: center; gap: 8px; color: var(--color-ink-2); }
 .ds-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.ds-dot--v { background: var(--color-accent); }
-.ds-dot--i { background: var(--color-ok); }
+.ds-dot--v { background: #3d84d6; }
+.ds-dot--i { background: #1d9e75; }
 .ds-legend__hint { font-size: 11.5px; color: var(--color-ink-3); }
 
 @media (max-width: 560px) {

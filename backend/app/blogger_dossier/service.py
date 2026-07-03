@@ -182,6 +182,7 @@ def dossier_overview(db: Session, settings: Settings, tenant_id: int, blogger_id
     if stats_payload is not None:
         stats_payload["note_total"] = blogger.note_total
         stats_payload["liked_collected_count"] = blogger.liked_collected_count
+        stats_payload["reached_end"] = bool(blogger.pool_reached_end)
     return {
         "blogger_id": blogger.id,
         "pool": {

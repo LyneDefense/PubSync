@@ -377,6 +377,8 @@ def refresh_blogger_profile(db: Session, settings: Settings, tenant_id: int, blo
     ensure_collection_provider_available(blogger)
     client = build_collection_client(settings, blogger.platform)
     payload = client.get_user_info(blogger.homepage_url, blogger.external_id)
+    # TEMP 调试:抓 user_info 真实结构,定位「笔记总数 / 获赞收藏」的键名(定位后删)。
+    logger.info("DEBUG_USERINFO blogger_id=%s payload=%s", blogger_id, json.dumps(payload, ensure_ascii=False)[:3500])
     profile = extract_user_profile(blogger.platform, payload)
     if profile["display_name"]:
         blogger.display_name = profile["display_name"]
