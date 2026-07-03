@@ -206,10 +206,13 @@ def first_positive_count(sources: list[dict[str, Any]], keys: list[str]) -> int:
 
 
 def normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
+    # is_author 由 anonymize_comments 先行判定(作者本人回复 vs 读者评论),这里保留:
+    # 运营习惯要区分「博主回复习惯」和「读者评论」,不能把读者的话当博主的习惯。
     return {
         "content": first_str(item, ["content", "text", "comment_content", "desc"]),
         "like_count": first_int(item, ["like_count", "liked_count", "digg_count", "likes"]),
         "created_at": str(parse_timestamp(item.get("create_time") or item.get("time")) or ""),
+        "is_author": bool(item.get("is_author")),
     }
 
 

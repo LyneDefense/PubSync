@@ -27,7 +27,12 @@ class BloggerProfile(Base):
     # 平台侧笔记/作品总数(从 user_info 解析,解析不到为 NULL)。与"已采集 N 条(sample_count)"区分。
     note_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     niche: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    # 用户对该博主的备注(自己写);与平台主页简介 signature 分开,不混用。
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 平台主页简介/个性签名(从 user_info 解析,刷新资料时更新);只读展示。
+    signature: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # 账号级获赞与收藏总数(user_info,覆盖全部笔记,含未入池;解析不到为 NULL)。与池内求和区分。
+    liked_collected_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 内容标签:JSON 数组,元素 {"name": str, "source": "auto"|"manual"}。
     # auto=采集时 LLM 提炼(每次重算替换),manual=用户手填(永久保留)。
     tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
@@ -39,6 +44,11 @@ class BloggerProfile(Base):
     pool_reached_end: Mapped[bool] = mapped_column(default=False, server_default="false")
     # 爆文归因(LLM,按钮触发):{"generated_at", "hypotheses": [...], "summary"};空=未运行。
     attribution_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # 运营习惯事实模块(建档算):发布节奏/模态偏好/体裁分布/评论引导(博主自身内容)/博主回复习惯。
+    # 事实主体在此;蒸馏解读另存于最新蒸馏 report_json,前端合并展示。空=未建档。
+    operating_habits_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # 合规体检(建档规则扫描):{"grade","score","hits":[...],"coverage":{...},"generated_at"};空=未扫描。
+    compliance_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     # 构建互斥锁:进行中的建档/池同步任务 id;任务结束(含失败)清空。配合任务状态自愈。
     build_task_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

@@ -42,8 +42,10 @@ class BloggerProfileRead(BaseModel):
     avatar_url: str
     follower_count: int
     note_total: int | None = None
+    liked_collected_count: int | None = None
     niche: str
     description: str
+    signature: str = ""
     tags: list[dict] = []
     is_favorite: bool
     sample_count: int
@@ -261,6 +263,7 @@ class BloggerSkillRead(BaseModel):
 
 class DossierPoolInfo(BaseModel):
     total: int
+    note_total: int | None = None
     full_count: int
     list_count: int
     synced_at: datetime | None
@@ -294,6 +297,8 @@ class BloggerDossierRead(BaseModel):
     blogger_id: int
     pool: DossierPoolInfo
     stats: dict | None
+    habits: dict | None = None
+    compliance: dict | None = None
     trajectory: dict | None
     attribution: dict | None
     portraits: list[DossierPortrait]

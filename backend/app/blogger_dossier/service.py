@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.blogger_dossier import pool, stats, trajectory
+from app.blogger_dossier import compliance, habits, pool, stats, trajectory
 from app.blogger_dossier.attribution import parse_attribution, run_attribution
 from app.blogger_distillation.service.collection import refresh_blogger_profile, run_blogger_collection
 from app.blogger_distillation.service.crud import create_snapshot
@@ -167,16 +167,27 @@ def dossier_overview(db: Session, settings: Settings, tenant_id: int, blogger_id
     blogger = _get_blogger(db, tenant_id, blogger_id)
     posts = active_posts(db, tenant_id, blogger_id)
     building = _building_status(db, blogger)
+    # 数据面板要展示「共 N 篇 · 已收录 M（覆盖率）」和账号级获赞收藏,把这两项平台事实注入 stats。
+    stats_payload = stats.account_stats(posts) if posts else None
+    if stats_payload is not None:
+        stats_payload["note_total"] = blogger.note_total
+        stats_payload["liked_collected_count"] = blogger.liked_collected_count
     return {
         "blogger_id": blogger.id,
         "pool": {
             "total": len(posts),
+            "note_total": blogger.note_total,
             "full_count": sum(1 for p in posts if p.detail_level == "full"),
             "list_count": sum(1 for p in posts if p.detail_level != "full"),
             "synced_at": blogger.pool_synced_at,
             "reached_end": bool(blogger.pool_reached_end),
         },
-        "stats": stats.account_stats(posts) if posts else None,
+        "stats": stats_payload,
+        "habits": habits.operating_habits(posts) if posts else None,
+        "compliance": (
+            compliance.scan_pool(blogger.platform, blogger.niche, [t["name"] for t in blogger.tags], posts)
+            if posts else None
+        ),
         "trajectory": trajectory.build_trajectory(posts) if posts else None,
         "attribution": parse_attribution(blogger.attribution_json),
         "portraits": _portraits(db, settings, tenant_id, blogger_id),

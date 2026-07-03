@@ -20,11 +20,7 @@ def account_stats(posts: list[BloggerPost]) -> dict[str, Any]:
         return {"note_count": 0}
     total_like = sum(p.like_count or 0 for p in posts)
     total_fav = sum(p.favorite_count or 0 for p in posts)
-    viewed = [p for p in posts if (p.view_count or 0) > 0]
-    engagement_rate = None
-    if viewed:
-        interactions = sum((p.like_count or 0) + (p.favorite_count or 0) + (p.comment_count or 0) for p in viewed)
-        engagement_rate = round(interactions / max(sum(p.view_count or 0 for p in viewed), 1), 4)
+    # 互动率(赞藏评÷浏览量)已下线:小红书不公开浏览量,view_count 恒 0 → 永远算不出,不留空指标。
     top = sorted(posts, key=lambda p: p.like_count or 0, reverse=True)[:5]
     return {
         "note_count": n,
@@ -34,8 +30,6 @@ def account_stats(posts: list[BloggerPost]) -> dict[str, Any]:
         "average_favorite": round(total_fav / n, 1),
         "average_comment": round(sum(p.comment_count or 0 for p in posts) / n, 1),
         "favorite_like_ratio": round(total_fav / max(total_like, 1), 4),
-        "average_view": round(sum(p.view_count or 0 for p in viewed) / len(viewed), 1) if viewed else None,
-        "engagement_rate": engagement_rate,
         "by_modality": analyze_by_modality(posts),
         "modality_comparison": modality_comparison(analyze_by_modality(posts)),
         "frequency_info": analyze_posting_frequency(posts),

@@ -1,8 +1,10 @@
 """博主档案:笔记池行构造/刷新、轨迹(基线/爆发/阶段/降级)、账号事实统计(纯函数,无 DB/LLM)。"""
 
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as N
 
+from app.blogger_dossier.habits import _author_reply_habit, _comment_guide_ratio, _genre_distribution
 from app.blogger_dossier.pool import _new_list_row, refresh_from_candidate
 from app.blogger_dossier.stats import account_stats
 from app.blogger_dossier.trajectory import build_trajectory
@@ -66,12 +68,15 @@ def test_trajectory_too_few_points_degrades_honestly():
     assert "暂不划分阶段" in tr["summary"]
 
 
+_PHASE_LABELS = ("起步期", "突破期", "滑坡期", "成熟期", "平稳期")
+
+
 def test_trajectory_detects_burst_and_phases():
     posts = [_post(i=i, like=1000 + (i % 3) * 100, days=i * 7) for i in range(1, 21)]
-    posts.append(_post(i=99, like=18000, days=200))  # 爆发点:远超基线
+    posts.append(_post(i=99, like=18000, days=200))  # 爆发点:远超基线,但单篇不成台阶
     tr = build_trajectory(posts)
     assert any(b["like"] == 18000 for b in tr["bursts"])
-    assert tr["phases"] and all(p["label"] in ("低谷期", "平稳期", "高位期") for p in tr["phases"])
+    assert tr["phases"] and all(p["label"] in _PHASE_LABELS for p in tr["phases"])
     assert "爆发点" in tr["summary"]
 
 
@@ -80,15 +85,66 @@ def test_trajectory_flat_has_no_burst():
     assert tr["bursts"] == []
 
 
+def test_trajectory_level_up_detects_growth_step():
+    # 前段基线 ~800、后段 ~4000(持久台阶)→ 涨粉拐点 + 突破期,这是"赞藏替涨粉看台阶"的落地。
+    early = [_post(i=i, like=800, days=i * 10) for i in range(1, 9)]
+    late = [_post(i=100 + i, like=4000, days=210 + i * 10) for i in range(1, 9)]
+    tr = build_trajectory(early + late)
+    assert tr["level_ups"] and tr["level_ups"][0]["to_avg"] > tr["level_ups"][0]["from_avg"]
+    assert any(p["label"] == "突破期" for p in tr["phases"])
+    assert tr["level_ups"][0]["trigger"] is not None  # 关联触发爆文
+
+
 # ============================ stats ============================
 
-def test_account_stats_counts_and_engagement():
+def test_account_stats_counts():
     posts = [_post(i=1, view=1000, like=100, fav=50, com=10, level="full"), _post(i=2, view=0, level="list", days=3)]
     st = account_stats(posts)
     assert st["note_count"] == 2 and st["full_count"] == 1 and st["list_count"] == 1
-    assert st["engagement_rate"] == round(160 / 1000, 4)  # 仅有浏览量的那篇参与互动率
+    assert "engagement_rate" not in st  # 互动率已下线:小红书无浏览量,恒算不出
+    assert st["favorite_like_ratio"] == round(50 / 100, 4)
     assert "frequency_info" in st and "growth_trend" in st  # 账号事实在档案层,不在蒸馏 stats
 
 
 def test_account_stats_empty():
     assert account_stats([]) == {"note_count": 0}
+
+
+# ============================ habits (运营习惯) ============================
+
+def _dp(i=1, body="", title="", transcript="", comments=None):
+    return N(id=i, detail_level="full", body_text=body, title=title, transcript_text=transcript,
+             comments_json=json.dumps(comments or [], ensure_ascii=False))
+
+
+def test_habits_listicle_needs_three_list_lines():
+    listy = _dp(body="1. 一\n2. 二\n3. 三\n随便一句")
+    plain = _dp(body="就是一段普通正文，没有列表。")
+    g = _genre_distribution([listy, plain])
+    assert g["listicle"] == 1 and g["total"] == 2 and g["ratio"] == 0.5
+
+
+def test_habits_comment_guide_reads_author_content():
+    guided = _dp(title="干货来了", body="有需要的扣1，评论区告诉我")
+    silent = _dp(title="随手记", body="今天天气不错")
+    cg = _comment_guide_ratio([guided, silent])
+    assert cg["count"] == 1 and cg["total"] == 2
+
+
+def test_habits_author_reply_ignores_reader_comments():
+    # 「帮我看看号吗」是读者评论(is_author=False),绝不能当成博主的运营习惯。
+    replied = _dp(comments=[{"content": "谢谢", "is_author": True}, {"content": "帮我看看号吗", "is_author": False}])
+    reader_only = _dp(comments=[{"content": "帮我看看号吗", "is_author": False}])
+    ar = _author_reply_habit([replied, reader_only])
+    assert ar["with_comments"] == 2 and ar["replied"] == 1 and ar["ratio"] == 0.5
+
+
+# ============================ compliance (合规体检) ============================
+
+def test_compliance_scan_pool_reports_coverage():
+    from app.blogger_dossier.compliance import scan_pool
+    posts = [N(title="普通标题", body_text="正文内容", detail_level="full"),
+             N(title="列表级标题", body_text="", detail_level="list")]
+    rep = scan_pool("xhs", "美妆", ["护肤"], posts)
+    assert rep["coverage"] == {"pool": 2, "title_level": 2, "full_text": 1}
+    assert "grade" in rep and "hits" in rep

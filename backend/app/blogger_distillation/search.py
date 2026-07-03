@@ -386,12 +386,43 @@ def extract_user_profile(platform: str, payload: dict[str, Any]) -> dict[str, An
             "aweme_count", "awemeCount", "works_count", "worksCount", "video_count", "videoCount", "note_total",
         ],
     )
+    # 平台主页简介:signature 优先,回退 desc/description(都是用户签名);note 的 desc 不在 user_info 顶层,风险低。
+    signature = deep_first_str(payload, ["signature", "desc", "user_desc", "userDesc", "sign", "description"])
     return {
         "display_name": display_name or "",
         "avatar_url": avatar_url or "",
         "follower_count": follower_count or 0,
         "note_total": note_total if note_total else None,
+        "signature": signature or "",
+        "liked_collected_count": _liked_collected(payload),
     }
+
+
+def _liked_collected(payload: Any) -> int | None:
+    """账号级"获赞与收藏"总数:抖音看 total_favorited;小红书从 interactions 列表里找「获赞/收藏」项。取不到 None(不硬编)。"""
+    direct = deep_first_int(payload, ["total_favorited", "totalFavorited", "liked_collected", "likedCollected", "interaction_count"])
+    if direct:
+        return direct
+    found: list[int] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            name = str(node.get("name") or node.get("type") or "")
+            if any(k in name for k in ("获赞", "收藏", "赞与藏", "interaction")):
+                raw = node.get("count")
+                if raw in (None, ""):
+                    raw = node.get("value") or node.get("countStr") or node.get("count_str") or node.get("desc")
+                val = int(normalize_count(raw))
+                if val:
+                    found.append(val)
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(payload)
+    return max(found) if found else None
 
 
 def fans_from_text(text: str) -> int:
