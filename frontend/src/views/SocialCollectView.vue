@@ -144,7 +144,7 @@ const metrics = computed(() => {
           <span class="eyebrow">01 选择账号</span>
           <h3>选择要采集的账号</h3>
         </div>
-        <button type="button" class="btn btn--ghost" @click="setCurrentSocialTab('assets')">去博主资产创建</button>
+        <button type="button" class="btn btn--ghost" @click="setCurrentSocialTab('dossier')">去博主画像创建</button>
       </div>
       <template v-if="myAccounts.length || benchmarkAccounts.length">
         <div v-if="myAccounts.length" class="bca-group">
@@ -355,7 +355,7 @@ const metrics = computed(() => {
           <span class="eyebrow">04 查看结果</span>
           <h3>采集批次和样本预览</h3>
         </div>
-        <button type="button" class="btn btn--ghost" @click="setCurrentSocialTab('assets')">查看博主资产 →</button>
+        <button type="button" class="btn btn--ghost" @click="setCurrentSocialTab('dossier')">查看博主画像 →</button>
       </div>
 
       <div v-if="lastCollectSummary && selectedBlogger" class="ok-banner">

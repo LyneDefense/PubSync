@@ -65,7 +65,7 @@ async function copySkill() {
 
 // 「创建快照」跳「博主资产」勾选笔记。
 function goCreateSnapshot() {
-  setCurrentSocialTab('assets')
+  setCurrentSocialTab('dossier')
 }
 </script>
 

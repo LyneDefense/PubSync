@@ -50,10 +50,10 @@ watch(
       activeWechatTab.value = (tab as typeof activeWechatTab.value) || 'brief'
     } else if (platform === 'douyin') {
       activeMainTab.value = 'douyin'
-      activeDouyinTab.value = (tab as typeof activeDouyinTab.value) || 'assets'
+      activeDouyinTab.value = (tab as typeof activeDouyinTab.value) || 'dossier'
     } else if (platform === 'xhs') {
       activeMainTab.value = 'xhs'
-      activeXhsTab.value = (tab as typeof activeXhsTab.value) || 'assets'
+      activeXhsTab.value = (tab as typeof activeXhsTab.value) || 'dossier'
     }
   },
   { immediate: true }
@@ -118,7 +118,6 @@ const SOCIAL_NAV: NavConfig = {
         { tab: 'find', label: '找对标博主', icon: 'search' },
         { tab: 'dossier', label: '博主画像', icon: 'user', badge: '新' },
         { tab: 'analysis', label: '对标分析', icon: 'target' },
-        { tab: 'assets', label: '博主资产', icon: 'folder' },
         { tab: 'collect', label: '数据采集', icon: 'download' },
         { tab: 'distill', label: '提炼 Skill', icon: 'funnel' }
       ]

@@ -541,6 +541,8 @@ export interface BloggerPost {
   comment_count: number
   sampled_comment_count?: number
   share_count: number
+  view_count?: number
+  detail_level?: string
   score: number
   comments_json: string
   status: string

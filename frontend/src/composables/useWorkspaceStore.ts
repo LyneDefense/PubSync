@@ -2696,7 +2696,7 @@ export async function handleConfirmBloggerRun() {
     const run = await confirmBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    setCurrentSocialTab('assets')
+    setCurrentSocialTab('dossier')
     showMessage('蒸馏结果已保存，Skill 已进入 AI 创作')
   })
 }
@@ -2710,7 +2710,7 @@ export async function handleAbandonBloggerRun() {
     const run = await abandonBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
     await refreshSelectedBlogger()
     selectedBloggerRunId.value = run.id
-    setCurrentSocialTab('assets')
+    setCurrentSocialTab('dossier')
     showMessage('已放弃本次蒸馏结果')
   })
 }
@@ -2726,7 +2726,7 @@ export function selectLatestRunForCollection(collectionRunId = selectedCollectio
 
 export function showCollectionResults(collectionRunId: number | null) {
   resultCollectionFilterId.value = collectionRunId
-  setCurrentSocialTab('assets')
+  setCurrentSocialTab('dossier')
   if (collectionRunId) {
     selectLatestRunForCollection(collectionRunId)
   } else {

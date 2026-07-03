@@ -12,6 +12,7 @@ import type { BloggerDossier } from '../api/types'
 import {
   currentSocialTab,
   pendingAction,
+  refreshSelectedBlogger,
   runTaskAction,
   selectedBloggerId,
   showMessage,
@@ -37,9 +38,11 @@ export async function loadDossier() {
   }
 }
 
-// 进入画像页 / 切换博主时自动加载。
+// 进入画像页(assets 为并入前的别名) / 切换博主时自动加载:档案聚合 + 笔记池/快照/蒸馏记录(store)。
 watch([selectedBloggerId, currentSocialTab], ([id, tab]) => {
-  if (tab === 'dossier' && id) void loadDossier()
+  if (!id || !['dossier', 'assets'].includes(tab as string)) return
+  void loadDossier()
+  void refreshSelectedBlogger()
 })
 
 export async function handleBuildDossier() {
@@ -51,10 +54,14 @@ export async function handleBuildDossier() {
     'dossier',
     '已提交构建博主画像任务',
     () => buildBloggerDossier(selectedBloggerId.value!),
-    loadDossier,
+    reloadAll,
     '构建仍在后台执行，请稍后回来查看'
   )
-  await loadDossier()
+  await reloadAll()
+}
+
+async function reloadAll() {
+  await Promise.all([loadDossier(), refreshSelectedBlogger()])
 }
 
 export async function handleSyncPool(mode: 'incremental' | 'full') {
@@ -63,10 +70,10 @@ export async function handleSyncPool(mode: 'incremental' | 'full') {
     'pool-sync',
     mode === 'full' ? '已提交笔记池全量校准任务' : '已提交笔记池增量更新任务',
     () => syncBloggerPool(selectedBloggerId.value!, mode),
-    loadDossier,
+    reloadAll,
     '同步仍在后台执行，请稍后刷新查看'
   )
-  await loadDossier()
+  await reloadAll()
 }
 
 export async function handleRunAttribution() {

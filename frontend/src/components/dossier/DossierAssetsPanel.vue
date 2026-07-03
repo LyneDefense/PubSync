@@ -1,41 +1,32 @@
 <script setup lang="ts">
-// 社媒·博主资产:主从工作台 —— 左博主列表 + 右(HERO / 选材快照 / 笔记池) + 三浮层(选取 picker / 快照详情 / 笔记抽屉)。
-// 纯展示重构:所有状态/方法沿用 useWorkspaceStore,蒸馏仍在独立「蒸馏」页。
+// 档案页·资产面板:选材快照 + 笔记池(可折叠) + 三浮层(选取 picker / 快照详情 / 笔记抽屉)。
+// 由原「博主资产」页整体并入(去掉博主列表与 HERO,那些由档案页身份卡承担);状态/方法沿用 useWorkspaceStore。
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { bloggerCommentLabel } from '../utils/format'
-import TIcon from '../components/TIcon.vue'
-import NoteDetailDrawer from '../components/NoteDetailDrawer.vue'
+import { bloggerCommentLabel } from '../../utils/format'
+import TIcon from '../TIcon.vue'
+import NoteDetailDrawer from '../NoteDetailDrawer.vue'
+import { handleSyncPool } from '../../composables/useDossier'
 import {
-  benchmarkAccounts,
   bloggerNoteGroups,
   bloggerPosts,
   bloggerSnapshots,
   clearPostSelection,
-  currentSocialTab,
   delistedNoteCount,
   DISTILL_MIN_SAMPLES,
   DISTILL_RECOMMEND_SAMPLES,
   friendlyTime,
   formatDate,
-  goCollectForBlogger,
-  handleDeleteBlogger,
   handleDeleteSnapshot,
-  handleRefreshBlogger,
   handleSaveSnapshot,
-  handleToggleBloggerFavorite,
   handleUpdateSnapshot,
   handleDeleteSelectedPosts,
   manageMode,
   enterManageMode,
   exitManageMode,
   isPostSelected,
-  isSocialPlatform,
   loadSnapshotIntoSelection,
-  openEditBloggerModal,
   openNote,
   pendingAction,
-  selectBlogger,
   selectedBlogger,
   selectedBloggerId,
   selectedPostCount,
@@ -51,9 +42,15 @@ import {
   snapshotSuggestError,
   snapshotSuggestName,
   snapshotSuggestReasons
-} from '../composables/useWorkspaceStore'
+} from '../../composables/useWorkspaceStore'
 
-// 笔记池排序:最新(按发布时间)/ 最热(按互动量),在每个类型分组内排序。参考「我的账号」的笔记列表。
+defineProps<{ busy: boolean }>()
+
+// 分区折叠:快照/笔记池都可点开收起,默认展开。
+const snapsOpen = ref(true)
+const poolOpen = ref(true)
+
+// 笔记池排序:最新(按发布时间)/ 最热(按互动量),在每个类型分组内排序。
 type NoteSort = 'recent' | 'hot'
 const noteSort = ref<NoteSort>('recent')
 function interaction(p: { like_count: number; favorite_count: number; comment_count: number }): number {
@@ -76,14 +73,6 @@ const visibleNoteGroups = computed(() =>
   activeNoteType.value ? sortedNoteGroups.value.filter((g) => g.subtype === activeNoteType.value) : sortedNoteGroups.value
 )
 
-// 「加对标」去「找对标博主」页。
-const route = useRoute()
-const router = useRouter()
-function goFind() {
-  const platform = route.params.platform as string
-  if (platform) router.push({ name: 'workspace', params: { platform, tab: 'find' } })
-}
-
 // 选取弹框(新建/重选共用)。pickerSnapshotId=null 表示新建。
 const pickerOpen = ref(false)
 const pickerSnapshotId = ref<number | null>(null)
@@ -93,13 +82,6 @@ const detailOpen = ref(false)
 const detailSnapshotId = ref<number | null>(null)
 const detailName = ref('')
 
-// 文字头像 + 笔记组类型图标。
-const AVATAR_BG = ['#eaf3ee', '#f0eef7', '#eef4f5', '#eef1f6', '#f6eef2', '#eef3f7']
-const AVATAR_INK = ['#2f6b54', '#5a4a86', '#3a6a72', '#44506a', '#8a4a64', '#3a5a86']
-function avatarStyle(id: number) {
-  const i = (((id || 0) % AVATAR_BG.length) + AVATAR_BG.length) % AVATAR_BG.length
-  return { background: AVATAR_BG[i], color: AVATAR_INK[i] }
-}
 function groupIcon(label: string): { ch: string; cls: string } {
   if (label.includes('口播') || label.includes('视频')) return { ch: '▶', cls: 'ico-oral' }
   if (label.includes('测评') || label.includes('评测')) return { ch: '⚖', cls: 'ico-review' }
@@ -133,7 +115,6 @@ const needInput = ref('')
 async function runAiSelect() {
   if (!needInput.value.trim()) return
   const picked = await fetchSnapshotSuggestion(needInput.value)
-  // AI 建议的快照名回填(用户没自己填时)。
   if (picked != null && !pickerName.value.trim() && snapshotSuggestName.value) pickerName.value = snapshotSuggestName.value
 }
 
@@ -201,163 +182,102 @@ async function deleteDetailSnapshot() {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'assets'" class="assets">
-    <div class="assets-top">
-      <button type="button" class="ghost-btn" @click="goFind">去找对标博主 →</button>
-    </div>
-
-    <div class="md-grid">
-      <!-- 左:博主列表 -->
-      <aside class="bl-card" aria-label="博主列表">
-        <div class="bl-head">
-          <strong>博主</strong>
-          <span class="count">{{ benchmarkAccounts.length }} 个</span>
-        </div>
-        <div v-if="benchmarkAccounts.length" class="bl-list">
+  <div v-if="selectedBlogger">
+    <!-- 选材快照(可折叠) -->
+    <section class="card">
+      <div class="card-head">
+        <button type="button" class="fold-toggle" :class="{ open: snapsOpen }" @click="snapsOpen = !snapsOpen" aria-label="展开/收起快照">›</button>
+        <div class="ch-l"><h3>选材快照</h3><span class="ch-count">{{ bloggerSnapshots.length }} 个</span></div>
+        <button type="button" class="primary slim" @click="openCreatePicker">+ 新建快照</button>
+      </div>
+      <template v-if="snapsOpen">
+        <p class="card-hint">选取博主笔记（需 ≥ {{ DISTILL_MIN_SAMPLES }} 篇，建议 ≥ {{ DISTILL_RECOMMEND_SAMPLES }} 篇），存成快照，方便蒸馏</p>
+        <div v-if="bloggerSnapshots.length" class="snap-grid">
           <button
-            v-for="b in benchmarkAccounts"
-            :key="b.id"
+            v-for="snap in bloggerSnapshots"
+            :key="snap.id"
             type="button"
-            class="bl-row"
-            :class="{ sel: selectedBloggerId === b.id }"
-            @click="selectBlogger(b.id)"
+            class="snap-card"
+            @click="openSnapshotDetail(snap.id, snap.name)"
           >
-            <span class="bl-avatar" :style="avatarStyle(b.id)">
-              {{ (b.display_name || '?').slice(0, 1) }}
-              <span v-if="b.is_favorite" class="bl-star">⭐</span>
-            </span>
-            <span class="bl-body">
-              <span class="bl-name">{{ b.display_name }}</span>
-              <span class="bl-sub">{{ b.is_favorite ? '已标记 · ' : '' }}{{ b.niche || '未设置领域' }} · 样本 {{ b.sample_count }}</span>
+            <span class="snap-ico"><TIcon name="folder" /></span>
+            <span class="snap-body">
+              <span class="snap-name">{{ snap.name }}</span>
+              <span class="snap-meta">{{ snap.post_count }} 篇 · {{ friendlyTime(snap.created_at) }} · 点击查看/编辑</span>
             </span>
           </button>
         </div>
-        <p v-else class="empty-region pad">还没有对标博主。点上方「去找对标博主」添加。</p>
-      </aside>
+        <p v-else class="empty-region pad">还没有快照。点「+ 新建快照」勾选笔记保存。</p>
+      </template>
+    </section>
 
-      <!-- 右:详情 -->
-      <div v-if="selectedBlogger" class="detail">
-        <!-- HERO -->
-        <section class="card hero">
-          <span class="hero-avatar" :style="avatarStyle(selectedBlogger.id)">{{ (selectedBlogger.display_name || '?').slice(0, 1) }}</span>
-          <div class="hero-info">
-            <span v-if="selectedBlogger.is_favorite" class="fav-badge">⭐ 已标记博主</span>
-            <h3>{{ selectedBlogger.display_name }}</h3>
-            <p class="hero-meta">
-              粉丝 {{ selectedBlogger.follower_count.toLocaleString() }} · 笔记总数 {{ selectedBlogger.note_total ?? '—' }} · 已采集 {{ selectedBlogger.sample_count }} 条
-            </p>
-            <p class="hero-desc">{{ selectedBlogger.description || selectedBlogger.niche || '暂无备注' }}</p>
-            <div v-if="selectedBlogger.tags?.length" class="tag-chips">
-              <span
-                v-for="tag in selectedBlogger.tags"
-                :key="tag.name"
-                class="tag-chip"
-                :class="tag.source === 'manual' ? 'tag-chip--manual' : 'tag-chip--auto'"
-              >{{ tag.name }}</span>
-            </div>
+    <!-- 笔记池(可折叠) -->
+    <section class="card">
+      <div class="card-head">
+        <button type="button" class="fold-toggle" :class="{ open: poolOpen }" @click="poolOpen = !poolOpen" aria-label="展开/收起笔记池">›</button>
+        <div class="ch-l">
+          <h3>笔记池</h3>
+          <span v-if="!manageMode" class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
+          <span v-else class="ch-count ch-count--sel">已选 {{ selectedPostCount }} 篇</span>
+        </div>
+        <div v-if="!manageMode" class="pool-head-actions">
+          <button type="button" class="pool-select-btn" :disabled="busy" @click="handleSyncPool('incremental')">增量更新</button>
+          <button type="button" class="pool-select-btn" :disabled="busy" @click="handleSyncPool('full')">全量校准</button>
+          <button type="button" class="pool-select-btn" @click="enterManageMode">选择</button>
+          <div class="seg">
+            <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
+            <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
           </div>
-          <div class="hero-actions">
-            <button type="button" class="ha-btn" :class="{ on: selectedBlogger.is_favorite }" @click="handleToggleBloggerFavorite(selectedBlogger)">
-              {{ selectedBlogger.is_favorite ? '取消标记' : '⭐ 标记博主' }}
-            </button>
-            <button type="button" class="ha-btn" @click="openEditBloggerModal(selectedBlogger)">编辑信息</button>
-            <button type="button" class="ha-btn" :disabled="Boolean(pendingAction)" @click="handleRefreshBlogger(selectedBlogger)">
-              {{ pendingAction === 'blogger-refresh' ? '刷新中…' : '↻ 刷新博主资料' }}
-            </button>
-            <button type="button" class="ha-btn" @click="goCollectForBlogger(selectedBlogger.id)">采集 / 更新笔记 →</button>
-            <button type="button" class="ha-del" @click="handleDeleteBlogger(selectedBlogger)">删除博主</button>
-          </div>
-        </section>
-
-        <!-- 选材快照 -->
-        <section class="card">
-          <div class="card-head">
-            <div class="ch-l"><h3>选材快照</h3><span class="ch-count">{{ bloggerSnapshots.length }} 个</span></div>
-            <button type="button" class="primary slim" @click="openCreatePicker">+ 新建快照</button>
-          </div>
-          <p class="card-hint">选取博主笔记（需 ≥ {{ DISTILL_MIN_SAMPLES }} 篇，建议 ≥ {{ DISTILL_RECOMMEND_SAMPLES }} 篇），存成快照，方便蒸馏</p>
-          <div v-if="bloggerSnapshots.length" class="snap-grid">
-            <button
-              v-for="snap in bloggerSnapshots"
-              :key="snap.id"
-              type="button"
-              class="snap-card"
-              @click="openSnapshotDetail(snap.id, snap.name)"
-            >
-              <span class="snap-ico"><TIcon name="folder" /></span>
-              <span class="snap-body">
-                <span class="snap-name">{{ snap.name }}</span>
-                <span class="snap-meta">{{ snap.post_count }} 篇 · {{ friendlyTime(snap.created_at) }} · 点击查看/编辑</span>
-              </span>
-            </button>
-          </div>
-          <p v-else class="empty-region pad">还没有快照。点「+ 新建快照」勾选笔记保存。</p>
-        </section>
-
-        <!-- 笔记池 -->
-        <section class="card">
-          <div class="card-head">
-            <div class="ch-l">
-              <h3>笔记池</h3>
-              <span v-if="!manageMode" class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
-              <span v-else class="ch-count ch-count--sel">已选 {{ selectedPostCount }} 篇</span>
-            </div>
-            <div v-if="!manageMode" class="pool-head-actions">
-              <button type="button" class="pool-select-btn" @click="enterManageMode">选择</button>
-              <div class="seg">
-                <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
-                <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
-              </div>
-            </div>
-            <button v-else type="button" class="pool-select-btn" @click="exitManageMode">取消</button>
-          </div>
-          <div v-if="sortedNoteGroups.length" class="note-groups">
-            <div v-if="sortedNoteGroups.length > 1 || activeNoteType" class="note-type-tabs">
-              <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ selectedBlogger.sample_count }}</button>
-              <button v-for="g in sortedNoteGroups" :key="g.subtype" type="button" :class="{ on: activeNoteType === g.subtype }" @click="activeNoteType = g.subtype">{{ g.label }} {{ g.posts.length }}</button>
-            </div>
-            <div v-for="group in visibleNoteGroups" :key="group.subtype" class="note-group">
-              <div class="ng-head">
-                <span class="ng-ico" :class="groupIcon(group.label).cls">{{ groupIcon(group.label).ch }}</span>
-                <strong>{{ group.label }}</strong>
-                <span class="ng-count">{{ group.posts.length }} 篇</span>
-                <button v-if="manageMode" type="button" class="ng-all" @click="selectGroupPosts(group.subtype)">全选本类</button>
-              </div>
-              <div class="note-rows">
-                <button
-                  v-for="post in group.posts"
-                  :key="post.id"
-                  type="button"
-                  class="note-row"
-                  :class="{ 'note-row--sel': manageMode && isPostSelected(post.id) }"
-                  @click="manageMode ? togglePostSelection(post.id) : openNote(post.id)"
-                >
-                  <span v-if="manageMode" class="nr-check" :class="{ on: isPostSelected(post.id) }" aria-hidden="true"></span>
-                  <span class="nr-main">
-                    <span class="nr-title">
-                      {{ post.title || '(无标题)' }}
-                      <span v-if="post.content_type === 'video' && transcriptTone(post) !== 'none'" class="asr-pill" :class="`asr-pill--${transcriptTone(post)}`">{{ transcriptLabel(post) }}</span>
-                      <span v-if="post.status === 'delisted'" class="delisted">已下架</span>
-                    </span>
-                    <span class="nr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}<template v-if="post.published_at"> · {{ formatDate(post.published_at) }}</template></span>
-                  </span>
-                  <span v-if="!manageMode" class="nr-chevron">›</span>
-                </button>
-              </div>
-            </div>
-          </div>
-          <p v-else class="empty-region pad">这个博主还没有采集到笔记。请到「数据采集」采集。</p>
-          <div v-if="manageMode && selectedPostCount" class="pool-bar">
-            <span class="pb-count">已选 <strong>{{ selectedPostCount }}</strong> 篇</span>
-            <span class="pb-actions">
-              <button type="button" class="pb-snap" @click="openPickerFromSelection">存为快照</button>
-              <button type="button" class="pb-del" @click="handleDeleteSelectedPosts">删除</button>
-            </span>
-          </div>
-        </section>
+        </div>
+        <button v-else type="button" class="pool-select-btn" @click="exitManageMode">取消</button>
       </div>
-      <div v-else class="empty-region card pad detail-empty">请选择一个博主查看资产。</div>
-    </div>
+      <template v-if="poolOpen">
+        <div v-if="sortedNoteGroups.length" class="note-groups">
+          <div v-if="sortedNoteGroups.length > 1 || activeNoteType" class="note-type-tabs">
+            <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ selectedBlogger.sample_count }}</button>
+            <button v-for="g in sortedNoteGroups" :key="g.subtype" type="button" :class="{ on: activeNoteType === g.subtype }" @click="activeNoteType = g.subtype">{{ g.label }} {{ g.posts.length }}</button>
+          </div>
+          <div v-for="group in visibleNoteGroups" :key="group.subtype" class="note-group">
+            <div class="ng-head">
+              <span class="ng-ico" :class="groupIcon(group.label).cls">{{ groupIcon(group.label).ch }}</span>
+              <strong>{{ group.label }}</strong>
+              <span class="ng-count">{{ group.posts.length }} 篇</span>
+              <button v-if="manageMode" type="button" class="ng-all" @click="selectGroupPosts(group.subtype)">全选本类</button>
+            </div>
+            <div class="note-rows">
+              <button
+                v-for="post in group.posts"
+                :key="post.id"
+                type="button"
+                class="note-row"
+                :class="{ 'note-row--sel': manageMode && isPostSelected(post.id) }"
+                @click="manageMode ? togglePostSelection(post.id) : openNote(post.id)"
+              >
+                <span v-if="manageMode" class="nr-check" :class="{ on: isPostSelected(post.id) }" aria-hidden="true"></span>
+                <span class="nr-main">
+                  <span class="nr-title">
+                    {{ post.title || '(无标题)' }}
+                    <span v-if="post.detail_level === 'list'" class="lvl-pill">列表级</span>
+                    <span v-if="post.content_type === 'video' && transcriptTone(post) !== 'none'" class="asr-pill" :class="`asr-pill--${transcriptTone(post)}`">{{ transcriptLabel(post) }}</span>
+                    <span v-if="post.status === 'delisted'" class="delisted">已下架</span>
+                  </span>
+                  <span class="nr-meta">收藏 {{ post.favorite_count }} · 点赞 {{ post.like_count }} · {{ bloggerCommentLabel(post) }}<template v-if="post.published_at"> · {{ formatDate(post.published_at) }}</template></span>
+                </span>
+                <span v-if="!manageMode" class="nr-chevron">›</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <p v-else class="empty-region pad">笔记池为空。点上方「构建博主画像」或「增量更新」拉取。</p>
+        <div v-if="manageMode && selectedPostCount" class="pool-bar">
+          <span class="pb-count">已选 <strong>{{ selectedPostCount }}</strong> 篇</span>
+          <span class="pb-actions">
+            <button type="button" class="pb-snap" @click="openPickerFromSelection">存为快照</button>
+            <button type="button" class="pb-del" @click="handleDeleteSelectedPosts">删除</button>
+          </span>
+        </div>
+      </template>
+    </section>
 
     <!-- 选取弹框:新建 / 重选笔记 -->
     <div v-if="pickerOpen" class="modal-overlay" @click.self="closePicker">
@@ -367,7 +287,6 @@ async function deleteDetailSnapshot() {
           <button type="button" class="modal-close" aria-label="关闭" @click="closePicker"><TIcon name="x" /></button>
         </div>
         <div class="modal-body">
-          <!-- 智能选材:描述需求 → AI 预选 -->
           <div class="ai-select">
             <div class="ai-row">
               <input
@@ -464,11 +383,32 @@ async function deleteDetailSnapshot() {
       </div>
     </div>
 
-    <!-- 单篇笔记详情:右侧抽屉(公共组件,与「我的账号」共用) -->
+    <!-- 单篇笔记详情:居中大弹窗(公共组件,与「我的账号」共用) -->
     <NoteDetailDrawer />
-  </section>
+  </div>
 </template>
 
+<style scoped>
+.fold-toggle {
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  padding: 0 4px;
+  transition: transform 0.15s ease;
+}
+.fold-toggle.open { transform: rotate(90deg); }
+.lvl-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-paper-3);
+  color: var(--color-ink-3);
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+</style>
 <style scoped>
 .assets {
   max-width: 1080px;

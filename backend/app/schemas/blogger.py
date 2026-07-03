@@ -181,6 +181,8 @@ class BloggerPostRead(BaseModel):
     favorite_count: int
     comment_count: int
     share_count: int
+    view_count: int = 0
+    detail_level: str = "full"
     score: float
     comments_json: str
     status: str
