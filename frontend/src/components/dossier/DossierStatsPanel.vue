@@ -13,12 +13,18 @@ function fmt(v: number | null): string {
   return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v >= 1000 ? v.toLocaleString() : String(v)
 }
 
-// 共 N · 已收录 M · 覆盖率。总数拿不到时:翻到底=已全部,否则=未翻到底(诚实)。
+// 覆盖率 + 详情深度。翻到底 / 已收录≥平台标称 → 视为覆盖全部(不显示会溢出的百分比)。
+// 已采详情单列,避免"已收录"被误解成"全都采了详情"。
 const coverage = computed(() => {
   const total = num('note_total')
   const got = num('note_count') ?? 0
-  const pct = total && total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null
-  return { total, got, pct, reachedEnd: props.stats.reached_end === true }
+  const full = num('full_count') ?? 0
+  const list = num('list_count') ?? 0
+  const reachedEnd = props.stats.reached_end === true
+  const covered = reachedEnd || (total != null && got >= total)
+  const pct = !covered && total && total > 0 ? Math.round((got / total) * 100) : null
+  const detailPct = got > 0 ? Math.round((full / got) * 100) : 0
+  return { total, got, full, list, reachedEnd, covered, pct, detailPct }
 })
 
 const tiles = computed(() => [
@@ -58,12 +64,16 @@ const modality = computed(() => {
 
     <div class="ds-coverage">
       <span class="ds-coverage__text">
-        <template v-if="coverage.total != null">共 {{ coverage.total }} 篇 · 已收录 {{ coverage.got }} 篇</template>
-        <template v-else-if="coverage.reachedEnd">已收录 {{ coverage.got }} 篇 · 已翻到底（即全部）</template>
+        <template v-if="coverage.covered">已收录 {{ coverage.got }} 篇 · 已覆盖全部</template>
+        <template v-else-if="coverage.total != null">共 {{ coverage.total }} 篇 · 已收录 {{ coverage.got }} 篇</template>
         <template v-else>已收录 {{ coverage.got }} 篇 · 未翻到底</template>
       </span>
       <span v-if="coverage.pct != null" class="ds-coverage__track"><span class="ds-coverage__bar" :style="{ width: `${coverage.pct}%` }"></span></span>
       <span v-if="coverage.pct != null" class="ds-coverage__pct">覆盖 {{ coverage.pct }}%</span>
+    </div>
+    <div class="ds-depth">
+      <span class="ds-depth__main">已采详情 <strong>{{ coverage.full }}</strong> 篇（{{ coverage.detailPct }}%）· 仅列表 {{ coverage.list }} 篇</span>
+      <span class="ds-depth__hint">只有已采详情进创作画像;仅列表的只有标题/互动</span>
     </div>
 
     <div class="ds-tiles">
@@ -98,6 +108,11 @@ const modality = computed(() => {
 .ds-coverage__track { flex: 1; height: 6px; border-radius: 999px; background: var(--color-paper-3); overflow: hidden; }
 .ds-coverage__bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
 .ds-coverage__pct { font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.ds-depth { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: -4px 0 14px; }
+.ds-depth__main { font-size: 12.5px; color: var(--color-ink-2); }
+.ds-depth__main strong { color: var(--color-accent-ink); }
+.ds-depth__hint { font-size: 11.5px; color: var(--color-ink-3); }
 
 .ds-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .ds-tile {
