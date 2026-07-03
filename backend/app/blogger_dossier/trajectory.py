@@ -23,10 +23,11 @@ MIN_BUCKETS = 4           # 分桶少于此,只给整体趋势、不划阶段
 DENSE_INTERVAL_DAYS = 20  # 中位发布间隔 ≤ 此 → 按月分桶,否则按季(低频)
 ROLL_WINDOW = 7           # 单篇爆发判定的滚动基线窗口
 BURST_MULTIPLIER = 3.0    # 爆发:赞 ≥ 基线×3 且 ≥ 全局中位×2
-STEP_UP = 1.5             # 后段/前段 ≥ 此 → 台阶跳高(突破 / 涨粉拐点)
-STEP_DOWN = 0.67          # 后段/前段 ≤ 此 → 台阶跌落(滑坡)
-MERGE_REL = 0.4           # 相邻段相对差 < 此 → 同一水平,合并
-MIN_SEGMENT_NOTES = 3     # 段最少笔记数,不足并入更近的邻段
+STEP_UP = 2.0             # 后段/前段 ≥ 此 → 台阶跳高(突破 / 涨粉拐点);抬高,只认真台阶
+STEP_DOWN = 0.5           # 后段/前段 ≤ 此 → 台阶跌落(滑坡)
+MERGE_REL = 0.6           # 相邻段相对差 < 此 → 同一水平,合并(越大越粗)
+MIN_SEGMENT_NOTES = 8     # 段最少笔记数,不足并入更近的邻段(避免碎片化)
+MAX_PHASES = 5            # 阶段数上限:超了继续并掉最相近的相邻段,直到 ≤ 此(宁粗勿碎)
 HIGH_LEVEL = 1.4          # 段中位 ≥ 全局中位×此 → 高位(配低波动 = 成熟期)
 HIGH_CV = 0.8             # 变异系数 ≥ 此 → 大开大合,否则稳定输出
 
@@ -123,7 +124,10 @@ def _seg_level(buckets: list[dict[str, Any]], seg: list[int]) -> float:
 
 
 def _segment_buckets(buckets: list[dict[str, Any]]) -> list[list[int]]:
-    """自底向上合并:反复并掉「相对差最小」的相邻段,直到所有相邻段差异 ≥ MERGE_REL(即只剩真台阶)。"""
+    """自底向上合并:反复并掉「相对差最小」的相邻段。停条件 = 所有相邻段差异 ≥ MERGE_REL **且** 段数 ≤ MAX_PHASES。
+
+    即:噪声级差异(<MERGE_REL)一律合并;就算都是真台阶,只要段数还超上限,也继续并掉最相近的——宁粗勿碎。
+    """
     segs: list[list[int]] = [[i] for i in range(len(buckets))]
     while len(segs) > 1:
         best_rel, best_j = None, -1
@@ -132,7 +136,7 @@ def _segment_buckets(buckets: list[dict[str, Any]]) -> list[list[int]]:
             rel = abs(a - b) / max(a, b, 1.0)
             if best_rel is None or rel < best_rel:
                 best_rel, best_j = rel, j
-        if best_rel is None or best_rel >= MERGE_REL:
+        if best_rel is None or (best_rel >= MERGE_REL and len(segs) <= MAX_PHASES):
             break
         segs[best_j:best_j + 2] = [segs[best_j] + segs[best_j + 1]]
     return segs

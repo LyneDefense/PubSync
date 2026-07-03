@@ -66,7 +66,7 @@ const levelUps = computed(() => props.trajectory.level_ups || [])
       <svg :viewBox="`0 0 ${W} ${H}`" class="dt-chart" role="img" aria-label="笔记互动随时间的阶段与拐点">
         <g>
           <rect v-for="(b, i) in model.bands" :key="`band${i}`" :x="b.x" :y="PAD_T - 6" :width="b.w" :height="H - PAD_T - PAD_B + 6" class="dt-band" :class="b.cls" />
-          <text v-for="(b, i) in model.bands" :key="`bl${i}`" :x="b.x + b.w / 2" :y="PAD_T - 9" text-anchor="middle" class="dt-band-label">{{ b.label }}</text>
+          <text v-for="(b, i) in model.bands.filter((x) => x.w > 52)" :key="`bl${i}`" :x="b.x + b.w / 2" :y="PAD_T - 9" text-anchor="middle" class="dt-band-label">{{ b.label }}</text>
         </g>
         <polyline v-if="model.baseline" :points="model.baseline" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
         <g>

@@ -66,6 +66,8 @@ const sortedNoteGroups = computed(() =>
     )
   }))
 )
+// 全部 = 真实池数(含未采详情的列表级),不是 sample_count(那只是详情数)。
+const poolTotal = computed(() => sortedNoteGroups.value.reduce((n, g) => n + g.posts.length, 0))
 // 笔记类型 tab:'' = 全部;否则只显示该 subtype 一组。切博主时重置到全部。
 const activeNoteType = ref<string>('')
 watch(selectedBloggerId, () => { activeNoteType.value = '' })
@@ -217,7 +219,7 @@ async function deleteDetailSnapshot() {
         <button type="button" class="fold-toggle" :class="{ open: poolOpen }" @click="poolOpen = !poolOpen" aria-label="展开/收起笔记池">›</button>
         <div class="ch-l">
           <h3>笔记池</h3>
-          <span v-if="!manageMode" class="ch-count">按类型 · {{ selectedBlogger.sample_count }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
+          <span v-if="!manageMode" class="ch-count">共 {{ poolTotal }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
           <span v-else class="ch-count ch-count--sel">已选 {{ selectedPostCount }} 篇</span>
         </div>
         <div v-if="!manageMode" class="pool-head-actions">
@@ -233,7 +235,7 @@ async function deleteDetailSnapshot() {
       <template v-if="poolOpen">
         <div v-if="sortedNoteGroups.length" class="note-groups">
           <div v-if="sortedNoteGroups.length > 1 || activeNoteType" class="note-type-tabs">
-            <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ selectedBlogger.sample_count }}</button>
+            <button type="button" :class="{ on: !activeNoteType }" @click="activeNoteType = ''">全部 {{ poolTotal }}</button>
             <button v-for="g in sortedNoteGroups" :key="g.subtype" type="button" :class="{ on: activeNoteType === g.subtype }" @click="activeNoteType = g.subtype">{{ g.label }} {{ g.posts.length }}</button>
           </div>
           <div v-for="group in visibleNoteGroups" :key="group.subtype" class="note-group">

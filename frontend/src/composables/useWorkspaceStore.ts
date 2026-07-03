@@ -314,7 +314,8 @@ export const DISTILL_SUBTYPES = ['image_text', 'talking_video', 'visual_video'] 
 export const DISTILL_MIN_SAMPLES = 8
 export const DISTILL_RECOMMEND_SAMPLES = 15
 // 笔记池按内容模态分组展示的顺序。
-export const NOTE_GROUP_ORDER = ['image_text', 'talking_video', 'visual_video', 'unknown'] as const
+// 已录入详情按模态排;未录入详情(列表级)单独一组、垫底。
+export const NOTE_GROUP_ORDER = ['image_text', 'talking_video', 'visual_video', 'unknown', '__list__'] as const
 // 采集拉取范围:image=图文,video=视频。
 export const collectContentTypes = ref<string[]>(['image', 'video'])
 // 采集选材:排序(高赞/最新)+ 数量(false=N 条,true=全部到上限)。
@@ -608,7 +609,9 @@ export interface NoteGroup {
 export const bloggerNoteGroups = computed<NoteGroup[]>(() => {
   const buckets = new Map<string, BloggerPost[]>()
   for (const post of activeNotePool.value) {
-    const key = post.content_subtype || 'unknown'
+    // 未录入详情(列表级)只有标题/互动,还没判模态——单独归「未采详情」,别混进模态分类;
+    // 已录入详情(full)才按 口播/图文/非口播 分。
+    const key = post.detail_level === 'full' ? (post.content_subtype || 'unknown') : '__list__'
     if (!buckets.has(key)) buckets.set(key, [])
     buckets.get(key)!.push(post)
   }
@@ -618,7 +621,11 @@ export const bloggerNoteGroups = computed<NoteGroup[]>(() => {
     const ib = order.indexOf(b)
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
   })
-  return keys.map((subtype) => ({ subtype, label: subtypeLabel(subtype), posts: buckets.get(subtype)! }))
+  return keys.map((subtype) => ({
+    subtype,
+    label: subtype === '__list__' ? '未采详情' : subtypeLabel(subtype),
+    posts: buckets.get(subtype)!,
+  }))
 })
 
 export const selectedPostCount = computed(() => selectedPostIds.value.length)
