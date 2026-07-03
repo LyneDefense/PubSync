@@ -40,6 +40,7 @@ import {
   xhsCollectStep,
   xhsCollectStepLabels
 } from '../composables/useWorkspaceStore'
+import { handleSyncPool } from '../composables/useDossier'
 
 const collecting = computed(() => pendingAction.value === 'collect')
 const urlOpen = ref(false)
@@ -189,6 +190,21 @@ const metrics = computed(() => {
         </div>
       </template>
       <p v-else class="empty-region pad">还没有账号档案。请到「博主资产」或「我的账号」创建后再来采集。</p>
+    </section>
+
+    <!-- 笔记池维护(选中博主后出现):列表级同步,不升详情 -->
+    <section v-if="xhsCollectStep === 1 && selectedBloggerId" class="card">
+      <div class="card-head">
+        <div>
+          <span class="eyebrow">笔记池维护</span>
+          <h3>更新「{{ selectedBlogger?.display_name }}」的笔记池</h3>
+        </div>
+      </div>
+      <p style="margin: 0 0 12px; font-size: 13px; color: var(--color-ink-2); line-height: 1.6;">增量更新:只拉新笔记 + 刷新老笔记互动(便宜、不升详情)。全量校准:翻到底重拉 + 标记已下架笔记。都不会重蒸画像。</p>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button type="button" class="btn btn--ghost" :disabled="Boolean(pendingAction)" @click="handleSyncPool('incremental')">增量更新</button>
+        <button type="button" class="btn btn--ghost" :disabled="Boolean(pendingAction)" @click="handleSyncPool('full')">全量校准</button>
+      </div>
     </section>
 
     <!-- 第 2 步:配置采集 -->

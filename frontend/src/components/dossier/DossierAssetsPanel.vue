@@ -5,7 +5,6 @@ import { computed, ref, watch } from 'vue'
 import { bloggerCommentLabel } from '../../utils/format'
 import TIcon from '../TIcon.vue'
 import NoteDetailDrawer from '../NoteDetailDrawer.vue'
-import { handleSyncPool } from '../../composables/useDossier'
 import {
   bloggerNoteGroups,
   bloggerPosts,
@@ -15,6 +14,7 @@ import {
   DISTILL_MIN_SAMPLES,
   DISTILL_RECOMMEND_SAMPLES,
   friendlyTime,
+  goCollectForBlogger,
   formatDate,
   handleDeleteSnapshot,
   handleSaveSnapshot,
@@ -221,8 +221,7 @@ async function deleteDetailSnapshot() {
           <span v-else class="ch-count ch-count--sel">已选 {{ selectedPostCount }} 篇</span>
         </div>
         <div v-if="!manageMode" class="pool-head-actions">
-          <button type="button" class="pool-select-btn" :disabled="busy" @click="handleSyncPool('incremental')">增量更新</button>
-          <button type="button" class="pool-select-btn" :disabled="busy" @click="handleSyncPool('full')">全量校准</button>
+          <button type="button" class="pool-select-btn" @click="goCollectForBlogger(selectedBlogger.id)" title="更新笔记池(增量/全量)在数据采集页">去采集更新 →</button>
           <button type="button" class="pool-select-btn" @click="enterManageMode">选择</button>
           <div class="seg">
             <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
@@ -268,7 +267,7 @@ async function deleteDetailSnapshot() {
             </div>
           </div>
         </div>
-        <p v-else class="empty-region pad">笔记池为空。点上方「构建博主画像」或「增量更新」拉取。</p>
+        <p v-else class="empty-region pad">笔记池为空。点上方「构建博主画像」，或去「数据采集」拉取。</p>
         <div v-if="manageMode && selectedPostCount" class="pool-bar">
           <span class="pb-count">已选 <strong>{{ selectedPostCount }}</strong> 篇</span>
           <span class="pb-actions">

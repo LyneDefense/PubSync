@@ -601,6 +601,10 @@ export function buildBloggerDossier(bloggerId: number): Promise<OperationTask> {
   return request(`/bloggers/${bloggerId}/dossier/build`, { method: 'POST', body: JSON.stringify({}) })
 }
 
+export function redistillBloggerDossier(bloggerId: number): Promise<OperationTask> {
+  return request(`/bloggers/${bloggerId}/dossier/redistill`, { method: 'POST', body: JSON.stringify({}) })
+}
+
 export function syncBloggerPool(bloggerId: number, mode: 'incremental' | 'full'): Promise<OperationTask> {
   return request(`/bloggers/${bloggerId}/dossier/pool/sync`, { method: 'POST', body: JSON.stringify({ mode }) })
 }

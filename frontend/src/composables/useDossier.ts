@@ -5,6 +5,7 @@ import { ref, watch } from 'vue'
 import {
   buildBloggerDossier,
   getBloggerDossier,
+  redistillBloggerDossier,
   runBloggerAttribution,
   syncBloggerPool,
 } from '../api'
@@ -62,6 +63,22 @@ export async function handleBuildDossier() {
 
 async function reloadAll() {
   await Promise.all([loadDossier(), refreshSelectedBlogger()])
+}
+
+// 更新画像(轻量重蒸):用现有详情池重蒸,不重拉平台。
+export async function handleRedistill() {
+  if (!selectedBloggerId.value) {
+    showMessage('请先选择博主', true)
+    return
+  }
+  await runTaskAction(
+    'dossier',
+    '已提交更新画像任务',
+    () => redistillBloggerDossier(selectedBloggerId.value!),
+    reloadAll,
+    '更新仍在后台执行，请稍后回来查看'
+  )
+  await reloadAll()
 }
 
 export async function handleSyncPool(mode: 'incremental' | 'full') {

@@ -142,6 +142,35 @@ def _sample_post_ids(db: Session, tenant_id: int, blogger_id: int) -> list[int]:
     return [p.id for p in rows]
 
 
+def redistill_dossier(db: Session, settings: Settings, task_id: str, tenant_id: int, blogger_id: int) -> dict[str, Any]:
+    """轻量重蒸(「更新画像」):用**现有详情池**重新系统选样 + 蒸馏,覆盖唯一画像。
+
+    不重拉平台、不升详情,只花 AI。想把新笔记的内容也纳入,走「彻底重建」(build_dossier)。
+    """
+    blogger = _get_blogger(db, tenant_id, blogger_id)
+    ensure_no_running_build(db, blogger)
+    blogger.build_task_id = task_id
+    db.commit()
+    try:
+        ids = _sample_post_ids(db, tenant_id, blogger_id)
+        if len(ids) < settings.distill_min_samples:
+            raise ValueError(
+                f"详情级笔记仅 {len(ids)} 篇（<{settings.distill_min_samples}），不足以蒸馏；请先「彻底重建」升级更多详情。"
+            )
+        record_task_event(db, tenant_id, task_id, "更新画像", "running", f"用现有 {len(ids)} 篇详情级笔记重新蒸馏创作画像")
+        run_blogger_distillation(
+            db, settings, task_id, tenant_id, blogger_id,
+            post_ids=ids, source="dossier", snapshot_id=None, mode="A",
+        )
+        return {"distilled": True, "sample": len(ids)}
+    finally:
+        db.rollback()
+        locked = db.get(BloggerProfile, blogger_id)
+        if locked is not None:
+            locked.build_task_id = ""
+            db.commit()
+
+
 def sync_pool(db: Session, settings: Settings, task_id: str, tenant_id: int, blogger_id: int, *, mode: str) -> dict[str, Any]:
     """笔记池手动同步(增量/全量校准),带构建互斥锁。级联:统计/轨迹读取时现算,天然更新。"""
     blogger = _get_blogger(db, tenant_id, blogger_id)

@@ -32,7 +32,7 @@ from app.services.tenant_service import (
 from app.services.wechat_service import WeChatAPIError
 from app.account_audit.service import run_account_audit
 from app.benchmark_discovery.service import run_recommendation
-from app.blogger_dossier.service import build_dossier, sync_pool
+from app.blogger_dossier.service import build_dossier, redistill_dossier, sync_pool
 from app.skill_optimization.service import run_skill_optimization
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
@@ -168,6 +168,25 @@ def run_blogger_dossier_task(task_id: str, blogger_id: int) -> None:
         task_id,
         label="构建博主画像",
         fail_message="构建博主画像失败",
+        work=work,
+        expected=(ValueError, TikHubError, AIServiceError),
+        cancellable=True,
+    )
+
+
+def run_blogger_redistill_task(task_id: str, blogger_id: int) -> None:
+    """轻量重蒸(更新画像):用现有详情池重新选样 + 蒸馏,不重拉平台。"""
+
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, "正在更新创作画像")
+        result = redistill_dossier(db=db, settings=get_settings(), task_id=task_id, tenant_id=task.tenant_id, blogger_id=blogger_id)
+        mark_task_succeeded(db, task, f"创作画像已更新：基于现有 {result['sample']} 篇详情级笔记重蒸")
+        logger.info("任务成功：任务ID=%s，类型=更新画像，blogger_id=%s，样本=%s", task_id, blogger_id, result["sample"])
+
+    execute_task(
+        task_id,
+        label="更新画像",
+        fail_message="更新画像失败",
         work=work,
         expected=(ValueError, TikHubError, AIServiceError),
         cancellable=True,

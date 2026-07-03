@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// 档案页·创作画像区:每份画像可展开看蒸馏结果本体(认知/声音/角度/分车道写法),不再只是一张名片。
-// 过时≠失效:黄徽章只提示"有更新可纳入"。重新蒸馏=同快照重蒸(覆盖);蒸新画像=下方快照区新建。
+// 档案页·创作画像区(去多画像:一份画像,可展开看蒸馏本体)。
+// 更新画像=用现有详情池重蒸(便宜);彻底重建=拉最新笔记+重升详情+重蒸(纳入新笔记)。
 import { ref } from 'vue'
 import type { DossierPortrait } from '../../api/types'
 import DossierPortraitContent from './DossierPortraitContent.vue'
 import { friendlyTime, SUBTYPE_LABELS, selectedBloggerRunId, setCurrentSocialTab } from '../../composables/useWorkspaceStore'
 
 const props = defineProps<{ portraits: DossierPortrait[]; busy: boolean }>()
-defineEmits<{ (e: 'redistill', portrait: DossierPortrait): void }>()
+defineEmits<{ (e: 'redistill'): void; (e: 'rebuild'): void }>()
 
 function laneLabel(lanes: string[]): string {
   const items = lanes.filter((l) => l !== '__all__').map((l) => SUBTYPE_LABELS[l] || l)
@@ -36,7 +36,7 @@ function openFullReport(portrait: DossierPortrait) {
       <span class="dossier-block__hint">从她的笔记里蒸出的可迁移创作方法 —— 创作与选题的直接原料</span>
     </header>
     <p v-if="!portraits.length" class="dossier-block__hint">
-      尚未蒸馏。「构建博主画像」会自动生成默认画像；也可在下方「选材快照」自选笔记后去蒸馏。
+      尚未蒸馏。「构建博主画像」会自动系统选样并生成画像。
     </p>
     <div v-for="p in portraits" :key="p.skill_id" class="portrait" :class="{ 'portrait--open': expanded.has(p.skill_id) }">
       <button type="button" class="portrait__row" @click="toggle(p.skill_id)">
@@ -47,14 +47,15 @@ function openFullReport(portrait: DossierPortrait) {
             蒸馏于 {{ p.distilled_at ? friendlyTime(p.distilled_at) : '未知' }} · 样本 {{ p.sample_count }} 篇 · 覆盖 {{ laneLabel(p.lanes) }}
           </span>
         </span>
-        <span v-if="p.stale" class="dossier-chip dossier-chip--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
+        <span v-if="p.stale" class="dossier-chip dossier-chip--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇,彻底重建可纳入`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
         <span v-else class="dossier-chip dossier-chip--ok">最新</span>
       </button>
       <div v-if="expanded.has(p.skill_id)" class="portrait__body">
         <DossierPortraitContent :run-id="p.run_id" />
         <div class="portrait__actions">
           <button type="button" class="ghost" @click="openFullReport(p)">查看完整报告 →</button>
-          <button v-if="p.snapshot_id" type="button" class="ghost" :disabled="busy" @click="$emit('redistill', p)">重新蒸馏（纳入新笔记）</button>
+          <button type="button" class="ghost" :disabled="busy" @click="$emit('redistill')" title="用现有笔记重新蒸馏(便宜)">更新画像</button>
+          <button type="button" class="ghost" :disabled="busy" @click="$emit('rebuild')" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)">彻底重建</button>
         </div>
       </div>
     </div>

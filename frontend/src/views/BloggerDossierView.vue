@@ -17,6 +17,7 @@ import {
   dossierBusy,
   dossierLoading,
   handleBuildDossier,
+  handleRedistill,
   handleRunAttribution,
   loadDossier,
 } from '../composables/useDossier'
@@ -40,8 +41,10 @@ const visible = computed(() => isSocialPlatform.value && ['dossier', 'assets'].i
 const busy = computed(() => dossierBusy())
 const hasPool = computed(() => (dossier.value?.pool.total || 0) > 0)
 
-// 去多画像:重新蒸馏 = 重跑一键建档(重新系统选样 + 覆盖唯一画像),不再走快照。
-async function redistill() {
+// 彻底重建 = 重跑一键建档(重拉全部笔记 + 重升详情 + 重蒸)。信息确认告知耗时,不劝退。
+async function rebuild() {
+  const ok = window.confirm('彻底重建会重新拉取该博主全部笔记、重升详情并重蒸创作画像,约 10–20 分钟(后台执行,有 TikHub + AI 成本)。确定?')
+  if (!ok) return
   await handleBuildDossier()
 }
 
@@ -123,7 +126,7 @@ async function refreshProfile() {
               @run-attribution="handleRunAttribution"
             />
             <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
-            <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="redistill" />
+            <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="handleRedistill" @rebuild="rebuild" />
           </template>
 
           <!-- 选材快照 + 笔记池(原博主资产,含选取/详情/笔记弹窗) -->

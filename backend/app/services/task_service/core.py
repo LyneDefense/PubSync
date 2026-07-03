@@ -26,6 +26,7 @@ TASK_MESSAGES = {
     "blogger_collection": "已加入博主样本采集任务",
     "blogger_distillation": "已加入博主蒸馏任务",
     "blogger_dossier": "已加入构建博主画像任务",
+    "blogger_redistill": "已加入更新画像任务",
     "blogger_pool_sync": "已加入笔记池同步任务",
     "xhs_package_draft": "已加入小红书发布包生成任务",
     "account_audit": "已加入账号体检任务",

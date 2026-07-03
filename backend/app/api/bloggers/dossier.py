@@ -17,6 +17,7 @@ from app.services.task_service import (
     create_operation_task,
     run_blogger_dossier_task,
     run_blogger_pool_sync_task,
+    run_blogger_redistill_task,
 )
 
 router = APIRouter()
@@ -58,6 +59,21 @@ def build_blogger_dossier_endpoint(
     _ensure_idle_or_409(db, blogger)
     task = create_operation_task(db, "blogger_dossier", tenant_id=tenant.id)
     submit_background(background_tasks, run_blogger_dossier_task, task.id, blogger.id)
+    return task
+
+
+@router.post("/bloggers/{blogger_id}/dossier/redistill", response_model=OperationTaskRead)
+def redistill_blogger_dossier_endpoint(
+    blogger_id: int,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant = Depends(current_tenant),
+    db: Session = Depends(get_db),
+) -> OperationTask:
+    """更新画像(轻量重蒸):用现有详情池重新选样 + 蒸馏,不重拉平台(长任务)。"""
+    blogger = _get_blogger_or_404(db, tenant, blogger_id)
+    _ensure_idle_or_409(db, blogger)
+    task = create_operation_task(db, "blogger_redistill", tenant_id=tenant.id)
+    submit_background(background_tasks, run_blogger_redistill_task, task.id, blogger.id)
     return task
 
 
