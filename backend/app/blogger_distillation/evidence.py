@@ -91,12 +91,7 @@ def _account_summary(stats: dict[str, Any]) -> str:
         top = _top_patterns(stats.get(key), n)
         if top:
             lines.append(f"{label}：" + "；".join(top))
-    freq = stats.get("frequency_info") or {}
-    if freq.get("pattern"):
-        lines.append(f"发布节奏：{freq['pattern']}（均隔 {freq.get('avg_days_between')} 天）")
-    growth = stats.get("growth_trend") or {}
-    if growth.get("summary"):
-        lines.append(f"成长趋势：{growth['summary']}")
+    # 发布节奏/成长趋势是账号事实(全量才准),已移出蒸馏证据——蒸馏只吃样本内的写作信号。
     tags = stats.get("frequent_hashtags") or []
     tag_names = [f"#{t.get('tag')}" for t in tags[:12] if isinstance(t, dict) and t.get("tag")]
     if tag_names:

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.blogger_distillation.service import record_task_event
 from app.blogger_distillation.service.crud import archive_active_skills
 from app.config import Settings
-from app.models import BloggerProfile, BloggerSkill, SkillTrainingRun
+from app.models import BloggerDistillationRun, BloggerProfile, BloggerSkill, SkillTrainingRun
 from app.services.ai_service import AIServiceError, is_ai_enabled
 from app.skill_optimization.dataset import load_active_posts, split_notes
 from app.skill_optimization.poc_runner import DEFAULT_CFG, _avg, _other_blogger_golds
@@ -349,8 +349,9 @@ def confirm_skill_optimization(db: Session, tenant_id: int, run_id: int, adopt: 
     base = db.get(BloggerSkill, run.base_skill_id) if run.base_skill_id else None
     if not blogger or not base:
         raise ValueError("基础 Skill 或博主不存在")
-    # 采纳:旧 active 归档,优化版存为新 active 版本(沿用基础 skill 的 run_id 表示血缘)。
-    archive_active_skills(db, tenant_id, blogger.id)
+    # 采纳:只归档「同一画像血缘」(同快照来源)的旧 active,优化版存为新 active 版本;其它画像并存不动。
+    base_run = db.get(BloggerDistillationRun, base.run_id)
+    archive_active_skills(db, tenant_id, blogger.id, snapshot_id=base_run.snapshot_id if base_run else None)
     new_skill = BloggerSkill(
         tenant_id=tenant_id, blogger_id=blogger.id, run_id=base.run_id,
         name=f"[优化] {base.name}", description=f"由 Skill 优化得到(相似度 {run.before_score}→{run.after_score})",

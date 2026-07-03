@@ -16,6 +16,8 @@ import type {
   BenchmarkRecommendationRun,
   BloggerDistillationRun,
   BloggerDistillRequest,
+  BloggerDossier,
+  DossierAttribution,
   BloggerPost,
   BloggerProfile,
   BloggerProfileCreate,
@@ -587,4 +589,22 @@ export function fetchAppraisalIntentContext(payload: { blogger_id: number; kind?
     method: 'POST',
     body: JSON.stringify(payload)
   })
+}
+
+// ============================ 博主档案(Dossier) ============================
+
+export function getBloggerDossier(bloggerId: number): Promise<BloggerDossier> {
+  return request(`/bloggers/${bloggerId}/dossier`)
+}
+
+export function buildBloggerDossier(bloggerId: number): Promise<OperationTask> {
+  return request(`/bloggers/${bloggerId}/dossier/build`, { method: 'POST', body: JSON.stringify({}) })
+}
+
+export function syncBloggerPool(bloggerId: number, mode: 'incremental' | 'full'): Promise<OperationTask> {
+  return request(`/bloggers/${bloggerId}/dossier/pool/sync`, { method: 'POST', body: JSON.stringify({ mode }) })
+}
+
+export function runBloggerAttribution(bloggerId: number): Promise<DossierAttribution> {
+  return request(`/bloggers/${bloggerId}/dossier/attribution`, { method: 'POST', body: JSON.stringify({}) })
 }

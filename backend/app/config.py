@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     # 改为结构化证据装配(evidence.py)后按优先级填充到此预算。调大更全但更慢更贵,GLM 上下文足够。
     distill_evidence_char_budget: int = 28000
     distill_evidence_legacy: bool = False  # A/B 旁路:True=退回旧的 json.dumps(stats)[:16000],供新旧对照
+    # 博主档案(建档/笔记池/画像过时阈值)。
+    dossier_default_full_count: int = 80        # 建档默认升级详情级的「最新 N 篇」(不足全采)
+    dossier_incremental_known_streak: int = 25  # 笔记池增量:尾部连续遇到 N 条已知笔记即停(约一页+缓冲)
+    portrait_stale_new_posts: int = 20          # 画像过时提示:蒸馏后池新增 ≥N 篇
+    portrait_stale_days: int = 60               # 画像过时提示:距蒸馏超 N 天
     # 对标博主搜寻(智能推荐/单博主评分):综合分四项权重 + 候选池上限 + 列表取数 + 搜索词扩展数 + 活跃度阈值。
     benchmark_weight_relevance: float = 0.4
     benchmark_weight_learnability: float = 0.25

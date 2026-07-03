@@ -61,6 +61,11 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("synthesis_llm_critic_enabled", "model", "蒸馏-启用 LLM 评审", "bool"),
     ConfigField("distill_evidence_char_budget", "model", "蒸馏-证据字符预算", "int"),
     ConfigField("distill_evidence_legacy", "model", "蒸馏-用旧证据供给(A/B对照)", "bool"),
+    # —— 博主档案 ——
+    ConfigField("dossier_default_full_count", "dossier", "建档-默认详情级篇数(最新N)", "int"),
+    ConfigField("dossier_incremental_known_streak", "dossier", "笔记池增量-连续已知即停条数", "int"),
+    ConfigField("portrait_stale_new_posts", "dossier", "画像过时-新增笔记阈值", "int"),
+    ConfigField("portrait_stale_days", "dossier", "画像过时-天数阈值", "int"),
     ConfigField("creation_max_revise_iterations", "model", "创作-最大修订次数", "int"),
     ConfigField("creation_min_quality_score", "model", "创作-质量阈值", "int"),
     ConfigField("creation_llm_critic_enabled", "model", "创作-启用 LLM 评审", "bool"),

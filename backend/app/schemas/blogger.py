@@ -253,3 +253,50 @@ class BloggerSkillRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================ 博主档案(Dossier) ============================
+
+class DossierPoolInfo(BaseModel):
+    total: int
+    full_count: int
+    list_count: int
+    synced_at: datetime | None
+    reached_end: bool
+
+
+class DossierPortrait(BaseModel):
+    """一份创作画像(active skill)+ 过时判定。过时≠失效,照常可用。"""
+
+    skill_id: int
+    run_id: int
+    name: str
+    distilled_at: datetime | None
+    sample_count: int
+    snapshot_id: int | None
+    snapshot_name: str
+    lanes: list[str]
+    new_posts_since: int
+    stale: bool
+
+
+class DossierBuilding(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class BloggerDossierRead(BaseModel):
+    """档案页聚合读:物理层(池)+ 分析层(统计/轨迹/归因)+ 画像 + 构建状态。"""
+
+    blogger_id: int
+    pool: DossierPoolInfo
+    stats: dict | None
+    trajectory: dict | None
+    attribution: dict | None
+    portraits: list[DossierPortrait]
+    building: DossierBuilding | None
+
+
+class DossierPoolSyncRequest(BaseModel):
+    mode: str = Field(default="incremental", pattern="^(incremental|full)$")

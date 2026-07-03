@@ -905,3 +905,68 @@ export interface AppraisalIntentContext {
   note_count: number
   has_material: boolean
 }
+
+// ============================ 博主档案(Dossier) ============================
+
+export interface DossierPoolInfo {
+  total: number
+  full_count: number
+  list_count: number
+  synced_at: string | null
+  reached_end: boolean
+}
+
+export interface DossierPortrait {
+  skill_id: number
+  run_id: number
+  name: string
+  distilled_at: string | null
+  sample_count: number
+  snapshot_id: number | null
+  snapshot_name: string
+  lanes: string[]
+  new_posts_since: number
+  stale: boolean
+}
+
+export interface DossierBuilding {
+  task_id: string
+  status: string
+  message: string
+}
+
+export interface DossierTrajectoryPoint {
+  post_id: number
+  external_id: string
+  date: string
+  title: string
+  like: number
+  favorite: number
+  comment: number
+  view: number
+}
+
+export interface DossierTrajectory {
+  points: DossierTrajectoryPoint[]
+  bursts: { post_id: number; date: string; like: number; title: string }[]
+  phases: { label: string; start: string; end: string; note_count: number; avg_like: number }[]
+  recent_trend: string
+  summary: string
+}
+
+export interface DossierAttribution {
+  generated_at: string
+  burst_count: number
+  hypotheses: { claim: string; evidence: string; confidence: string }[]
+  summary: string
+}
+
+export interface BloggerDossier {
+  blogger_id: number
+  pool: DossierPoolInfo
+  stats: Record<string, unknown> | null
+  trajectory: DossierTrajectory | null
+  attribution: DossierAttribution | null
+  portraits: DossierPortrait[]
+  building: DossierBuilding | null
+}

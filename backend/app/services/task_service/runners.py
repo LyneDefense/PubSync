@@ -32,6 +32,7 @@ from app.services.tenant_service import (
 from app.services.wechat_service import WeChatAPIError
 from app.account_audit.service import run_account_audit
 from app.benchmark_discovery.service import run_recommendation
+from app.blogger_dossier.service import build_dossier, sync_pool
 from app.skill_optimization.service import run_skill_optimization
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
@@ -146,6 +147,43 @@ def run_blogger_url_collection_task(
         task_id,
         label="博主定向采集",
         fail_message="博主定向采集失败",
+        work=work,
+        expected=(ValueError, TikHubError),
+        cancellable=True,
+    )
+
+
+def run_blogger_dossier_task(task_id: str, blogger_id: int) -> None:
+    """一键建档:资料 → 全量笔记池 → 统计/轨迹 → 最新 N 篇详情 → 自动蒸馏默认画像。"""
+
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, "正在构建博主画像")
+        result = build_dossier(db=db, settings=get_settings(), task_id=task_id, tenant_id=task.tenant_id, blogger_id=blogger_id)
+        summary = f"入池 {result['pool']['seen']} 篇 · 详情级 {result['full_selected']} 篇"
+        summary += " · 默认画像已生成(待确认)" if result["distilled"] else " · 样本不足未蒸馏"
+        mark_task_succeeded(db, task, f"博主画像构建完成：{summary}")
+        logger.info("任务成功：任务ID=%s，类型=构建博主画像，blogger_id=%s，%s", task_id, blogger_id, summary)
+
+    execute_task(
+        task_id,
+        label="构建博主画像",
+        fail_message="构建博主画像失败",
+        work=work,
+        expected=(ValueError, TikHubError, AIServiceError),
+        cancellable=True,
+    )
+
+
+def run_blogger_pool_sync_task(task_id: str, blogger_id: int, mode: str = "incremental") -> None:
+    def work(db: Session, task: OperationTask) -> None:
+        mark_task_running(db, task, "正在同步笔记池")
+        summary = sync_pool(db=db, settings=get_settings(), task_id=task_id, tenant_id=task.tenant_id, blogger_id=blogger_id, mode=mode)
+        mark_task_succeeded(db, task, f"笔记池同步完成：看到 {summary['seen']} 篇，新入池 {summary['new']}，刷新 {summary['refreshed']}")
+
+    execute_task(
+        task_id,
+        label="笔记池同步",
+        fail_message="笔记池同步失败",
         work=work,
         expected=(ValueError, TikHubError),
         cancellable=True,

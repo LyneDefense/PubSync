@@ -11,6 +11,7 @@ from app.blogger_distillation.tikhub_client.parsers import (
     detect_note_type,
     extract_interaction_counts,
     extract_note_page,
+    extract_note_published_at,
     extract_xsec_token,
     find_comment_items,
     find_cursor,
@@ -95,6 +96,8 @@ class TikHubXhsClient(TikHubBaseClient):
                         comment_count=counts["comment_count"],
                         share_count=counts["share_count"],
                         raw=note,
+                        published_at=extract_note_published_at(note),
+                        view_count=counts["view_count"],
                     )
                 )
                 if len(candidates) >= limit:

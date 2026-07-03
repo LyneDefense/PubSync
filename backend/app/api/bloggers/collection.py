@@ -157,6 +157,7 @@ def collect_estimate_endpoint(
                     BloggerPost.tenant_id == tenant.id,
                     BloggerPost.blogger_id == blogger_id,
                     BloggerPost.status.notin_(("excluded", "delisted")),
+                    BloggerPost.detail_level == "full",  # list 级行不是"待补采",是待升级,不计入
                     or_(*conds),
                 )
             ) or 0

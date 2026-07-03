@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -75,6 +76,9 @@ class XhsPostCandidate:
     comment_count: int
     share_count: int
     raw: dict[str, Any]
+    # 列表卡自带的发布时间与浏览量(笔记池 list 级行的数据源;老调用点不传则为空)。
+    published_at: datetime | None = None
+    view_count: int = 0
 
 
 @dataclass

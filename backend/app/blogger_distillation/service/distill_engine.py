@@ -66,13 +66,14 @@ def build_core_prompt(ctx: DistillContext) -> str:
             "self_diagnosis 返回空对象(用户本人不是这个账号)。"
         )
     return f"""
-你是“博主蒸馏器”的分析引擎,这一步只提炼**「这个人」**——TA 怎么想、怎么运营、是什么人设。
-**不要**写标题公式/正文结构/语言 DNA 这些「怎么写」的内容(那是另一步按模态分别蒸的)。
+你是“博主蒸馏器”的分析引擎,这一步只提炼**「这个人」**——TA 怎么想、是什么人设、用什么声音表达、从什么角度选题。
+**不要**写标题公式/正文结构/语言 DNA 这些「怎么写」的内容(那是另一步按模态分别蒸的);
+**也不要**写发布节奏/数据趋势这类账号统计事实(那由档案层从全量数据算,不从样本蒸)。
 
 {mode_framing}
 
 硬边界：
-- 不能冒充原博主、不能复制原文原标题原经历;只提炼公开内容里的信念、立场、思维、运营策略。
+- 不能冒充原博主、不能复制原文原标题原经历;只提炼公开内容里的信念、立场、人设与表达声音。
 - 输出必须是合法 JSON 对象,不要 Markdown/HTML/解释/<think>。
 - 每条结论尽量贴着“下方证据”的事实与数字,不要正确的废话;空缺给空数组,不要编造。
 - 图内文字以内容性要点为准;装饰/引导字(点赞收藏关注、水印、背景杂字)不要当方法论。
@@ -90,22 +91,18 @@ TikHub 用户信息摘要：
 {{
   "one_glance": "一句话说清这个账号的价值和爆款原因（带关键数字）",
   "persona": {{"identity": "身份感/人设", "stance": "表达姿态", "trust_source": "信任来源"}},
+  "voice": {{"self_ref": "自称方式（如'阿璐我啊'）", "tone": "语气一句话", "catchphrases": ["高频口头禅/标志性表达"]}},
   "audience": "目标读者画像",
   "cognitive_layer": {{
     "core_beliefs": ["核心信念：TA 默认相信什么"],
     "opinion_tensions": ["观点张力/反共识：TA 常对抗的常识"],
-    "value_stance": ["价值立场"],
-    "thinking_models": ["反复出现的思维模式"]
+    "value_stance": ["价值立场"]
   }},
-  "strategy_layer": {{
-    "series_planning": ["系列/选题规划方式"],
-    "trend_hijacking": ["蹭热点/借势方式"],
-    "ops_habits": ["运营习惯：发布、互动、引导"],
-    "posting_rhythm": "发布节奏一句话总结（结合 frequency_info）"
+  "angle_layer": {{
+    "topic_angles": ["从观点张力推出的选题角度（可迁移的'从什么角度切'，不是具体标题）"],
+    "trend_hijacking": ["蹭热点/借势方式"]
   }},
   "comment_insights": ["评论区暴露的读者真实需求和互动机会"],
-  "growth_trend": "结合 growth_trend/数据面板的发展趋势与机会，一段话",
-  "sample_topics": ["可迁移到用户自己账号的新选题示例 TOP8"],
   "do_not_do": ["创作禁区/不该模仿的部分"],
   "self_diagnosis": {{"strengths": ["模式B：账号优势"], "weaknesses": ["模式B：明显短板"], "action_plan": ["模式B：可立即执行的增长动作"]}},
   "core_conclusion": "给用户的核心使用建议（一段话）"
@@ -185,8 +182,8 @@ class CoreSchemaSensor:
 
     def check(self, result: dict[str, Any], ctx: DistillContext) -> SensorResult:
         cognitive = result.get("cognitive_layer", {}) or {}
-        if not any(cognitive.get(k) for k in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models")):
-            msg = "认知层四个子项全空,至少补全核心信念与观点张力"
+        if not any(cognitive.get(k) for k in _COGNITIVE_KEYS):
+            msg = "认知层三个子项全空,至少补全核心信念与观点张力"
             return SensorResult(passed=False, issues=[msg], corrective_feedback=msg)
         return SensorResult(passed=True)
 
@@ -295,9 +292,10 @@ def distill_lane(
 # ============================ 归一 ============================
 
 _CORE_LAYERS: dict[str, list[str]] = {
-    "cognitive_layer": ["core_beliefs", "opinion_tensions", "value_stance", "thinking_models"],
-    "strategy_layer": ["series_planning", "trend_hijacking", "ops_habits", "posting_rhythm"],
+    "cognitive_layer": ["core_beliefs", "opinion_tensions", "value_stance"],
+    "angle_layer": ["topic_angles", "trend_hijacking"],
 }
+_COGNITIVE_KEYS = ("core_beliefs", "opinion_tensions", "value_stance")
 _LANE_LIST_KEYS = [
     "title_formulas", "opening_templates", "body_structures", "video_script_structures",
     "emotional_rhythm", "language_dna", "cta_strategy", "cover_text_rules", "visual_layout_patterns", "hashtag_strategy",
@@ -314,19 +312,21 @@ def normalize_core(data: dict[str, Any], mode: str) -> dict[str, Any]:
     for layer, keys in _CORE_LAYERS.items():
         layer_value = data.get(layer) if isinstance(data.get(layer), dict) else {}
         for key in keys:
-            if key == "posting_rhythm":
-                layer_value.setdefault(key, "")
-            else:
-                layer_value[key] = _as_list(layer_value.get(key))
+            layer_value[key] = _as_list(layer_value.get(key))
         data[layer] = layer_value
     persona = data.get("persona")
     if not isinstance(persona, dict):
         data["persona"] = {"identity": str(persona or ""), "stance": "", "trust_source": ""}
+    voice = data.get("voice") if isinstance(data.get("voice"), dict) else {}
+    data["voice"] = {
+        "self_ref": str(voice.get("self_ref") or "").strip(),
+        "tone": str(voice.get("tone") or "").strip(),
+        "catchphrases": _as_list(voice.get("catchphrases")),
+    }
     data.setdefault("one_glance", "")
     data.setdefault("audience", "")
-    for list_key in ("comment_insights", "sample_topics", "do_not_do"):
+    for list_key in ("comment_insights", "do_not_do"):
         data[list_key] = _as_list(data.get(list_key))
-    data.setdefault("growth_trend", "")
     data.setdefault("core_conclusion", "")
     diagnosis = data.get("self_diagnosis") if isinstance(data.get("self_diagnosis"), dict) else {}
     for key in ("strengths", "weaknesses", "action_plan"):
@@ -346,7 +346,7 @@ def normalize_lane(data: dict[str, Any]) -> dict[str, Any]:
 
 def is_core_empty(data: dict[str, Any]) -> bool:
     cognitive = data.get("cognitive_layer", {}) or {}
-    return not any(cognitive.get(k) for k in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models"))
+    return not any(cognitive.get(k) for k in _COGNITIVE_KEYS)
 
 
 def is_lane_empty(data: dict[str, Any]) -> bool:
@@ -373,11 +373,14 @@ def evaluate_core_quality(core: dict[str, Any], stats: dict[str, Any], mode: str
             issues.append(detail)
 
     cognitive = core.get("cognitive_layer", {})
-    strategy = core.get("strategy_layer", {})
-    cognitive_items = sum(len(cognitive.get(k) or []) for k in ("core_beliefs", "opinion_tensions", "value_stance", "thinking_models"))
-    deduct(30, "认知层覆盖", cognitive_items >= 4, f"认知层共 {cognitive_items} 条，建议 ≥4 条")
-    strategy_items = sum(len(strategy.get(k) or []) for k in ("series_planning", "trend_hijacking", "ops_habits"))
-    deduct(15, "策略层覆盖", strategy_items >= 2, f"策略层共 {strategy_items} 条，建议 ≥2 条")
+    angle = core.get("angle_layer", {})
+    voice = core.get("voice", {}) if isinstance(core.get("voice"), dict) else {}
+    cognitive_items = sum(len(cognitive.get(k) or []) for k in _COGNITIVE_KEYS)
+    deduct(30, "认知层覆盖", cognitive_items >= 3, f"认知层共 {cognitive_items} 条，建议 ≥3 条")
+    angle_items = sum(len(angle.get(k) or []) for k in ("topic_angles", "trend_hijacking"))
+    deduct(15, "角度层覆盖", angle_items >= 2, f"角度层共 {angle_items} 条，建议 ≥2 条(选题角度是选题器的原料)")
+    has_voice = bool(str(voice.get("self_ref") or "").strip() or voice.get("catchphrases"))
+    deduct(10, "人设声音", has_voice, "voice 为空:至少给出自称方式或口头禅(创作借声要用)")
     if not str(core.get("one_glance") or "").strip():
         deduct(10, "一眼看清", False, "one_glance 为空")
     if mode == "B":

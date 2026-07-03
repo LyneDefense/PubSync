@@ -23,8 +23,9 @@ def _ctx(stats, lane=None, mode="A"):
 
 def test_core_prompt_has_cognitive_not_content():
     p = build_core_prompt(_ctx({"sample_count": 10}))
-    assert "cognitive_layer" in p and "strategy_layer" in p
+    assert "cognitive_layer" in p and "angle_layer" in p and "voice" in p
     assert "title_formulas" not in p  # 内核不含内容层
+    assert "posting_rhythm" not in p and "sample_topics" not in p  # 账号事实/固化选题已剥离
 
 
 def test_lane_prompt_framing_by_modality():
@@ -37,7 +38,8 @@ def test_lane_prompt_framing_by_modality():
 def test_normalize_core_fills_skeleton():
     out = normalize_core({"cognitive_layer": {"core_beliefs": "单条转列表"}}, "A")
     assert out["cognitive_layer"]["core_beliefs"] == ["单条转列表"]
-    assert out["strategy_layer"]["posting_rhythm"] == ""
+    assert out["angle_layer"]["topic_angles"] == [] and out["angle_layer"]["trend_hijacking"] == []
+    assert out["voice"] == {"self_ref": "", "tone": "", "catchphrases": []}
     assert isinstance(out["persona"], dict) and out["self_diagnosis"]["strengths"] == []
 
 
@@ -48,10 +50,11 @@ def test_normalize_lane_lists():
 
 def test_core_quality_counts_cognitive():
     good = {"cognitive_layer": {"core_beliefs": ["a", "b"], "opinion_tensions": ["c"], "value_stance": ["d"]},
-            "strategy_layer": {"series_planning": ["s1"], "ops_habits": ["s2"]}, "one_glance": "有"}
+            "angle_layer": {"topic_angles": ["角度1"], "trend_hijacking": ["借势1"]},
+            "voice": {"self_ref": "阿甜我啊", "tone": "", "catchphrases": []}, "one_glance": "有"}
     q = evaluate_core_quality(good, {}, "A")
     assert q["score"] >= 85 and q["grade"] == "优"
-    thin = evaluate_core_quality({"cognitive_layer": {}, "strategy_layer": {}}, {}, "A")
+    thin = evaluate_core_quality({"cognitive_layer": {}, "angle_layer": {}}, {}, "A")
     assert thin["score"] < 85 and thin["issues"]
 
 

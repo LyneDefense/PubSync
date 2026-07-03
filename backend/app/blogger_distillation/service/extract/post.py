@@ -45,6 +45,11 @@ def extract_note_key(raw: dict[str, Any], detail_payload: dict[str, Any], fallba
     return fallback
 
 
+def interaction_score(like: int, favorite: int, comment: int, share: int) -> float:
+    """互动综合分(排序/爆款判定共用权重):藏权重最高(干货信号),赞次之。"""
+    return (like or 0) * 0.35 + (favorite or 0) * 0.45 + (comment or 0) * 0.2 + (share or 0) * 0.05
+
+
 def resolve_content_type(note_type: str, has_video_url: bool) -> str:
     """判笔记类型:信任列表 note_type(图文/视频);仅列表没给类型(URL 定向采集)时,才用有无视频流兜底。
 
@@ -74,7 +79,7 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
     favorite_count = counts["favorite_count"]
     comment_count = counts["comment_count"]
     share_count = counts["share_count"]
-    score = like_count * 0.35 + favorite_count * 0.45 + comment_count * 0.2 + share_count * 0.05
+    score = interaction_score(like_count, favorite_count, comment_count, share_count)
     return {
         "external_id": candidate.external_id,
         "note_key": extract_note_key(raw, detail_payload, candidate.external_id),
@@ -94,12 +99,15 @@ def normalize_post(candidate: XhsPostCandidate, detail_payload: dict[str, Any]) 
         "vision_status": "pending" if media_urls else "not_required",
         "vision_error": "",
         "vision_image_count": 0,
-        "published_at": published_at,
+        "published_at": published_at or candidate.published_at,
         "like_count": like_count,
         "favorite_count": favorite_count,
         "comment_count": comment_count,
         "share_count": share_count,
+        "view_count": candidate.view_count,  # 浏览量只有列表卡给;详情不带
         "score": score,
+        "detail_level": "full",  # 抓过详情即升级;list 级行被 upsert 覆盖时随之升级
+        "xsec_token": candidate.xsec_token,
         "raw_json": json.dumps(detail_payload, ensure_ascii=False, default=str),
     }
 

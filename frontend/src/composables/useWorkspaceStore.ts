@@ -123,7 +123,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'optimize'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'optimize' | 'dossier' | 'pool-sync'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -131,7 +131,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'overview' | 'find' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'dossier' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -268,6 +268,8 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   audit: 0,
   recommend: 0,
   optimize: 0,
+  dossier: 0,
+  'pool-sync': 0,
 })
 export const progressTimers: Partial<Record<TaskActionName, number>> = {}
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 from urllib.parse import parse_qs
 from urllib.parse import urlparse
@@ -11,6 +12,7 @@ from .common import first_bool
 from .common import first_bool_recursive
 from .common import first_int
 from .common import first_str
+from .common import parse_timestamp
 from .common import recursive_find
 
 
@@ -231,7 +233,17 @@ def extract_interaction_counts(value: dict[str, Any]) -> dict[str, int]:
             ],
         ),
         "share_count": first_count(sources, ["share_count", "share_count_str", "shareCount", "sharedCount", "shares", "shareNum"]),
+        "view_count": first_count(sources, ["view_count", "view_count_str", "viewCount", "views", "read_count", "impression"]),
     }
+
+
+def extract_note_published_at(note: dict[str, Any]) -> datetime | None:
+    """列表卡发布时间:create_time(秒级时间戳,实测列表自带)优先,退回 time/timestamp。"""
+    for key in ("create_time", "time", "timestamp", "publish_time"):
+        parsed = parse_timestamp(note.get(key))
+        if parsed:
+            return parsed
+    return None
 
 
 def collect_metric_sources(raw: dict[str, Any], primary: Any | None = None) -> list[dict[str, Any]]:

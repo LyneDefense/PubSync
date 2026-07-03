@@ -105,10 +105,8 @@ def run_blogger_distillation(
                 f"用于蒸馏的笔记只有 {len(posts)} 篇，至少需要 {settings.distill_min_samples} 篇"
                 f"（建议 ≥{settings.distill_recommend_samples} 篇,样本越多越准）"
             )
-        record_task_event(
-            db, tenant_id, task_id, "蒸馏选材", "succeeded",
-            f"{'自动蒸馏(高赞)' if source == 'auto' else '自定义选材'}:{len(posts)} 篇笔记",
-        )
+        source_label = {"auto": "自动蒸馏(高赞)", "dossier": "建档自动蒸馏(最新)"}.get(source, "自定义选材")
+        record_task_event(db, tenant_id, task_id, "蒸馏选材", "succeeded", f"{source_label}:{len(posts)} 篇笔记")
         stats = analysis.analyze_posts(posts)  # 内核 stats(全账号,跨模态)
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
 
@@ -267,7 +265,7 @@ def confirm_blogger_distillation(db: Session, tenant_id: int, run_id: int) -> Di
     if not skill:
         raise ValueError("待确认 Skill 不存在")
 
-    archive_active_skills(db, tenant_id, blogger.id)
+    archive_active_skills(db, tenant_id, blogger.id, snapshot_id=run.snapshot_id)
     skill.status = "active"
     run.status = "succeeded"
     blogger.last_distilled_at = datetime.now(timezone.utc)

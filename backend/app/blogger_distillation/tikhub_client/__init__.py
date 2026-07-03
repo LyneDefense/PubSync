@@ -22,8 +22,16 @@ from app.blogger_distillation.tikhub_client.parsers import (
     unwrap_payload,
 )
 from app.blogger_distillation.tikhub_client.xhs_client import TikHubXhsClient
+from app.config import Settings
+
+
+def build_platform_client(settings: Settings, platform: str) -> TikHubXhsClient | TikHubDouyinClient:
+    """按平台构造 TikHub 客户端。采集 / 笔记池同步 / 对标搜寻共用的唯一工厂。"""
+    return TikHubDouyinClient(settings) if platform == "douyin" else TikHubXhsClient(settings)
+
 
 __all__ = [
+    "build_platform_client",
     "TikHubBaseClient",
     "TikHubError",
     "TikHubUsage",

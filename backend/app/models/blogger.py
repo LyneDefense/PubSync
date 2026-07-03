@@ -34,6 +34,13 @@ class BloggerProfile(Base):
     is_favorite: Mapped[bool] = mapped_column(default=False)
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_distilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 笔记池(档案物理层)同步状态:最后一次列表同步时间;是否翻到列表底部(含第一篇,轨迹才算完整)。
+    pool_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pool_reached_end: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # 爆文归因(LLM,按钮触发):{"generated_at", "hypotheses": [...], "summary"};空=未运行。
+    attribution_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # 构建互斥锁:进行中的建档/池同步任务 id;任务结束(含失败)清空。配合任务状态自愈。
+    build_task_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -86,6 +93,13 @@ class BloggerPost(Base):
     favorite_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     share_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 浏览量(列表卡自带);>0 时可算互动率。
+    view_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # 详情级别:list=仅列表数据(标题/时间/互动,全量笔记池);full=抓过详情(正文/转写/图文理解/评论)。
+    # 只升不降;存量行都走过详情管线,默认 full。
+    detail_level: Mapped[str] = mapped_column(String(10), nullable=False, default="full", server_default="full", index=True)
+    # 列表卡携带的 xsec_token,list 级行日后升级详情时用(详情接口需要它)。
+    xsec_token: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     comments_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     raw_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")

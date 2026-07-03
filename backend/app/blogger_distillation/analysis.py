@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter, defaultdict
-from datetime import datetime
 from typing import Any
 
 from app.blogger_distillation.modality import coarse_modality
@@ -100,7 +99,6 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
     by_modality = analyze_by_modality(posts)
     comments = collect_comments(posts)
     category_stats = classify_posts(posts)
-    frequency_info = analyze_posting_frequency(posts)
     structure_info = analyze_body_structure(posts)
     transcript_info = analyze_transcript_structure(posts)
     title_patterns = detect_title_patterns(posts)
@@ -108,7 +106,6 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
     opening_patterns = detect_opening_patterns(posts)
     transcript_opening_patterns = detect_transcript_opening_patterns(posts)
     emoji_info = analyze_emoji_usage(posts)
-    trend_info = analyze_growth_trend(posts)
     hot_post_summaries = [post_summary(item) for item in hot_posts]
     return {
         "sample_count": len(posts),
@@ -129,8 +126,7 @@ def analyze_posts(posts: list[BloggerPost]) -> dict[str, Any]:
         "transcript_opening_patterns": transcript_opening_patterns,
         "frequent_hashtags": frequent_hashtags(posts),
         "category_stats": category_stats,
-        "frequency_info": frequency_info,
-        "growth_trend": trend_info,
+        # 发布节奏 / 成长趋势是账号事实,从蒸馏样本算必失真,已移到 blogger_dossier.stats(全量算)。
         "hot_posts": hot_post_summaries,
         "representative_posts": [post_summary(item) for item in sorted_posts[: min(20, len(sorted_posts))]],
         "comment_insights_source": comments[:100],
@@ -273,45 +269,6 @@ def classify_posts(posts: list[BloggerPost]) -> dict[str, Any]:
             "top_post": top.title,
         }
     return result
-
-
-def analyze_posting_frequency(posts: list[BloggerPost]) -> dict[str, Any]:
-    dates = sorted([item.published_at for item in posts if item.published_at is not None])
-    if len(dates) < 2:
-        return {"pattern": "时间数据不足", "avg_days_between": None}
-    intervals = []
-    for index in range(1, len(dates)):
-        intervals.append(max((dates[index] - dates[index - 1]).total_seconds() / 86400, 0))
-    avg_days = round(sum(intervals) / max(len(intervals), 1), 1)
-    if avg_days <= 1.5:
-        pattern = "高频日更"
-    elif avg_days <= 4:
-        pattern = "稳定周更多次"
-    elif avg_days <= 10:
-        pattern = "低频但持续"
-    else:
-        pattern = "更新间隔较长"
-    return {"pattern": pattern, "avg_days_between": avg_days}
-
-
-def analyze_growth_trend(posts: list[BloggerPost]) -> dict[str, Any]:
-    dated = sorted([item for item in posts if item.published_at is not None], key=lambda item: item.published_at or datetime.min)
-    if len(dated) < 8:
-        return {"summary": "样本或时间数据不足，暂不判断趋势"}
-    midpoint = len(dated) // 2
-    early = dated[:midpoint]
-    recent = dated[midpoint:]
-    early_avg = sum(item.score for item in early) / max(len(early), 1)
-    recent_avg = sum(item.score for item in recent) / max(len(recent), 1)
-    delta = round((recent_avg - early_avg) / max(early_avg, 1) * 100, 1)
-    return {
-        "early_count": len(early),
-        "recent_count": len(recent),
-        "early_avg_score": round(early_avg, 1),
-        "recent_avg_score": round(recent_avg, 1),
-        "score_delta_pct": delta,
-        "summary": "近期互动走强" if delta > 20 else ("近期互动走弱" if delta < -20 else "近期互动基本平稳"),
-    }
 
 
 def frequent_hashtags(posts: list[BloggerPost]) -> list[dict[str, Any]]:

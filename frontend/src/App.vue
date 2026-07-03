@@ -116,7 +116,8 @@ const SOCIAL_NAV: NavConfig = {
       icon: 'funnel',
       items: [
         { tab: 'find', label: '找对标博主', icon: 'search' },
-        { tab: 'analysis', label: '对标分析', icon: 'target', badge: '新' },
+        { tab: 'dossier', label: '博主画像', icon: 'user', badge: '新' },
+        { tab: 'analysis', label: '对标分析', icon: 'target' },
         { tab: 'assets', label: '博主资产', icon: 'folder' },
         { tab: 'collect', label: '数据采集', icon: 'download' },
         { tab: 'distill', label: '提炼 Skill', icon: 'funnel' }

@@ -24,11 +24,13 @@ from app.blogger_distillation.service.events import (
     record_task_event,
 )
 from app.blogger_distillation.service.usage import apply_usage
+from app.blogger_dossier import pool as note_pool
 from app.blogger_distillation.tikhub_client import (
     TikHubDouyinClient,
     TikHubError,
     TikHubXhsClient,
     XhsPostCandidate,
+    build_platform_client,
 )
 from app.blogger_distillation.tikhub_client.parsers import parse_xhs_note_link
 from app.blogger_distillation.search import extract_user_profile
@@ -57,9 +59,7 @@ class CollectionResult:
 
 
 def build_collection_client(settings: Settings, platform: str) -> TikHubXhsClient | TikHubDouyinClient:
-    if platform == "douyin":
-        return TikHubDouyinClient(settings)
-    return TikHubXhsClient(settings)
+    return build_platform_client(settings, platform)
 
 
 def platform_collection_label(platform: str) -> str:
@@ -158,12 +158,14 @@ def run_blogger_collection(
         }
         selected_modalities = {m for m in (content_types or ["image", "video"]) if m in ("image", "video")} or {"image", "video"}
 
-        # 动态翻页:最新优先翻到"没采过的够 N 条"就停;高赞优先/全部翻到底(或安全上限)再排序。
+        # "需要详情" = 池里没有,或只有列表级行(list 级行本就是"未抓详情",视同新增去升级)。
+        def _needs_detail(c: XhsPostCandidate) -> bool:
+            post = existing.get(c.external_id)
+            return post is None or post.detail_level != "full"
+
+        # 动态翻页:最新优先翻到"需要详情的够 N 条"就停;高赞优先/全部翻到底(或安全上限)再排序。
         def _new_in_range(cands: list[XhsPostCandidate]) -> int:
-            return sum(
-                1 for c in cands
-                if c.external_id not in existing and candidate_modality(c.note_type) in selected_modalities
-            )
+            return sum(1 for c in cands if _needs_detail(c) and candidate_modality(c.note_type) in selected_modalities)
 
         def _should_stop(cands: list[XhsPostCandidate]) -> bool:
             if fetch_all or order != "latest":
@@ -184,9 +186,9 @@ def run_blogger_collection(
         if not candidates:
             raise TikHubError(f"没有符合条件的{platform_collection_label(blogger.platform)}候选，请检查主页链接、拉取范围或 TikHub 返回")
 
-        # 增量:从"没采过的"里按排序取最多 N 条当新增;已采过的(在候选里)顺带刷新。
-        new_candidates = [c for c in candidates if c.external_id not in existing]
-        existing_candidates = [(c, existing[c.external_id]) for c in candidates if c.external_id in existing]
+        # 增量:从"需要详情的"里按排序取最多 N 条当新增(含 list 级行升级);已是详情级的顺带刷新。
+        new_candidates = [c for c in candidates if _needs_detail(c)]
+        existing_candidates = [(c, existing[c.external_id]) for c in candidates if not _needs_detail(c)]
         new_targets = select_targets(new_candidates, order, fetch_all, sample_limit)
 
         to_fetch: list[XhsPostCandidate] = list(new_targets)  # 新笔记
@@ -222,18 +224,23 @@ def run_blogger_collection(
         for post in fetched:
             post.last_seen_at = now
             post.status = "active" if post.status != "excluded" else "excluded"
-        # 老笔记轻量刷新:用列表赞藏数更新 + last_seen,不抓详情。
+        # 老笔记轻量刷新:用列表卡数据更新(互动/浏览/时间/token) + last_seen,不抓详情。
         for candidate, post in refresh_only:
-            if candidate.like_count:
-                post.like_count = candidate.like_count
-            if candidate.favorite_count:
-                post.favorite_count = candidate.favorite_count
-            if candidate.comment_count:
-                post.comment_count = candidate.comment_count
-            if candidate.share_count:
-                post.share_count = candidate.share_count
-            post.last_seen_at = now
+            note_pool.refresh_from_candidate(post, candidate)
             post.status = "active" if post.status != "excluded" else "excluded"
+
+        # 笔记池全量落库:没被选中升级详情的候选也 upsert 为 list 级行(此前直接丢弃),统计/轨迹靠它。
+        fetch_ids = {c.external_id for c in to_fetch}
+        leftovers = [c for c in all_candidates if c.external_id not in existing and c.external_id not in fetch_ids]
+        if leftovers:
+            pool_counts = note_pool.upsert_list_candidates(db, tenant_id, blogger, leftovers)
+            record_task_event(
+                db, tenant_id, task_id, "笔记池", "succeeded",
+                f"列表候选全量入池:新增列表级 {pool_counts['new']} 条(仅标题/时间/互动,未抓详情)",
+            )
+        blogger.pool_synced_at = now
+        if notes_result.reached_end:
+            blogger.pool_reached_end = True
 
         # 下架对账:仅当翻到列表底部(看到完整目录)才动。小红书翻页返回不稳定(同一博主两次"翻到底"
         # 拿到的集合可能不同),故需「连续 N 次完整爬取都缺失」才下架,单次缺失只累计、不下架,避免误杀。

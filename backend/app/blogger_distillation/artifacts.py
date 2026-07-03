@@ -9,12 +9,16 @@ from app.blogger_distillation.tikhub_client import TikHubUsage
 from app.models import BloggerProfile
 
 
-# 三层方法论各子项的中文小标题，渲染报告/Skill 时复用。
+# 各层子项的中文小标题，渲染报告/Skill 时复用。thinking_models/STRATEGY 仅旧数据兜底渲染。
 COGNITIVE_LABELS = {
     "core_beliefs": "核心信念",
     "opinion_tensions": "观点张力 / 反共识",
     "value_stance": "价值立场",
     "thinking_models": "思维模式",
+}
+ANGLE_LABELS = {
+    "topic_angles": "选题角度",
+    "trend_hijacking": "蹭热点 / 借势",
 }
 STRATEGY_LABELS = {
     "series_planning": "系列 / 选题规划",
@@ -66,14 +70,21 @@ def render_report_html(
 
     # 1. 一眼看清
     body += section("一眼看清", distillation.get("one_glance"))
-    # 2. 人设拆解
+    # 2. 人设拆解(+人设声音,新形态才有)
     body += section("人设拆解", render_persona(distillation.get("persona")))
+    voice = render_voice(distillation.get("voice"))
+    if voice:
+        body += section("人设声音", voice)
     # 3. 目标读者
     body += section("目标读者", distillation.get("audience"))
     # 4. 认知层（怎么想）
     body += layer_block("认知层 · 怎么想", cognitive, COGNITIVE_LABELS)
-    # 5. 策略层（怎么运营）
-    body += layer_block("策略层 · 怎么运营", strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm")))
+    # 5. 角度层(新形态)/策略层(旧数据兜底)
+    angle = distillation.get("angle_layer") or {}
+    if angle:
+        body += layer_block("角度层 · 选题与借势", angle, ANGLE_LABELS)
+    elif strategy:
+        body += layer_block("策略层 · 怎么运营", strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm")))
     # 6-7. 内容层（怎么写，按内容形态分车道）+ 各车道爆款拆解
     body += render_content_section(distillation, stats)
     # 8. 评论洞察
@@ -81,10 +92,12 @@ def render_report_html(
     # 9. 数据面板
     body.append("<h2>数据面板</h2>")
     body.append(render_value(render_data_panel(stats, usage)))
-    # 10. 发展趋势
-    body += section("发展趋势", distillation.get("growth_trend") or (stats.get("growth_trend") or {}).get("summary"))
-    # 选题灵感 / 对比示例 / 创作禁区
-    body += section("选题灵感", distillation.get("sample_topics"))
+    # 发展趋势/选题灵感:账号事实与固化选题已移出蒸馏,仅旧数据兜底渲染。
+    growth = distillation.get("growth_trend") or (stats.get("growth_trend") or {}).get("summary")
+    if growth:
+        body += section("发展趋势", growth)
+    if distillation.get("sample_topics"):
+        body += section("选题灵感", distillation.get("sample_topics"))
     body.append("<h2>对比示例</h2>")
     body.append(render_contrast(distillation.get("contrast_examples")))
     body += section("创作禁区", distillation.get("do_not_do"))
@@ -207,6 +220,18 @@ def render_persona(persona: Any) -> Any:
     return persona
 
 
+def render_voice(voice: Any) -> dict[str, Any]:
+    """人设声音(自称/语气/口头禅)→ 渲染友好的 dict;空则 {}(旧数据无此字段,整节跳过)。"""
+    if not isinstance(voice, dict):
+        return {}
+    mapping = {
+        "自称": voice.get("self_ref"),
+        "语气": voice.get("tone"),
+        "口头禅": "、".join(str(x) for x in voice.get("catchphrases") or []) or None,
+    }
+    return {key: val for key, val in mapping.items() if val}
+
+
 def render_breakdowns(breakdowns: Any, hot_posts: list[dict[str, Any]]) -> str:
     if not isinstance(breakdowns, list) or not breakdowns:
         if not hot_posts:
@@ -299,11 +324,19 @@ def build_skill_markdown(
             "输出时必须服务于用户自己的账号定位，不能复用原文、原图、私密经历或身份。"
         )
 
+    counter = {"n": 0}
+
+    def h(title: str) -> str:
+        counter["n"] += 1
+        return f"## {counter['n']}. {title}"
+
+    voice_line = render_voice(distillation.get("voice"))
+    angle = distillation.get("angle_layer") or {}
     sections = [
         f"---\nname: {name}\ndescription: {description}\n---\n",
         heading,
         "",
-        "## 1. 使用说明",
+        h("使用说明"),
         "",
         usage_note,
         "",
@@ -313,33 +346,34 @@ def build_skill_markdown(
         f"视频样本 {transcript_info.get('video_count', 0)} 条，已解析字幕/口播 {transcript_info.get('transcript_count', 0)} 条。"
         + (f"\n\n模态表现对比：{modality_compare}。" if modality_compare else ""),
         "",
-        "## 2. 认知层（怎么想）",
+        h("认知层（怎么想）"),
         "",
-        layer_markdown(cognitive, COGNITIVE_LABELS),
-        "## 3. 策略层（怎么运营）",
-        "",
-        layer_markdown(strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm"))),
-        "## 4. 内容层（怎么写，按内容形态分车道）",
+        layer_markdown(cognitive, COGNITIVE_LABELS, tail=("人设声音", voice_line or None)),
+    ]
+    if angle:
+        sections += [h("角度层（选题与借势）"), "", layer_markdown(angle, ANGLE_LABELS)]
+    elif strategy:  # 旧数据兜底
+        sections += [h("策略层（怎么运营）"), "", layer_markdown(strategy, STRATEGY_LABELS, tail=("发布节奏", strategy.get("posting_rhythm")))]
+    sections += [
+        h("内容层（怎么写，按内容形态分车道）"),
         "",
         content_section_markdown(distillation),
-        "## 5. 创作禁区",
+        h("创作禁区"),
         "",
         markdown_list(distillation.get("do_not_do")),
         "- 不复制原博主原文、原图，不冒充原博主身份。",
         "- 不虚构个人经历、病例、数据或用户反馈。",
         "",
-        "## 6. 对比示例",
+        h("对比示例"),
         "",
         contrast_markdown(distillation.get("contrast_examples")),
-        "## 7. 选题灵感",
-        "",
-        markdown_list(distillation.get("sample_topics")),
-        "",
     ]
+    if distillation.get("sample_topics"):  # 固化选题已移出蒸馏,仅旧数据兜底
+        sections += [h("选题灵感"), "", markdown_list(distillation.get("sample_topics")), ""]
     if mode == "B":
         diagnosis = distillation.get("self_diagnosis", {})
         sections += [
-            "## 8. 账号诊断",
+            h("账号诊断"),
             "",
             "### 已经做对的",
             markdown_list(diagnosis.get("strengths")),
@@ -348,10 +382,10 @@ def build_skill_markdown(
             "### 立即可执行的增长动作",
             markdown_list(diagnosis.get("action_plan")),
             "",
-            "## 9. 局限性与自检清单",
+            h("局限性与自检清单"),
         ]
     else:
-        sections.append("## 8. 局限性与自检清单")
+        sections.append(h("局限性与自检清单"))
     sections += [
         "",
         "- 样本只代表该账号公开内容，不代表其完整创作体系。",
@@ -414,7 +448,6 @@ def render_data_panel(stats: dict[str, Any], usage: TikHubUsage) -> dict[str, An
         "均赞": stats.get("average_like", 0),
         "均藏": stats.get("average_favorite", 0),
         "藏赞比": stats.get("favorite_like_ratio", 0),
-        "发布频率": (stats.get("frequency_info") or {}).get("pattern", ""),
         "视频样本": (stats.get("transcript_info") or {}).get("video_count", 0),
         "已解析口播": (stats.get("transcript_info") or {}).get("transcript_count", 0),
         "TikHub 请求": usage.request_count,

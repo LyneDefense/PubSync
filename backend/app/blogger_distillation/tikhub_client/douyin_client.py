@@ -17,6 +17,7 @@ from app.blogger_distillation.tikhub_client.parsers import (
     normalize_douyin_user_info,
     normalize_douyin_video_obj,
     parse_douyin_profile_link,
+    parse_timestamp,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ class TikHubDouyinClient(TikHubBaseClient):
                         comment_count=first_int(item, ["comments"]),
                         share_count=first_int(item, ["shares"]),
                         raw=normalize_douyin_video_obj(item),
+                        published_at=parse_timestamp(item.get("create_time") or item.get("createTime")),
+                        view_count=first_int(item, ["plays", "play_count"]),
                     )
                 )
                 if len(candidates) >= limit:

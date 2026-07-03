@@ -11,6 +11,7 @@ import EffectsDashboardView from './EffectsDashboardView.vue'
 import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
+import BloggerDossierView from './BloggerDossierView.vue'
 import SocialCollectView from './SocialCollectView.vue'
 import SocialDistillView from './SocialDistillView.vue'
 import SocialAssetsView from './SocialAssetsView.vue'
@@ -53,6 +54,8 @@ import {
   <OverviewView />
 
   <FindBenchmarkView />
+
+  <BloggerDossierView />
 
   <WechatBriefView />
 
