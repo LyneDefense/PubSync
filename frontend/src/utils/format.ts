@@ -166,3 +166,22 @@ export function findXhsDraftFromEvents(events: OperationTaskEvent[]): XhsPublish
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+// 头像占位配色:缺 avatar_url 时用首字 + 一组柔和底/字色(取自设计稿的 5 组)。
+// 按 seed(博主 id / 名称)确定性取色,同一博主每次同色。
+const AVATAR_COLORS: { bg: string; ink: string }[] = [
+  { bg: '#f0eef7', ink: '#5a4a86' },
+  { bg: '#eef4f5', ink: '#3a6a72' },
+  { bg: '#eaf3ee', ink: '#2f6b54' },
+  { bg: '#eef1f6', ink: '#44506a' },
+  { bg: '#f6eef2', ink: '#8a4a64' }
+]
+
+export function avatarColor(seed: string | number): { bg: string; ink: string } {
+  const str = String(seed)
+  let hash = 0
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}

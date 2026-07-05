@@ -13,7 +13,7 @@ const level = computed(() => {
   return { cls: 'ok', text: '干净', icon: '✓' }
 })
 
-// 命中项去重成 chips(词 + 规则),取前若干。
+// 命中项去重成 chips(规则 + 词),取前若干。
 const chips = computed(() => {
   const seen = new Set<string>()
   const out: { word: string; rule: string }[] = []
@@ -32,41 +32,45 @@ const cov = computed(() => props.compliance.coverage)
 </script>
 
 <template>
-  <section class="dossier-block">
-    <header class="dossier-block__head">
+  <section class="dc">
+    <div class="dc__head">
       <h3>合规体检</h3>
-      <span class="dossier-block__hint">按博主赛道扫红线 · 模仿护栏</span>
-    </header>
-
-    <div class="dc-head">
-      <span class="dc-grade" :class="`dc-grade--${level.cls}`">{{ level.icon }} {{ level.text }}</span>
-      <span v-if="hitTotal" class="dc-count">命中 {{ hitTotal }} 处红线</span>
-      <span v-else class="dc-count">未命中红线</span>
+      <span class="dc__sub">按赛道扫红线 · 模仿护栏</span>
     </div>
 
-    <div v-if="chips.length" class="dc-chips">
-      <span v-for="c in chips" :key="`${c.word}-${c.rule}`" class="dc-chip" :class="`dc-chip--${level.cls}`">{{ c.rule }} · 「{{ c.word }}」</span>
+    <div class="dc__grade-row">
+      <span class="dc__grade" :class="`dc__grade--${level.cls}`">{{ level.icon }} {{ level.text }}</span>
+      <span v-if="hitTotal" class="dc__count">命中 {{ hitTotal }} 处红线</span>
+      <span v-else class="dc__count">未命中红线</span>
     </div>
 
-    <p class="dc-foot">
+    <div v-if="chips.length" class="dc__chips">
+      <span v-for="c in chips" :key="`${c.word}-${c.rule}`" class="dc__chip" :class="`dc__chip--${level.cls}`">{{ c.rule }} · 「{{ c.word }}」</span>
+    </div>
+
+    <p class="dc__foot">
       <span v-if="cov">依据已收录 {{ cov.pool }} 篇（标题级全覆盖 · 正文级 {{ cov.full_text }} 篇）。</span>
-      <span v-if="hitTotal" class="dc-warn-note">蒸馏会带上这些写法，创作时注意规避。</span>
+      <span v-if="hitTotal" class="dc__foot-warn">蒸馏会带上这些写法，创作时注意规避。</span>
     </p>
   </section>
 </template>
 
 <style scoped>
-.dc-head { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
-.dc-grade { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; border-radius: 999px; font-size: 13px; font-weight: 600; }
-.dc-grade--ok { background: var(--color-ok-bg); color: var(--color-ok); }
-.dc-grade--warn { background: #fdf3e0; color: #8a5a12; }
-.dc-grade--danger { background: #fceceb; color: var(--color-danger); }
-.dc-count { font-size: 12.5px; color: var(--color-ink-2); }
-.dc-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.dc-chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; }
-.dc-chip--warn { background: #fdf3e0; color: #8a5a12; }
-.dc-chip--danger { background: #fceceb; color: var(--color-danger); }
-.dc-chip--ok { background: var(--color-paper-3); color: var(--color-ink-2); }
-.dc-foot { margin: 11px 0 0; padding-top: 10px; border-top: 1px dashed var(--color-rule); font-size: 12px; color: var(--color-ink-3); line-height: 1.55; }
-.dc-warn-note { color: var(--color-ink-2); margin-left: 4px; }
+.dc { background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: 14px; padding: 20px 22px; }
+.dc__head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.dc__head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.dc__sub { font-size: 12px; color: var(--color-ink-3); }
+.dc__grade-row { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+.dc__grade { display: inline-flex; align-items: center; gap: 5px; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.dc__grade--ok { background: var(--color-ok-bg); color: var(--color-ok); }
+.dc__grade--warn { background: #fdf3e0; color: #8a5a12; }
+.dc__grade--danger { background: #fceceb; color: var(--color-danger); }
+.dc__count { font-size: 12.5px; color: var(--color-ink-2); }
+.dc__chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.dc__chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
+.dc__chip--warn { background: #fdf3e0; color: #8a5a12; }
+.dc__chip--danger { background: #fceceb; color: var(--color-danger); }
+.dc__chip--ok { background: var(--color-paper-3); color: var(--color-ink-2); }
+.dc__foot { margin: 12px 0 0; padding-top: 11px; border-top: 1px dashed var(--color-rule); font-size: 12px; color: var(--color-ink-3); line-height: 1.55; }
+.dc__foot-warn { color: var(--color-ink-2); margin-left: 4px; }
 </style>

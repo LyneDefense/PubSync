@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 档案页·数据面板:账号事实(全量池算)。覆盖率对 + 主指标 + 图文/视频环图。互动率已下线(小红书无浏览量)。
+// 档案页·数据面板(账号事实,全量池算):编辑体大数字指标行 + 水平占比条(内容形态 / 详情覆盖)。
+// 互动率已下线(小红书无浏览量);环图/色块去掉。数字用 tabular-nums,不套显示字体。
 import { computed } from 'vue'
 
 const props = defineProps<{ stats: Record<string, unknown> }>()
@@ -8,137 +9,146 @@ function num(key: string): number | null {
   const v = props.stats[key]
   return typeof v === 'number' ? v : null
 }
+// 大数字拆成「数值 + 单位」:≥1w 用 w,否则千分位。
+function split(v: number | null): { value: string; unit: string } {
+  if (v == null) return { value: '—', unit: '' }
+  if (v >= 10000) return { value: (v / 10000).toFixed(1), unit: 'w' }
+  return { value: v.toLocaleString(), unit: '' }
+}
 function fmt(v: number | null): string {
   if (v == null) return '—'
-  return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v >= 1000 ? v.toLocaleString() : String(v)
+  return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v.toLocaleString()
 }
 
-// 覆盖率 + 详情深度。翻到底 / 已收录≥平台标称 → 视为覆盖全部(不显示会溢出的百分比)。
-// 已采详情单列,避免"已收录"被误解成"全都采了详情"。
+// 覆盖 + 详情深度。翻到底 / 已收录≥平台标称 → 视为覆盖全部(不显示会溢出的百分比)。
 const coverage = computed(() => {
   const total = num('note_total')
   const got = num('note_count') ?? 0
   const full = num('full_count') ?? 0
   const list = num('list_count') ?? 0
-  const reachedEnd = props.stats.reached_end === true
-  const covered = reachedEnd || (total != null && got >= total)
-  const pct = !covered && total && total > 0 ? Math.round((got / total) * 100) : null
+  const covered = props.stats.reached_end === true || (total != null && got >= total)
+  const platformPct = !covered && total && total > 0 ? Math.round((got / total) * 100) : null
   const detailPct = got > 0 ? Math.round((full / got) * 100) : 0
-  return { total, got, full, list, reachedEnd, covered, pct, detailPct }
+  return { total, got, full, list, covered, platformPct, detailPct }
 })
 
-const tiles = computed(() => [
-  { label: '获赞与收藏', value: fmt(num('liked_collected_count')), sub: '账号累计（全部笔记）' },
-  { label: '篇均点赞', value: fmt(num('average_like')), sub: `均藏 ${fmt(num('average_favorite'))} · 均评 ${fmt(num('average_comment'))}` },
-  { label: '赞藏比', value: num('favorite_like_ratio') != null ? String(num('favorite_like_ratio')) : '—', sub: '越高越"值得收藏"' },
-])
+const metrics = computed(() => {
+  const lc = split(num('liked_collected_count'))
+  const contentVal = coverage.value.total ?? coverage.value.got
+  const ratio = num('favorite_like_ratio')
+  return [
+    { label: '获赞与收藏', value: lc.value, unit: lc.unit, sub: '账号累计（全部笔记）' },
+    { label: '篇均点赞', value: fmt(num('average_like')), unit: '', sub: `均藏 ${fmt(num('average_favorite'))} · 均评 ${fmt(num('average_comment'))}` },
+    { label: '赞藏比', value: ratio != null ? String(ratio) : '—', unit: '', sub: '越高越「值得收藏」' },
+    { label: '内容量', value: String(contentVal), unit: '篇', sub: `已采详情 ${coverage.value.full}（${coverage.value.detailPct}%）` }
+  ]
+})
 
-// 图文 vs 视频环图(按已收录计)。
+// 内容形态:图文 vs 视频(按已收录计)。
 const modality = computed(() => {
   const by = props.stats.by_modality as Record<string, { count?: number; average_like?: number }> | undefined
   const image = by?.image?.count || 0
   const video = by?.video?.count || 0
   const total = image + video
   if (!total) return null
-  const videoPct = (video / total) * 100
-  const C = 2 * Math.PI * 46
   return {
-    total, image, video,
+    total,
+    image,
+    video,
+    imagePct: (image / total) * 100,
+    videoPct: (video / total) * 100,
     imageAvg: by?.image?.average_like || 0,
-    videoAvg: by?.video?.average_like || 0,
-    videoDash: (videoPct / 100) * C,
-    imageDash: ((100 - videoPct) / 100) * C,
-    imageOffset: -(videoPct / 100) * C,
-    circumference: C,
-    videoPctLabel: Math.round(videoPct),
+    videoAvg: by?.video?.average_like || 0
   }
 })
 </script>
 
 <template>
-  <section class="dossier-block">
-    <header class="dossier-block__head">
+  <section class="ds">
+    <div class="ds__head">
       <h3>数据面板</h3>
-      <span class="dossier-block__hint">按全量笔记池计算 · 池更新后自动重算</span>
-    </header>
-
-    <div class="ds-coverage">
-      <span class="ds-coverage__text">
-        <template v-if="coverage.covered">已收录 {{ coverage.got }} 篇 · 已覆盖全部</template>
-        <template v-else-if="coverage.total != null">共 {{ coverage.total }} 篇 · 已收录 {{ coverage.got }} 篇</template>
-        <template v-else>已收录 {{ coverage.got }} 篇 · 未翻到底</template>
-      </span>
-      <span v-if="coverage.pct != null" class="ds-coverage__track"><span class="ds-coverage__bar" :style="{ width: `${coverage.pct}%` }"></span></span>
-      <span v-if="coverage.pct != null" class="ds-coverage__pct">覆盖 {{ coverage.pct }}%</span>
-    </div>
-    <div class="ds-depth">
-      <span class="ds-depth__main">已采详情 <strong>{{ coverage.full }}</strong> 篇（{{ coverage.detailPct }}%）· 仅列表 {{ coverage.list }} 篇</span>
-      <span class="ds-depth__hint">只有已采详情进创作画像;仅列表的只有标题/互动</span>
+      <span class="ds__head-sub">表现如何</span>
+      <span class="ds__head-note">池更新后自动重算</span>
     </div>
 
-    <div class="ds-tiles">
-      <div v-for="t in tiles" :key="t.label" class="ds-tile">
-        <span class="ds-tile__label">{{ t.label }}</span>
-        <strong class="ds-tile__value">{{ t.value }}</strong>
-        <span class="ds-tile__sub">{{ t.sub }}</span>
+    <div class="ds__metrics">
+      <div v-for="(m, i) in metrics" :key="m.label" class="ds__metric" :class="{ 'ds__metric--div': i > 0 }">
+        <span class="ds__metric-label">{{ m.label }}</span>
+        <span class="ds__metric-value"><b>{{ m.value }}</b><i v-if="m.unit">{{ m.unit }}</i></span>
+        <span class="ds__metric-sub">{{ m.sub }}</span>
       </div>
     </div>
 
-    <div v-if="modality" class="ds-modality">
-      <svg viewBox="0 0 120 120" class="ds-donut" role="img" :aria-label="`内容形态：视频 ${modality.video} 篇，图文 ${modality.image} 篇`">
-        <g transform="rotate(-90 60 60)" fill="none" stroke-width="15">
-          <circle cx="60" cy="60" r="46" stroke="#3d84d6" :stroke-dasharray="`${modality.videoDash} ${modality.circumference}`"></circle>
-          <circle cx="60" cy="60" r="46" stroke="#1d9e75" :stroke-dasharray="`${modality.imageDash} ${modality.circumference}`" :stroke-dashoffset="modality.imageOffset"></circle>
-        </g>
-        <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="700" fill="var(--color-ink)">{{ modality.total }}</text>
-        <text x="60" y="73" text-anchor="middle" font-size="10" fill="var(--color-ink-3)">已收录</text>
-      </svg>
-      <div class="ds-legend">
-        <span class="ds-legend__row"><i class="ds-dot ds-dot--v"></i>视频笔记 · {{ modality.video }} 篇 · 均赞 {{ fmt(modality.videoAvg) }}</span>
-        <span class="ds-legend__row"><i class="ds-dot ds-dot--i"></i>图文笔记 · {{ modality.image }} 篇 · 均赞 {{ fmt(modality.imageAvg) }}</span>
-        <span class="ds-legend__hint">类型随列表逐篇判定 · 按已收录 {{ modality.total }} 篇计</span>
+    <div class="ds__bars">
+      <div v-if="modality" class="ds__bar-block">
+        <div class="ds__bar-head">
+          <span class="ds__bar-title">内容形态</span>
+          <span class="ds__bar-note">按已收录 {{ modality.total }} 篇计</span>
+        </div>
+        <div class="ds__track">
+          <span class="ds__seg ds__seg--image" :style="{ width: `${modality.imagePct}%` }"></span>
+          <span class="ds__seg ds__seg--video" :style="{ width: `${modality.videoPct}%` }"></span>
+        </div>
+        <div class="ds__legend">
+          <span class="ds__legend-row"><i class="ds__dot ds__dot--image"></i>图文 <b>{{ modality.image }}</b> 篇 · 均赞 {{ fmt(modality.imageAvg) }}</span>
+          <span class="ds__legend-row"><i class="ds__dot ds__dot--video"></i>视频 <b>{{ modality.video }}</b> 篇 · 均赞 {{ fmt(modality.videoAvg) }}</span>
+        </div>
+      </div>
+
+      <div class="ds__bar-block">
+        <div class="ds__bar-head">
+          <span class="ds__bar-title">详情覆盖</span>
+          <span v-if="coverage.covered" class="ds__bar-ok">已覆盖全部</span>
+          <span v-else-if="coverage.platformPct != null" class="ds__bar-note">已收录 {{ coverage.platformPct }}%</span>
+          <span v-else class="ds__bar-note">未翻到底</span>
+        </div>
+        <div class="ds__track">
+          <span class="ds__seg ds__seg--accent" :style="{ width: `${coverage.detailPct}%` }"></span>
+        </div>
+        <p class="ds__cover-note">已采详情 <b>{{ coverage.full }}</b> 篇（{{ coverage.detailPct }}%）· 仅列表 {{ coverage.list }} 篇 —— 只有已采详情进创作画像。</p>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.ds-coverage { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.ds-coverage__text { font-size: 13px; color: var(--color-ink); white-space: nowrap; }
-.ds-coverage__track { flex: 1; height: 6px; border-radius: 999px; background: var(--color-paper-3); overflow: hidden; }
-.ds-coverage__bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
-.ds-coverage__pct { font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ds { background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: 14px; overflow: hidden; }
+.ds__head { display: flex; align-items: baseline; gap: 10px; padding: 18px 22px 0; flex-wrap: wrap; }
+.ds__head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.ds__head-sub { font-size: 12px; color: var(--color-ink-3); }
+.ds__head-note { margin-left: auto; font-size: 11.5px; color: var(--color-ink-3); }
 
-.ds-depth { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: -4px 0 14px; }
-.ds-depth__main { font-size: 12.5px; color: var(--color-ink-2); }
-.ds-depth__main strong { color: var(--color-accent-ink); }
-.ds-depth__hint { font-size: 11.5px; color: var(--color-ink-3); }
+.ds__metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 16px 22px 18px; }
+.ds__metric { display: flex; flex-direction: column; gap: 5px; padding: 0 4px; }
+.ds__metric--div { border-left: 1px solid var(--color-paper-3); padding-left: 16px; }
+.ds__metric-label { font-size: 12px; color: var(--color-ink-3); }
+.ds__metric-value { display: flex; align-items: baseline; gap: 3px; }
+.ds__metric-value b { font-size: 28px; font-weight: 720; color: var(--color-ink); line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.ds__metric-value i { font-size: 12.5px; font-weight: 600; font-style: normal; color: var(--color-ink-3); }
+.ds__metric-sub { font-size: 11.5px; color: var(--color-ink-3); line-height: 1.4; }
 
-.ds-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.ds-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, var(--color-paper-2), var(--color-paper-3));
-  border: 1px solid var(--color-rule);
-  border-left: 3px solid var(--color-accent);
-}
-.ds-tile__label { font-size: 12px; color: var(--color-ink-3); }
-.ds-tile__value { font-size: 24px; font-weight: 700; color: var(--color-ink); font-family: var(--font-display); line-height: 1.25; }
-.ds-tile__sub { font-size: 11.5px; color: var(--color-ink-3); }
-
-.ds-modality { display: flex; align-items: center; gap: 20px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--color-rule); }
-.ds-donut { width: 96px; height: 96px; flex-shrink: 0; }
-.ds-legend { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.ds-legend__row { display: flex; align-items: center; gap: 8px; color: var(--color-ink-2); }
-.ds-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.ds-dot--v { background: #3d84d6; }
-.ds-dot--i { background: #1d9e75; }
-.ds-legend__hint { font-size: 11.5px; color: var(--color-ink-3); }
+.ds__bars { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; padding: 16px 22px; background: var(--color-paper); border-top: 1px solid var(--color-paper-3); }
+.ds__bar-block { flex: 1 1 260px; min-width: 240px; }
+.ds__bar-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.ds__bar-title { font-size: 12.5px; font-weight: 600; color: var(--color-ink-2); }
+.ds__bar-note { font-size: 11.5px; color: var(--color-ink-3); }
+.ds__bar-ok { font-size: 11.5px; font-weight: 600; color: #2f6b54; }
+.ds__track { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--color-paper-3); }
+.ds__seg { display: block; height: 100%; }
+.ds__seg--image { background: #1d9e75; }
+.ds__seg--video { background: #3d84d6; }
+.ds__seg--accent { background: var(--color-accent); }
+.ds__legend { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
+.ds__legend-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--color-ink-2); }
+.ds__legend-row b { font-weight: 650; color: var(--color-ink); }
+.ds__dot { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
+.ds__dot--image { background: #1d9e75; }
+.ds__dot--video { background: #3d84d6; }
+.ds__cover-note { margin: 10px 0 0; font-size: 12px; color: var(--color-ink-3); line-height: 1.5; }
+.ds__cover-note b { color: var(--color-accent-ink); }
 
 @media (max-width: 560px) {
-  .ds-tiles { grid-template-columns: 1fr; }
+  .ds__metrics { grid-template-columns: repeat(2, 1fr); gap: 16px 4px; }
+  .ds__metric:nth-child(3) { border-left: 0; padding-left: 4px; }
 }
 </style>

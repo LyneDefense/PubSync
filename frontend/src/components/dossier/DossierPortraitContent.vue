@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 画像内容:把该画像对应蒸馏 run 的 report_json.distillation 结构化展示(不再只给一张卡)。
-// 新形态 = 认知层 + 人设声音 + 角度层 + 分车道写法;旧形态(strategy_layer)兜底渲染。
+// 画像内容:把该画像对应蒸馏 run 的 report_json.distillation 结构化展示。
+// 认知 · 她怎么想(核心信念/观点张力/价值立场)+ 方法 · 她怎么写(选题思路 + 分车道写法)。旧形态(strategy_layer)兜底。
 import { computed, ref } from 'vue'
 import { bloggerRuns, SUBTYPE_LABELS } from '../../composables/useWorkspaceStore'
 
@@ -37,31 +37,39 @@ const voiceLine = computed(() => {
   return parts.filter(Boolean).join(' · ')
 })
 
-// 分车道写法:每车道抽最有用的四组;当前车道 tab。
+const COGNITIVE_KEYS: { key: string; label: string }[] = [
+  { key: 'core_beliefs', label: '核心信念' },
+  { key: 'opinion_tensions', label: '观点张力 / 反共识' },
+  { key: 'value_stance', label: '价值立场' }
+]
+const cognitiveCards = computed(() =>
+  cognitive.value
+    ? COGNITIVE_KEYS.map((k) => ({ label: k.label, items: list(cognitive.value, k.key).slice(0, 3) })).filter((c) => c.items.length)
+    : []
+)
+
+// 分车道写法:每车道抽最有用的若干组;当前车道 tab。
 const LANE_KEYS: { key: string; label: string }[] = [
   { key: 'title_formulas', label: '标题公式' },
   { key: 'opening_templates', label: '开头模板' },
   { key: 'cover_text_rules', label: '封面文案' },
   { key: 'visual_layout_patterns', label: '图内编排 / 版式' },
   { key: 'video_script_structures', label: '口播结构' },
-  { key: 'language_dna', label: '语言 DNA' },
+  { key: 'language_dna', label: '语言 DNA' }
 ]
 const lanes = computed(() => {
   const raw = (distillation.value?.content_lanes as Record<string, Dist>) || {}
   return Object.entries(raw).map(([lane, content]) => ({
     lane,
     label: SUBTYPE_LABELS[lane] || lane,
-    groups: LANE_KEYS.map((k) => ({ label: k.label, items: list(content, k.key).slice(0, 5) })).filter((g) => g.items.length),
+    groups: LANE_KEYS.map((k) => ({ label: k.label, items: list(content, k.key).slice(0, 5) })).filter((g) => g.items.length)
   }))
 })
 const activeLane = ref('')
 const currentLane = computed(() => lanes.value.find((l) => l.lane === activeLane.value) || lanes.value[0] || null)
 
-const COGNITIVE_KEYS: { key: string; label: string }[] = [
-  { key: 'core_beliefs', label: '核心信念' },
-  { key: 'opinion_tensions', label: '观点张力 / 反共识' },
-  { key: 'value_stance', label: '价值立场' },
-]
+const hasTopic = computed(() => angle.value && (list(angle.value, 'topic_method').length || list(angle.value, 'topic_angles').length || list(angle.value, 'trend_hijacking').length))
+const hasMethod = computed(() => hasTopic.value || lanes.value.length || strategy.value)
 </script>
 
 <template>
@@ -69,58 +77,68 @@ const COGNITIVE_KEYS: { key: string; label: string }[] = [
     <blockquote v-if="text(distillation, 'one_glance')" class="pc-glance">{{ text(distillation, 'one_glance') }}</blockquote>
     <p v-if="voiceLine" class="pc-voice"><strong>人设声音</strong>{{ voiceLine }}</p>
 
-    <div v-if="cognitive" class="pc-cols">
-      <div v-for="k in COGNITIVE_KEYS" :key="k.key" class="pc-col">
-        <h5>{{ k.label }}</h5>
-        <ul><li v-for="(item, i) in list(cognitive, k.key).slice(0, 4)" :key="i">{{ item }}</li></ul>
-      </div>
-    </div>
-
-    <!-- 选题思路:单独成块、方法为主(最高杠杆的创作决策) -->
-    <div v-if="angle && (list(angle, 'topic_method').length || list(angle, 'topic_angles').length || list(angle, 'trend_hijacking').length)" class="pc-topic">
-      <h5 class="pc-topic__h">选题思路 <span>· 最高杠杆</span></h5>
-      <div v-if="list(angle, 'topic_method').length" class="pc-topic__method">
-        <span class="pc-topic__tag">方法</span>
-        <ul><li v-for="(item, i) in list(angle, 'topic_method').slice(0, 3)" :key="i">{{ item }}</li></ul>
-      </div>
-      <div class="pc-topic__sub">
-        <p v-if="list(angle, 'topic_angles').length"><em>常用角度</em>{{ list(angle, 'topic_angles').slice(0, 5).join(' · ') }}</p>
-        <p v-if="list(angle, 'trend_hijacking').length"><em>借势</em>{{ list(angle, 'trend_hijacking').slice(0, 4).join(' · ') }}</p>
-      </div>
-    </div>
-    <!-- 旧形态兜底:策略层 -->
-    <div v-else-if="strategy" class="pc-cols">
-      <div v-for="k in ['series_planning', 'trend_hijacking', 'ops_habits']" :key="k" class="pc-col">
-        <template v-if="list(strategy, k).length">
-          <h5>{{ k === 'series_planning' ? '系列 / 选题规划' : k === 'trend_hijacking' ? '蹭热点 / 借势' : '运营习惯' }}</h5>
-          <ul><li v-for="(item, i) in list(strategy, k).slice(0, 3)" :key="i">{{ item }}</li></ul>
-        </template>
-      </div>
-    </div>
-
-    <template v-if="lanes.length">
-      <div class="pc-lane-tabs">
-        <button
-          v-for="l in lanes"
-          :key="l.lane"
-          type="button"
-          :class="{ on: currentLane?.lane === l.lane }"
-          @click="activeLane = l.lane"
-        >{{ l.label }}写法</button>
-      </div>
-      <div v-if="currentLane" class="pc-lane">
-        <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-group">
-          <h5>{{ group.label }}</h5>
-          <ul><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+    <!-- 认知 · 她怎么想 -->
+    <div v-if="cognitiveCards.length" class="pc-group">
+      <p class="pc-group__h">认知 · 她怎么想</p>
+      <div class="pc-cards">
+        <div v-for="c in cognitiveCards" :key="c.label" class="pc-card">
+          <span class="pc-card__tag">{{ c.label }}</span>
+          <span class="pc-card__text">
+            <template v-for="(item, i) in c.items" :key="i"><span v-if="i" class="pc-card__sep"> · </span>{{ item }}</template>
+          </span>
         </div>
       </div>
-    </template>
+    </div>
+
+    <!-- 方法 · 她怎么写 -->
+    <div v-if="hasMethod" class="pc-group">
+      <p class="pc-group__h">方法 · 她怎么写</p>
+
+      <div v-if="hasTopic" class="pc-topic">
+        <h5 class="pc-topic__h">选题思路 <span>· 最高杠杆</span></h5>
+        <div v-if="list(angle, 'topic_method').length" class="pc-topic__method">
+          <span class="pc-topic__tag">方法</span>
+          <ul><li v-for="(item, i) in list(angle, 'topic_method').slice(0, 3)" :key="i">{{ item }}</li></ul>
+        </div>
+        <div class="pc-topic__sub">
+          <p v-if="list(angle, 'topic_angles').length"><em>常用角度</em>{{ list(angle, 'topic_angles').slice(0, 5).join(' · ') }}</p>
+          <p v-if="list(angle, 'trend_hijacking').length"><em>借势</em>{{ list(angle, 'trend_hijacking').slice(0, 4).join(' · ') }}</p>
+        </div>
+      </div>
+      <!-- 旧形态兜底:策略层 -->
+      <div v-else-if="strategy" class="pc-cols">
+        <div v-for="k in ['series_planning', 'trend_hijacking', 'ops_habits']" :key="k" class="pc-col">
+          <template v-if="list(strategy, k).length">
+            <h5>{{ k === 'series_planning' ? '系列 / 选题规划' : k === 'trend_hijacking' ? '蹭热点 / 借势' : '运营习惯' }}</h5>
+            <ul><li v-for="(item, i) in list(strategy, k).slice(0, 3)" :key="i">{{ item }}</li></ul>
+          </template>
+        </div>
+      </div>
+
+      <template v-if="lanes.length">
+        <div class="pc-lane-tabs">
+          <button
+            v-for="l in lanes"
+            :key="l.lane"
+            type="button"
+            :class="{ on: currentLane?.lane === l.lane }"
+            @click="activeLane = l.lane"
+          >{{ l.label }}写法</button>
+        </div>
+        <div v-if="currentLane" class="pc-lane">
+          <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-group">
+            <h5>{{ group.label }}</h5>
+            <ul><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
   <p v-else class="pc-missing">该画像的蒸馏详情不可用（记录可能已清理），可重新蒸馏生成。</p>
 </template>
 
 <style scoped>
-.pc { display: flex; flex-direction: column; gap: 14px; padding: 14px 0 4px; }
+.pc { display: flex; flex-direction: column; gap: 16px; padding: 14px 0 4px; }
 .pc-glance {
   margin: 0;
   padding: 10px 14px;
@@ -133,14 +151,24 @@ const COGNITIVE_KEYS: { key: string; label: string }[] = [
 }
 .pc-voice { margin: 0; font-size: 12.5px; color: var(--color-ink-2); }
 .pc-voice strong { color: var(--color-ink); margin-right: 8px; font-size: 12px; }
+
+.pc-group { display: flex; flex-direction: column; gap: 8px; }
+.pc-group__h { margin: 0; font-size: 12px; font-weight: 650; color: var(--color-accent-ink); }
+
+.pc-cards { display: flex; flex-direction: column; gap: 8px; }
+.pc-card { display: flex; gap: 10px; align-items: flex-start; padding: 10px 13px; background: var(--color-paper); border: 1px solid var(--color-paper-3); border-radius: 10px; }
+.pc-card__tag { flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: #f0eef7; color: #5a4a86; margin-top: 1px; }
+.pc-card__text { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.6; }
+.pc-card__sep { color: var(--color-ink-3); }
+
 .pc-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .pc-col h5, .pc-lane-group h5 { margin: 0 0 6px; font-size: 12px; color: var(--color-ink-3); font-weight: 600; }
 .pc-col ul, .pc-lane-group ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .pc-col li, .pc-lane-group li { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.55; }
-.pc-lane-tabs { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px dashed var(--color-rule); padding-top: 12px; }
+.pc-lane-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
 .pc-lane-tabs button {
   border: 1px solid var(--color-rule);
-  background: var(--color-paper-2);
+  background: var(--color-surface);
   border-radius: 999px;
   padding: 3px 12px;
   font-size: 12px;
@@ -148,11 +176,11 @@ const COGNITIVE_KEYS: { key: string; label: string }[] = [
   cursor: pointer;
 }
 .pc-lane-tabs button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.pc-lane { display: flex; flex-direction: column; gap: 10px; }
+.pc-lane { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .pc-missing { margin: 8px 0 0; font-size: 12px; color: var(--color-ink-3); }
 
 /* 选题思路:强调块 */
-.pc-topic { border-top: 2px solid var(--color-accent); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pc-topic { border-left: 2px solid var(--color-accent); padding-left: 12px; display: flex; flex-direction: column; gap: 8px; }
 .pc-topic__h { margin: 0; font-size: 13px; color: var(--color-accent-ink); font-weight: 600; }
 .pc-topic__h span { color: var(--color-ink-3); font-weight: 400; font-size: 11px; }
 .pc-topic__method { display: flex; gap: 8px; align-items: flex-start; }

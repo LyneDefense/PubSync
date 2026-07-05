@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 档案页·创作画像区(去多画像:一份画像,可展开看蒸馏本体)。
-// 更新画像=用现有详情池重蒸(便宜);彻底重建=拉最新笔记+重升详情+重蒸(纳入新笔记)。
+// 查看完整报告→ 主按钮;更新画像=用现有详情池重蒸(便宜);彻底重建=拉最新+重升详情+重蒸(纳入新笔记)。
 import { ref } from 'vue'
 import type { DossierPortrait } from '../../api/types'
 import DossierPortraitContent from './DossierPortraitContent.vue'
@@ -30,32 +30,27 @@ function openFullReport(portrait: DossierPortrait) {
 </script>
 
 <template>
-  <section class="dossier-block">
-    <header class="dossier-block__head">
-      <h3>创作画像</h3>
-      <span class="dossier-block__hint">从她的笔记里蒸出的可迁移创作方法 —— 创作与选题的直接原料</span>
-    </header>
-    <p v-if="!portraits.length" class="dossier-block__hint">
-      尚未蒸馏。「构建博主画像」会自动系统选样并生成画像。
-    </p>
-    <div v-for="p in portraits" :key="p.skill_id" class="portrait" :class="{ 'portrait--open': expanded.has(p.skill_id) }">
-      <button type="button" class="portrait__row" @click="toggle(p.skill_id)">
-        <span class="portrait__chevron" :class="{ open: expanded.has(p.skill_id) }">›</span>
-        <span class="portrait__main">
-          <strong>{{ p.snapshot_name || p.name }}</strong>
-          <span class="portrait__meta">
-            蒸馏于 {{ p.distilled_at ? friendlyTime(p.distilled_at) : '未知' }} · 样本 {{ p.sample_count }} 篇 · 覆盖 {{ laneLabel(p.lanes) }}
-          </span>
+  <section class="cp">
+    <h3 class="cp__title">创作画像</h3>
+    <p v-if="!portraits.length" class="cp__empty">尚未蒸馏。「构建博主画像」会自动系统选样并生成画像。</p>
+
+    <div v-for="p in portraits" :key="p.skill_id" class="cp__item">
+      <button type="button" class="cp__row" @click="toggle(p.skill_id)">
+        <span class="cp__chevron" :class="{ open: expanded.has(p.skill_id) }">›</span>
+        <span class="cp__row-main">
+          <b>{{ p.snapshot_name || p.name }}</b>
+          <span class="cp__row-meta">蒸馏于 {{ p.distilled_at ? friendlyTime(p.distilled_at) : '未知' }} · 样本 {{ p.sample_count }} 篇 · 覆盖 {{ laneLabel(p.lanes) }}</span>
         </span>
-        <span v-if="p.stale" class="dossier-chip dossier-chip--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇,彻底重建可纳入`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
-        <span v-else class="dossier-chip dossier-chip--ok">最新</span>
+        <span v-if="p.stale" class="cp__pill cp__pill--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇,彻底重建可纳入`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
+        <span v-else class="cp__pill cp__pill--ok">最新</span>
       </button>
-      <div v-if="expanded.has(p.skill_id)" class="portrait__body">
+
+      <div v-if="expanded.has(p.skill_id)" class="cp__body">
         <DossierPortraitContent :run-id="p.run_id" />
-        <div class="portrait__actions">
-          <button type="button" class="ghost" @click="openFullReport(p)">查看完整报告 →</button>
-          <button type="button" class="ghost" :disabled="busy" @click="$emit('redistill')" title="用现有笔记重新蒸馏(便宜)">更新画像</button>
-          <button type="button" class="ghost" :disabled="busy" @click="$emit('rebuild')" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)">彻底重建</button>
+        <div class="cp__actions">
+          <button type="button" class="cp__btn cp__btn--accent" @click="openFullReport(p)">查看完整报告 →</button>
+          <button type="button" class="cp__btn" :disabled="busy" title="用现有笔记重新蒸馏(便宜)" @click="$emit('redistill')">更新画像</button>
+          <button type="button" class="cp__btn" :disabled="busy" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)" @click="$emit('rebuild')">彻底重建</button>
         </div>
       </div>
     </div>
@@ -63,23 +58,48 @@ function openFullReport(portrait: DossierPortrait) {
 </template>
 
 <style scoped>
-.portrait { border-top: 1px solid var(--color-rule); }
-.portrait:first-of-type { border-top: none; }
-.portrait__row {
+.cp { background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: 14px; padding: 20px 22px; }
+.cp__title { margin: 0; font-size: 15px; font-weight: 650; }
+.cp__empty { margin: 12px 0 0; font-size: 12.5px; color: var(--color-ink-3); }
+
+.cp__item { border-top: 1px solid var(--color-paper-3); margin-top: 12px; }
+.cp__item:first-of-type { }
+.cp__row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  padding: 12px 0;
+  padding: 14px 0;
+  border: 0;
   background: none;
-  border: none;
   text-align: left;
   cursor: pointer;
 }
-.portrait__chevron { font-size: 16px; color: var(--color-ink-3); transition: transform 0.15s ease; }
-.portrait__chevron.open { transform: rotate(90deg); }
-.portrait__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.portrait__meta { font-size: 12px; color: var(--color-ink-2); }
-.portrait__body { padding: 0 0 14px 26px; }
-.portrait__actions { display: flex; gap: 8px; margin-top: 12px; }
+.cp__chevron { font-size: 16px; color: var(--color-ink-3); transition: transform 0.15s var(--ease-out); }
+.cp__chevron.open { transform: rotate(90deg); }
+.cp__row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp__row-main b { font-size: 14px; color: var(--color-ink); }
+.cp__row-meta { font-size: 12px; color: var(--color-ink-3); }
+.cp__pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.cp__pill--ok { background: #eaf3ee; color: #2f6b54; }
+.cp__pill--warn { background: #fdf3e0; color: #8a5a12; }
+
+.cp__body { padding: 0 0 4px 27px; }
+.cp__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.cp__btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 140ms var(--ease-out);
+}
+.cp__btn:hover { background: var(--color-paper); }
+.cp__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.cp__btn--accent { border: 0; background: var(--color-accent); color: #fff; font-weight: 620; }
+.cp__btn--accent:hover { background: var(--color-accent-press); }
 </style>
