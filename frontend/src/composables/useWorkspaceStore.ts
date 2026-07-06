@@ -27,9 +27,6 @@ import {
   cancelTask,
   clearAuthToken,
   clearTenantId,
-  collectBlogger,
-  getCollectEstimate,
-  collectBloggerByUrls,
   appraiseBlogger,
   listAccountAuditRuns,
   suggestAppraisalIntent,
@@ -37,7 +34,6 @@ import {
   confirmBloggerRun,
   createBlogger,
   deleteBlogger,
-  distillBlogger,
   fetchNews,
   generateArticle,
   generateXhsTopicIdeas,
@@ -53,11 +49,6 @@ import {
   deleteBloggerPosts,
   listBloggerCollectionRuns,
   listBloggerRuns,
-  listBloggerSnapshots,
-  createBloggerSnapshot,
-  suggestSnapshot,
-  updateBloggerSnapshot,
-  deleteBloggerSnapshot,
   listBloggerSkills,
   listBloggers,
   listTenants,
@@ -101,8 +92,6 @@ import type {
   BloggerSkill,
   CandidateScore,
   SkillTrainingRun,
-  BloggerSnapshot,
-  SnapshotSuggestItem,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -156,8 +145,7 @@ export const bloggers = ref<BloggerProfile[]>([])
 export const bloggerPosts = ref<BloggerPost[]>([])
 export const bloggerCollectionRuns = ref<BloggerCollectionRun[]>([])
 export const bloggerRuns = ref<BloggerDistillationRun[]>([])
-// 阶段B:博主笔记池命名快照 + 自定义蒸馏勾选集 + 单篇详情抽屉。
-export const bloggerSnapshots = ref<BloggerSnapshot[]>([])
+// 阶段B:自定义蒸馏勾选集 + 单篇详情抽屉。
 export const selectedPostIds = ref<number[]>([])
 export const activeNotePostId = ref<number | null>(null)
 // 对标分析(诊断别人):诊断一个对标库博主 → 硬/软/合规 三区报告。kind 固定 benchmark。
@@ -192,8 +180,6 @@ export const selfIntentLoading = ref(false)
 // 我的账号(account_type=mine)与对标账号拆分。
 export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
 export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
-// 各账号内容列表缓存(按 blogger id);进页面只读缓存,刷新才重采。
-export const accountPosts = reactive<Record<number, BloggerPost[]>>({})
 // 创建博主弹窗的账号类型上下文(benchmark / mine)。
 export const bloggerModalAccountType = ref<'benchmark' | 'mine'>('benchmark')
 export const bloggerSkills = ref<BloggerSkill[]>([])
@@ -680,15 +666,13 @@ export async function handleDeleteSelectedPosts() {
     showMessage(err instanceof Error ? err.message : '删除失败', true)
   }
 }
-// 抽屉里的单条删除:抽屉在对标博主池 + 我的账号缓存两处复用,都本地剔除。
+// 抽屉里的单条删除:从对标博主笔记池本地剔除。
 export async function handleDeleteNote(post: BloggerPost) {
   if (!window.confirm('删除这条笔记？将从笔记池移除。')) return
   try {
     await deleteBloggerPosts(post.blogger_id, [post.id])
     showMessage('已删除该笔记')
     bloggerPosts.value = bloggerPosts.value.filter((p) => p.id !== post.id)
-    const acc = accountPosts[post.blogger_id]
-    if (acc) accountPosts[post.blogger_id] = acc.filter((p) => p.id !== post.id)
     closeNote()
     if (selectedBloggerId.value === post.blogger_id) await refreshSelectedBlogger()
   } catch (err) {
@@ -696,75 +680,11 @@ export async function handleDeleteNote(post: BloggerPost) {
   }
 }
 
-// —— 智能选材:AI 按需求预选笔记建快照 ——
-export const snapshotSuggestLoading = ref(false)
-export const snapshotSuggestError = ref('')
-export const snapshotSuggestName = ref('') // AI 建议的快照名
-export const snapshotSuggestRanked = ref<SnapshotSuggestItem[]>([]) // 覆盖全部候选,按分降序(供放宽/自动补)
-export const snapshotSuggestReasons = reactive<Record<number, string>>({}) // post_id → 为什么选它
-export const snapshotSuggested = computed(() => snapshotSuggestRanked.value.length > 0)
-const SNAPSHOT_PICK_SCORE = 55 // 预勾选门槛:相关度 ≥ 此值自动勾上
-
-export function resetSnapshotSuggest() {
-  snapshotSuggestLoading.value = false
-  snapshotSuggestError.value = ''
-  snapshotSuggestName.value = ''
-  snapshotSuggestRanked.value = []
-  for (const k of Object.keys(snapshotSuggestReasons)) delete snapshotSuggestReasons[Number(k)]
-}
-
-// 输需求 → AI 打分 → 预勾选高分笔记(仍在当前池里的)。返回预选数量供 UI 提示;失败退化为手动挑。
-export async function fetchSnapshotSuggestion(need: string): Promise<number | null> {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择一个博主', true)
-    return null
-  }
-  snapshotSuggestLoading.value = true
-  snapshotSuggestError.value = ''
-  try {
-    const res = await suggestSnapshot(selectedBloggerId.value, need)
-    snapshotSuggestRanked.value = res.items
-    snapshotSuggestName.value = res.suggested_name
-    for (const k of Object.keys(snapshotSuggestReasons)) delete snapshotSuggestReasons[Number(k)]
-    // 只给"相关"的笔记(分>0)挂标注:有理由用理由,否则显示相关度分。
-    for (const it of res.items) if (it.score > 0) snapshotSuggestReasons[it.post_id] = it.reason || `相关度 ${it.score}`
-    const poolIds = new Set(bloggerPosts.value.map((p) => p.id))
-    const picked = res.items.filter((it) => it.score >= SNAPSHOT_PICK_SCORE && poolIds.has(it.post_id)).map((it) => it.post_id)
-    selectedPostIds.value = picked
-    return picked.length
-  } catch (err) {
-    snapshotSuggestError.value = err instanceof Error ? err.message : 'AI 选材失败,请手动挑选'
-    return null
-  } finally {
-    snapshotSuggestLoading.value = false
-  }
-}
-
-// 自动补 / 放宽:从 AI 排序结果里把没选中的按分数从高到低补进来,直到达到 target 篇。
-export function topUpSelectionByScore(target: number) {
-  if (!snapshotSuggestRanked.value.length) return
-  const poolIds = new Set(bloggerPosts.value.map((p) => p.id))
-  const selected = new Set(selectedPostIds.value)
-  for (const it of snapshotSuggestRanked.value) {
-    if (selected.size >= target) break
-    if (!selected.has(it.post_id) && poolIds.has(it.post_id)) {
-      selectedPostIds.value.push(it.post_id)
-      selected.add(it.post_id)
-    }
-  }
-}
-
-// 详情抽屉的当前笔记:先在对标博主笔记池找,再在「我的账号」缓存里找 —— 两处笔记复用同一个抽屉。
+// 详情抽屉的当前笔记:在对标博主笔记池里找。
 export const activeNotePost = computed(() => {
   const id = activeNotePostId.value
   if (id == null) return null
-  const inBlogger = bloggerPosts.value.find((p) => p.id === id)
-  if (inBlogger) return inBlogger
-  for (const arr of Object.values(accountPosts)) {
-    const hit = arr.find((p) => p.id === id)
-    if (hit) return hit
-  }
-  return null
+  return bloggerPosts.value.find((p) => p.id === id) ?? null
 })
 export function openNote(id: number) {
   activeNotePostId.value = id
@@ -1708,7 +1628,6 @@ export async function refreshSelectedBlogger() {
     bloggerPosts.value = []
     bloggerCollectionRuns.value = []
     bloggerRuns.value = []
-    bloggerSnapshots.value = []
     selectedPostIds.value = []
     activeNotePostId.value = null
     selectedCollectionRunId.value = null
@@ -1716,17 +1635,15 @@ export async function refreshSelectedBlogger() {
     resultCollectionFilterId.value = null
     return
   }
-  // 阶段B:博主资产以「笔记池」为中心,一次性拉全量笔记 + 快照 + 蒸馏记录(不再按采集批次取样本)。
+  // 阶段B:博主资产以「笔记池」为中心,一次性拉全量笔记 + 蒸馏记录(不再按采集批次取样本)。
   // 采集批次仍拉取(数据采集页要用),但博主资产页不再展示「采集历史」。
-  const [posts, snapshots, collections, runs, skills] = await Promise.all([
+  const [posts, collections, runs, skills] = await Promise.all([
     listBloggerPosts(selectedBloggerId.value),
-    listBloggerSnapshots(selectedBloggerId.value),
     listBloggerCollectionRuns(selectedBloggerId.value),
     listBloggerRuns(selectedBloggerId.value),
     listBloggerSkills(currentSocialPlatform.value)
   ])
   bloggerPosts.value = posts
-  bloggerSnapshots.value = snapshots
   bloggerCollectionRuns.value = collections
   bloggerRuns.value = runs
   bloggerSkills.value = skills
@@ -2104,129 +2021,6 @@ export async function handleDeleteBlogger(blogger: BloggerProfile) {
   })
 }
 
-// 蒸馏完成后选中最新一次蒸馏记录(后端按 created_at 倒序返回,取首个)。
-function selectNewestBloggerRun() {
-  selectedBloggerRunId.value = bloggerRuns.value[0]?.id ?? null
-}
-
-// 自动蒸馏:一键,系统取高赞 top-N(服务端算),不建快照。
-export async function handleAutoDistill() {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择博主', true)
-    return
-  }
-  if (activeNotePool.value.length < DISTILL_MIN_SAMPLES) {
-    showMessage(`笔记池不足 ${DISTILL_MIN_SAMPLES} 篇，先去「数据采集」多采一些再蒸馏`, true)
-    return
-  }
-  await runTaskAction(
-    'distill',
-    '已提交自动蒸馏任务（高赞 top-N）',
-    () => distillBlogger(selectedBloggerId.value!, { source: 'auto', mode: 'A' }),
-    async () => {
-      await refreshSelectedBlogger()
-      selectNewestBloggerRun()
-    },
-    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
-  )
-}
-
-// 自定义蒸馏:用当前勾选的 N 篇(手选会自动存一个快照)。
-export async function handleCustomDistill(snapshotName?: string) {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择博主', true)
-    return
-  }
-  if (selectedPostIds.value.length < DISTILL_MIN_SAMPLES) {
-    showMessage(`自定义蒸馏至少需勾选 ${DISTILL_MIN_SAMPLES} 篇（建议 ≥${DISTILL_RECOMMEND_SAMPLES} 篇，越多越准）`, true)
-    return
-  }
-  const postIds = [...selectedPostIds.value]
-  await runTaskAction(
-    'distill',
-    '已提交自定义蒸馏任务',
-    () =>
-      distillBlogger(selectedBloggerId.value!, {
-        source: 'custom',
-        post_ids: postIds,
-        snapshot_name: (snapshotName || '').trim() || undefined,
-        mode: 'A'
-      }),
-    async () => {
-      await refreshSelectedBlogger()
-      selectNewestBloggerRun()
-    },
-    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
-  )
-}
-
-// 自定义蒸馏:复用一个已有快照。
-export async function handleDistillFromSnapshot(snapshotId: number) {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择博主', true)
-    return
-  }
-  await runTaskAction(
-    'distill',
-    '已提交自定义蒸馏任务（来自快照）',
-    () => distillBlogger(selectedBloggerId.value!, { source: 'custom', snapshot_id: snapshotId, mode: 'A' }),
-    async () => {
-      await refreshSelectedBlogger()
-      selectNewestBloggerRun()
-    },
-    '博主蒸馏仍在后台执行，请稍后刷新页面查看待确认结果'
-  )
-}
-
-// 把当前勾选保存为命名快照(可复用/回看)。
-export async function handleSaveSnapshot(name?: string) {
-  if (!selectedBloggerId.value) return
-  if (!selectedPostIds.value.length) {
-    showMessage('请先勾选要存入快照的笔记', true)
-    return
-  }
-  await runAction('snapshot-save', '正在保存快照', async () => {
-    await createBloggerSnapshot(selectedBloggerId.value!, {
-      name: (name || '').trim() || undefined,
-      post_ids: [...selectedPostIds.value]
-    })
-    await refreshSelectedBlogger()
-    selectedPostIds.value = []
-    showMessage('已保存快照')
-  })
-}
-
-// 改名 / 重选笔记(name、postIds 可单独或一起传)。
-export async function handleUpdateSnapshot(snapshotId: number, payload: { name?: string; postIds?: number[] }) {
-  if (!selectedBloggerId.value) return
-  const body: { name?: string; post_ids?: number[] } = {}
-  if (payload.name !== undefined) body.name = payload.name.trim()
-  if (payload.postIds !== undefined) body.post_ids = payload.postIds
-  if (body.name === undefined && body.post_ids === undefined) return
-  await runAction('snapshot-update', '正在更新快照', async () => {
-    await updateBloggerSnapshot(selectedBloggerId.value!, snapshotId, body)
-    await refreshSelectedBlogger()
-    showMessage('已更新快照')
-  })
-}
-
-export async function handleDeleteSnapshot(snapshotId: number) {
-  if (!selectedBloggerId.value) return
-  await runAction('snapshot-delete', '正在删除快照', async () => {
-    await deleteBloggerSnapshot(selectedBloggerId.value!, snapshotId)
-    await refreshSelectedBlogger()
-    showMessage('已删除快照')
-  })
-}
-
-// 把某快照的笔记载入当前勾选集(便于在此基础上微调后再存/蒸馏)。
-export function loadSnapshotIntoSelection(snapshotId: number) {
-  const snapshot = bloggerSnapshots.value.find((s) => s.id === snapshotId)
-  if (!snapshot) return
-  const poolIds = new Set(activeNotePool.value.map((p) => p.id))
-  selectedPostIds.value = snapshot.post_ids.filter((id) => poolIds.has(id))
-}
-
 // 从蒸馏 run 的 report_json 里解析模式与质量分，供前端清晰展示（不改后端 schema）。
 export interface DistillRunMeta {
   mode: 'A' | 'B'
@@ -2263,21 +2057,6 @@ export function qualityTone(grade: string): string {
   if (grade === '良') return 'info'
   if (grade === '待改进') return 'warn'
   return 'neutral'
-}
-
-// 账号内容缓存:有缓存就不重拉;force=true 强制重拉。
-export async function loadAccountPosts(id: number, force = false) {
-  if (!id) return
-  // 注意:空数组也是 truthy,不能用它当"已加载"。只有真正有内容才跳过(避免账号在无内容时被缓存成空、之后采集了也不刷新)。
-  if (!force && accountPosts[id]?.length) return
-  try {
-    accountPosts[id] = await listBloggerPosts(id)
-  } catch (error) {
-    accountPosts[id] = []
-    // 不再静默吞错:取内容失败时给提示并打日志,便于定位"选了账号却没内容"的问题。
-    console.error('加载账号内容失败 blogger_id=' + id, error)
-    showMessage(error instanceof Error ? `加载账号内容失败：${error.message}` : '加载账号内容失败', true)
-  }
 }
 
 export function openCreateMyAccountModal() {
@@ -2581,81 +2360,6 @@ export async function handleGenerateXhsTopicIdeas() {
     currentXhsDraft.value = null
     xhsCreationStep.value = 3
   })
-}
-
-export async function handleCollectBlogger() {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择博主', true)
-    xhsCollectStep.value = 1
-    return
-  }
-  // 大回填确认:存量"待补采(图片理解/转写)"> 50 条时先问,否则一次"采 N 条"会被回填撑成上百篇。
-  let backfill = true
-  try {
-    const est = await getCollectEstimate(bloggerDistillForm.sample_limit, bloggerDistillForm.comments_per_post, selectedBloggerId.value)
-    const pending = est.backfill_pending || 0
-    if (pending > 50) {
-      const amount = collectFetchAll.value ? '全部' : `${bloggerDistillForm.sample_limit} 条`
-      backfill = window.confirm(
-        `系统升级后新增了「图片信息采集」。本次采集会顺带把该博主约 ${pending} 条已有笔记重新采集一遍来补齐图片理解，耗时和调用会明显增加。\n\n「确定」= 采新的 + 回填这 ${pending} 条；「取消」= 只采新的（${amount}），以后再补齐。`
-      )
-    }
-  } catch {
-    backfill = true // 估算失败不阻断采集,默认按原行为回填
-  }
-  await runTaskAction(
-    'collect',
-    '已提交样本采集任务',
-    () =>
-      collectBlogger(selectedBloggerId.value!, {
-        sample_limit: bloggerDistillForm.sample_limit,
-        comments_per_post: bloggerDistillForm.comments_per_post,
-        content_types: collectContentTypes.value.length ? collectContentTypes.value : ['image', 'video'],
-        order: collectOrder.value,
-        fetch_all: collectFetchAll.value,
-        backfill
-      }),
-    async () => {
-      await refreshSelectedBlogger()
-      xhsCollectStep.value = 4
-    },
-    '样本采集仍在后台执行，请稍后刷新页面查看采集批次'
-  )
-}
-
-export async function handleCollectByUrls() {
-  if (!selectedBloggerId.value) {
-    showMessage('请先选择博主', true)
-    xhsCollectStep.value = 1
-    return
-  }
-  const urls = urlCollectInput.value
-    .split(/[\n\r]+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-  if (!urls.length) {
-    showMessage('请粘贴至少一条笔记链接', true)
-    return
-  }
-  if (urls.length > 20) {
-    showMessage('一次最多 20 条链接', true)
-    return
-  }
-  await runTaskAction(
-    'collect',
-    '已提交定向采集任务',
-    () =>
-      collectBloggerByUrls(selectedBloggerId.value!, {
-        urls,
-        comments_per_post: bloggerDistillForm.comments_per_post
-      }),
-    async () => {
-      urlCollectInput.value = ''
-      await refreshSelectedBlogger()
-      xhsCollectStep.value = 4
-    },
-    '定向采集仍在后台执行，请稍后刷新页面查看采集批次'
-  )
 }
 
 export async function selectBlogger(id: number) {

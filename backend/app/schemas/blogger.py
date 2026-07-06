@@ -82,46 +82,6 @@ class BloggerDistillRequest(BaseModel):
     mode: str = Field(default="A")
 
 
-class BloggerSnapshotCreate(BaseModel):
-    name: str = Field(default="", max_length=160)
-    post_ids: list[int] = Field(min_length=1)
-
-
-class BloggerSnapshotUpdate(BaseModel):
-    # 改名 / 重选笔记,二者可单独或一起传。
-    name: str | None = Field(default=None, max_length=160)
-    post_ids: list[int] | None = None
-
-
-class BloggerSnapshotRead(BaseModel):
-    id: int
-    tenant_id: int
-    blogger_id: int
-    name: str
-    post_ids: list[int]
-    post_count: int
-    created_at: datetime
-    updated_at: datetime | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# —— 智能选材:按需求让大模型给博主笔记打相关度分,帮用户建快照 ——
-class SnapshotSuggestRequest(BaseModel):
-    need: str = Field(default="", max_length=300)
-
-
-class SnapshotSuggestItem(BaseModel):
-    post_id: int
-    score: int  # 相关度 0-100(前端据此预勾选 + 一键放宽/自动补)
-    reason: str = ""
-
-
-class SnapshotSuggestResult(BaseModel):
-    suggested_name: str = ""
-    items: list[SnapshotSuggestItem] = Field(default_factory=list)  # 覆盖所有候选笔记,按分数降序
-
-
 class CollectEstimate(BaseModel):
     sample_limit: int
     comments_per_post: int

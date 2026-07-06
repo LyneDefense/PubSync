@@ -23,9 +23,6 @@ import type {
   BloggerProfileCreate,
   BloggerProfileUpdate,
   BloggerSearchResult,
-  BloggerSnapshot,
-  SnapshotSuggestResult,
-  CollectEstimate,
   BloggerSkill,
   EvaluateResult,
   SkillTrainingRun,
@@ -373,12 +370,6 @@ export function listBloggerCollectionRuns(id: number) {
   return request<BloggerCollectionRun[]>(`/bloggers/${id}/collection-runs`)
 }
 
-export function getCollectEstimate(sampleLimit: number, commentsPerPost: number, bloggerId?: number) {
-  let query = `sample_limit=${sampleLimit}&comments_per_post=${commentsPerPost}`
-  if (bloggerId != null) query += `&blogger_id=${bloggerId}`
-  return request<CollectEstimate>(`/bloggers/collect-estimate?${query}`)
-}
-
 export function listBloggerCollectionPosts(id: number, collectionRunId: number) {
   return request<BloggerPost[]>(`/bloggers/${id}/collection-runs/${collectionRunId}/posts`)
 }
@@ -392,40 +383,6 @@ export function distillBlogger(id: number, payload: BloggerDistillRequest) {
 
 export function listBloggerRuns(id: number) {
   return request<BloggerDistillationRun[]>(`/bloggers/${id}/distillation-runs`)
-}
-
-export function listBloggerSnapshots(id: number) {
-  return request<BloggerSnapshot[]>(`/bloggers/${id}/snapshots`)
-}
-
-export function createBloggerSnapshot(id: number, payload: { name?: string; post_ids: number[] }) {
-  return request<BloggerSnapshot>(`/bloggers/${id}/snapshots`, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
-// 智能选材:按需求让 AI 给该博主笔记打相关度分。
-export function suggestSnapshot(id: number, need: string) {
-  return request<SnapshotSuggestResult>(`/bloggers/${id}/snapshot-suggest`, {
-    method: 'POST',
-    body: JSON.stringify({ need })
-  })
-}
-
-export function updateBloggerSnapshot(
-  bloggerId: number,
-  snapshotId: number,
-  payload: { name?: string; post_ids?: number[] }
-) {
-  return request<BloggerSnapshot>(`/bloggers/${bloggerId}/snapshots/${snapshotId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload)
-  })
-}
-
-export function deleteBloggerSnapshot(bloggerId: number, snapshotId: number) {
-  return request<void>(`/bloggers/${bloggerId}/snapshots/${snapshotId}`, { method: 'DELETE' })
 }
 
 export function confirmBloggerRun(bloggerId: number, runId: number) {

@@ -55,12 +55,6 @@ from app.schemas.blogger import (
     BloggerProfileUpdate,
     BloggerSearchResultRead,
     BloggerSkillRead,
-    BloggerSnapshotCreate,
-    BloggerSnapshotRead,
-    BloggerSnapshotUpdate,
-    SnapshotSuggestItem,
-    SnapshotSuggestRequest,
-    SnapshotSuggestResult,
 )
 from app.schemas.news import NewsItemRead, NewsItemUpdate, NewsSourceRead
 from app.schemas.skill_training import SkillOptimizeConfirm, SkillOptimizeRequest, SkillTrainingRunRead
@@ -165,12 +159,6 @@ __all__ = [
     "BloggerCollectionRunRead",
     "BloggerDistillationRunRead",
     "BloggerSkillRead",
-    "BloggerSnapshotCreate",
-    "BloggerSnapshotRead",
-    "BloggerSnapshotUpdate",
-    "SnapshotSuggestItem",
-    "SnapshotSuggestRequest",
-    "SnapshotSuggestResult",
     "XhsPublishPackageCreate",
     "XhsPublishPackageDraftRead",
     "XhsPublishPackageSave",

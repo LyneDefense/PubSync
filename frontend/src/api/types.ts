@@ -470,28 +470,6 @@ export interface BloggerDistillRequest {
   mode?: string
 }
 
-export interface BloggerSnapshot {
-  id: number
-  tenant_id: number
-  blogger_id: number
-  name: string
-  post_ids: number[]
-  post_count: number
-  created_at: string
-  updated_at: string | null
-}
-
-// 智能选材:AI 按需求给博主笔记打相关度分(覆盖全部候选,按分降序)。
-export interface SnapshotSuggestItem {
-  post_id: number
-  score: number
-  reason: string
-}
-export interface SnapshotSuggestResult {
-  suggested_name: string
-  items: SnapshotSuggestItem[]
-}
-
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
@@ -504,16 +482,6 @@ export interface BloggerCollectRequest {
 export interface BloggerUrlCollectRequest {
   urls: string[]
   comments_per_post?: number
-}
-
-export interface CollectEstimate {
-  sample_limit: number
-  comments_per_post: number
-  request_estimate: number
-  backfill_pending?: number
-  cost_usd: number
-  cost_usd_min: number
-  cost_usd_max: number
 }
 
 export interface BloggerPost {

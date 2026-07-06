@@ -4,12 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - 注册所有表
-from app.blogger_distillation.service.crud import (
-    create_snapshot,
-    delete_snapshot,
-    list_snapshots,
-    update_snapshot,
-)
+from app.blogger_distillation.service.crud import create_snapshot
 from app.database import Base
 from app.models import BloggerPost, BloggerProfile, Tenant
 
@@ -41,14 +36,12 @@ def _seed(db, n=5):
     return ids
 
 
-def test_create_and_list_snapshot(db):
+def test_create_snapshot(db):
     ids = _seed(db)
     snap = create_snapshot(db, 1, 1, "我的选材", ids[:3])
     assert snap.id is not None
     assert snap.post_ids == ids[:3]
     assert snap.post_count == 3
-    listed = list_snapshots(db, 1, 1)
-    assert [s.id for s in listed] == [snap.id]
 
 
 def test_create_snapshot_rejects_empty(db):
@@ -61,42 +54,3 @@ def test_create_snapshot_rejects_foreign_blogger(db):
     ids = _seed(db)
     with pytest.raises(ValueError):
         create_snapshot(db, 1, 999, "不存在的博主", ids[:2])
-
-
-def test_update_snapshot_rename(db):
-    ids = _seed(db)
-    snap = create_snapshot(db, 1, 1, "旧名", ids[:2])
-    renamed = update_snapshot(db, 1, snap.id, name="新名")
-    assert renamed.name == "新名"
-    with pytest.raises(ValueError):
-        update_snapshot(db, 1, snap.id, name="   ")
-
-
-def test_update_snapshot_repick(db):
-    ids = _seed(db)
-    snap = create_snapshot(db, 1, 1, "选材", ids[:2])
-    updated = update_snapshot(db, 1, snap.id, post_ids=ids[:4])
-    assert updated.post_ids == ids[:4]
-    assert updated.name == "选材"  # 只传 post_ids 不动名字
-    with pytest.raises(ValueError):
-        update_snapshot(db, 1, snap.id, post_ids=[])
-
-
-def test_delete_snapshot(db):
-    ids = _seed(db)
-    snap = create_snapshot(db, 1, 1, "待删", ids[:2])
-    delete_snapshot(db, 1, snap.id)
-    assert list_snapshots(db, 1, 1) == []
-    with pytest.raises(ValueError):
-        delete_snapshot(db, 1, snap.id)
-
-
-def test_tenant_isolation(db):
-    ids = _seed(db)
-    snap = create_snapshot(db, 1, 1, "T1", ids[:2])
-    # 别的租户看不到 / 改不了
-    assert list_snapshots(db, 2, 1) == []
-    with pytest.raises(ValueError):
-        update_snapshot(db, 2, snap.id, name="x")
-    with pytest.raises(ValueError):
-        delete_snapshot(db, 2, snap.id)

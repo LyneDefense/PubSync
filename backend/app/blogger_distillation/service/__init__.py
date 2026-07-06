@@ -18,11 +18,8 @@ from app.blogger_distillation.service.crud import (
     create_blogger,
     create_snapshot,
     delete_blogger,
-    delete_snapshot,
     exclude_posts,
-    list_snapshots,
     set_blogger_favorite,
-    update_snapshot,
     update_blogger,
 )
 from app.blogger_distillation.service.distill_engine import distill_core, distill_lane
@@ -59,10 +56,7 @@ __all__ = [
     "set_blogger_favorite",
     "delete_blogger",
     "exclude_posts",
-    "list_snapshots",
     "create_snapshot",
-    "update_snapshot",
-    "delete_snapshot",
     "run_blogger_collection",
     "run_blogger_url_collection",
     "refresh_blogger_profile",
