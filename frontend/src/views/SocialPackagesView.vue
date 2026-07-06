@@ -122,7 +122,7 @@ function avatarStyle(id: number) {
           <span class="pk-radio" aria-hidden="true"></span>
         </button>
       </div>
-      <p v-else class="empty-region pad">还没有可用于创作的博主。请先到「数据采集 / 提炼 Skill」创建博主并完成蒸馏。</p>
+      <p v-else class="empty-region pad">还没有可用于创作的博主。请先到「博主档案」建档并蒸馏出创作画像。</p>
     </section>
 
     <!-- 第 2 步:选 Skill -->
@@ -144,7 +144,7 @@ function avatarStyle(id: number) {
           <span class="tp-date">{{ formatDate(skill.created_at) }}</span>
         </button>
       </div>
-      <p v-else class="empty-region pad">这个博主还没有可用 Skill。请先到「提炼 Skill」完成一次风格蒸馏。</p>
+      <p v-else class="empty-region pad">这个博主还没有创作画像。请先到「博主档案」蒸馏出创作画像。</p>
     </section>
 
     <!-- 第 3 步:生成 / 选择选题 -->

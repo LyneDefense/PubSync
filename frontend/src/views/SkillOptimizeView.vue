@@ -115,7 +115,7 @@ function avatarStyle(id: number) {
             <span class="bl-radio" aria-hidden="true"></span>
           </button>
         </div>
-        <p v-else class="empty-region pad">还没有对标博主。请先到「数据采集 / 提炼 Skill」创建博主并蒸馏。</p>
+        <p v-else class="empty-region pad">还没有对标博主。请先到「查找博主」添加、「博主档案」建档并蒸馏。</p>
       </div>
 
       <div class="lc-col">
@@ -135,7 +135,7 @@ function avatarStyle(id: number) {
             <span class="ver-tag" :class="{ cur: s.status === 'active' }">{{ s.status === 'active' ? '当前' : '历史' }}</span>
           </button>
         </div>
-        <p v-else class="empty-region pad">{{ optimizeBloggerId ? '该博主暂无 Skill,请先到「提炼 Skill」蒸馏一次。' : '先在左侧选择一个博主。' }}</p>
+        <p v-else class="empty-region pad">{{ optimizeBloggerId ? '该博主暂无 Skill,请先到「博主档案」蒸馏一次。' : '先在左侧选择一个博主。' }}</p>
 
         <button
           type="button"
