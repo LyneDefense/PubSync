@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session
 
 from app.blogger_dossier import audience, compliance, habits, pool, stats, trajectory
 from app.blogger_distillation.service.collection import refresh_blogger_profile, run_blogger_collection
-from app.blogger_distillation.service.distillation import run_blogger_distillation
+from app.blogger_distillation.service.distillation import (
+    confirm_blogger_distillation,
+    run_blogger_distillation,
+)
 from app.blogger_distillation.service.events import record_task_event
 from app.config import Settings
 from app.models import BloggerDistillationRun, BloggerPost, BloggerProfile, BloggerSkill, BloggerSnapshot, OperationTask
@@ -102,10 +105,12 @@ def build_dossier(db: Session, settings: Settings, task_id: str, tenant_id: int,
                 f"详情级笔记仅 {len(ids)} 篇（<{settings.distill_min_samples}），本次跳过自动蒸馏，可稍后手动蒸馏",
             )
         else:
-            run_blogger_distillation(
+            result = run_blogger_distillation(
                 db, settings, task_id, tenant_id, blogger_id,
                 post_ids=ids, source="dossier", snapshot_id=None, mode="A",
             )
+            # 一键建档即采用:去多画像,蒸完直接转正为当前画像(旧 active 自动归档),用户无需再点确认。
+            confirm_blogger_distillation(db, tenant_id, result.run.id)
             distilled = True
         return {"pool": sync, "full_selected": len(ids), "distilled": distilled}
     finally:
@@ -150,10 +155,12 @@ def redistill_dossier(db: Session, settings: Settings, task_id: str, tenant_id: 
                 f"详情级笔记仅 {len(ids)} 篇（<{settings.distill_min_samples}），不足以蒸馏；请先「彻底重建」升级更多详情。"
             )
         record_task_event(db, tenant_id, task_id, "更新画像", "running", f"用现有 {len(ids)} 篇详情级笔记重新蒸馏创作画像")
-        run_blogger_distillation(
+        result = run_blogger_distillation(
             db, settings, task_id, tenant_id, blogger_id,
             post_ids=ids, source="dossier", snapshot_id=None, mode="A",
         )
+        # 重蒸即覆盖:直接转正为当前画像,旧 active 自动归档(去多画像)。
+        confirm_blogger_distillation(db, tenant_id, result.run.id)
         return {"distilled": True, "sample": len(ids)}
     finally:
         db.rollback()
