@@ -956,7 +956,20 @@ export interface DossierBucket {
   start: string
   end: string
   median_like: number
+  p25: number
+  p75: number
   note_count: number
+}
+
+export interface DossierDistribution {
+  count: number
+  min?: number
+  p25?: number
+  median?: number
+  p75?: number
+  p90?: number
+  max?: number
+  log_bins?: { lo: number; hi: number; count: number }[]
 }
 
 export interface DossierPhase {
@@ -985,6 +998,7 @@ export interface DossierTrajectory {
   granularity: string
   low_frequency: boolean
   summary: string
+  distribution: DossierDistribution
 }
 
 export interface DossierHabits {
@@ -1007,11 +1021,17 @@ export interface DossierCompliance {
   coverage: { pool: number; title_level: number; full_text: number }
 }
 
-export interface DossierAttribution {
+// 受众需求·读者最常问(从读者评论 LLM 归纳,按钮触发)。取代旧「爆文归因」。
+export interface DossierAudienceQuestion {
+  theme: string
+  sample: string
+}
+export interface DossierAudience {
   generated_at: string
-  burst_count: number
-  hypotheses: { claim: string; evidence: string; confidence: string }[]
-  summary: string
+  comment_count: number
+  questions: DossierAudienceQuestion[]
+  focus_points: string[]
+  note: string
 }
 
 export interface BloggerDossier {
@@ -1021,7 +1041,7 @@ export interface BloggerDossier {
   habits: DossierHabits | null
   compliance: DossierCompliance | null
   trajectory: DossierTrajectory | null
-  attribution: DossierAttribution | null
+  audience: DossierAudience | null
   portraits: DossierPortrait[]
   building: DossierBuilding | null
 }

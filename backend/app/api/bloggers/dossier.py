@@ -1,4 +1,4 @@
-"""博主档案:一键建档 / 档案聚合读 / 笔记池同步 / 爆文归因。设计见 docs/博主档案页_流程设计.md。"""
+"""博主档案:一键建档 / 档案聚合读 / 笔记池同步 / 受众需求。设计见 docs/成长趋势与受众需求_优化方案设计.md。"""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -7,7 +7,7 @@ from app.api.deps import current_tenant, settings
 from app.blogger_dossier.service import (
     dossier_overview,
     ensure_no_running_build,
-    run_attribution_for_blogger,
+    run_audience_for_blogger,
 )
 from app.database import get_db
 from app.models import BloggerProfile, OperationTask, Tenant
@@ -93,15 +93,15 @@ def sync_blogger_pool_endpoint(
     return task
 
 
-@router.post("/bloggers/{blogger_id}/dossier/attribution")
-def run_blogger_attribution_endpoint(
+@router.post("/bloggers/{blogger_id}/dossier/audience")
+def run_blogger_audience_endpoint(
     blogger_id: int,
     tenant: Tenant = Depends(current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    """爆文归因(同步,LLM 一次调用):基于轨迹爆发点生成"有据的假设"。无爆发点 → 400 诚实拒绝。"""
+    """受众需求·读者最常问(同步,LLM 一次调用):从读者评论归纳。评论过少 → 400 诚实拒绝。"""
     _get_blogger_or_404(db, tenant, blogger_id)
     try:
-        return run_attribution_for_blogger(db, settings, tenant.id, blogger_id)
+        return run_audience_for_blogger(db, settings, tenant.id, blogger_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

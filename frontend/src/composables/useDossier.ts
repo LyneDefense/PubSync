@@ -6,7 +6,7 @@ import {
   buildBloggerDossier,
   getBloggerDossier,
   redistillBloggerDossier,
-  runBloggerAttribution,
+  runBloggerAudience,
   syncBloggerPool,
 } from '../api'
 import type { BloggerDossier } from '../api/types'
@@ -21,7 +21,7 @@ import {
 
 export const dossier = ref<BloggerDossier | null>(null)
 export const dossierLoading = ref(false)
-export const attributionRunning = ref(false)
+export const audienceRunning = ref(false)
 
 export async function loadDossier() {
   if (!selectedBloggerId.value) {
@@ -93,17 +93,17 @@ export async function handleSyncPool(mode: 'incremental' | 'full') {
   await reloadAll()
 }
 
-export async function handleRunAttribution() {
-  if (!selectedBloggerId.value || attributionRunning.value) return
-  attributionRunning.value = true
+export async function handleRunAudience() {
+  if (!selectedBloggerId.value || audienceRunning.value) return
+  audienceRunning.value = true
   try {
-    await runBloggerAttribution(selectedBloggerId.value)
-    showMessage('爆文归因完成')
+    await runBloggerAudience(selectedBloggerId.value)
+    showMessage('受众需求分析完成')
     await loadDossier()
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : '归因分析失败', true)
+    showMessage(error instanceof Error ? error.message : '受众需求分析失败', true)
   } finally {
-    attributionRunning.value = false
+    audienceRunning.value = false
   }
 }
 

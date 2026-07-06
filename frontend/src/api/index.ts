@@ -17,7 +17,7 @@ import type {
   BloggerDistillationRun,
   BloggerDistillRequest,
   BloggerDossier,
-  DossierAttribution,
+  DossierAudience,
   BloggerPost,
   BloggerProfile,
   BloggerProfileCreate,
@@ -609,6 +609,6 @@ export function syncBloggerPool(bloggerId: number, mode: 'incremental' | 'full')
   return request(`/bloggers/${bloggerId}/dossier/pool/sync`, { method: 'POST', body: JSON.stringify({ mode }) })
 }
 
-export function runBloggerAttribution(bloggerId: number): Promise<DossierAttribution> {
-  return request(`/bloggers/${bloggerId}/dossier/attribution`, { method: 'POST', body: JSON.stringify({}) })
+export function runBloggerAudience(bloggerId: number): Promise<DossierAudience> {
+  return request(`/bloggers/${bloggerId}/dossier/audience`, { method: 'POST', body: JSON.stringify({}) })
 }

@@ -4,6 +4,7 @@
 // 设计见 UI-Refactor/design_handoff_dossier_redesign;旧 /assets 路由按别名落到本页。
 import { computed } from 'vue'
 
+import DossierAudience from '../components/dossier/DossierAudience.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
 import DossierCompliance from '../components/dossier/DossierCompliance.vue'
 import DossierHabits from '../components/dossier/DossierHabits.vue'
@@ -13,13 +14,13 @@ import DossierPortraits from '../components/dossier/DossierPortraits.vue'
 import DossierStatsPanel from '../components/dossier/DossierStatsPanel.vue'
 import DossierTrajectory from '../components/dossier/DossierTrajectory.vue'
 import {
-  attributionRunning,
+  audienceRunning,
   dossier,
   dossierBusy,
   dossierLoading,
   handleBuildDossier,
   handleRedistill,
-  handleRunAttribution,
+  handleRunAudience,
   loadDossier
 } from '../composables/useDossier'
 import {
@@ -112,15 +113,8 @@ function onDelete() {
           <span class="dossier-band__rule"></span>
         </div>
         <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
-        <DossierTrajectory
-          v-if="dossier.trajectory"
-          :trajectory="dossier.trajectory"
-          :attribution="dossier.attribution"
-          :attribution-running="attributionRunning"
-          :reached-end="dossier.pool.reached_end"
-          :busy="busy"
-          @run-attribution="handleRunAttribution"
-        />
+        <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
+        <DossierAudience :audience="dossier.audience" :audience-running="audienceRunning" :busy="busy" @run-audience="handleRunAudience" />
         <div class="dossier-view__two-col">
           <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
           <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />

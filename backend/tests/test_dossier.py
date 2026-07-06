@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as N
 
+from app.blogger_dossier.audience import _reader_comments, parse_audience
 from app.blogger_dossier.habits import _author_reply_habit, _comment_guide_ratio, _genre_distribution
 from app.blogger_dossier.pool import _new_list_row, refresh_from_candidate
 from app.blogger_dossier.stats import account_stats
@@ -93,6 +94,46 @@ def test_trajectory_level_up_detects_growth_step():
     assert tr["level_ups"] and tr["level_ups"][0]["to_avg"] > tr["level_ups"][0]["from_avg"]
     assert any(p["label"] == "突破期" for p in tr["phases"])
     assert tr["level_ups"][0]["trigger"] is not None  # 关联触发爆文
+
+
+def test_trajectory_distribution_and_bucket_percentiles():
+    # 图B 表现分布 + 图A 分位带的数据:distribution 分位单调、log 分箱计数守恒;桶带 p25/p75。
+    posts = [_post(i=i, like=500 + i * 200, days=i * 7) for i in range(1, 21)]
+    tr = build_trajectory(posts)
+    d = tr["distribution"]
+    assert d["count"] == 20
+    assert d["min"] <= d["p25"] <= d["median"] <= d["p75"] <= d["p90"] <= d["max"]
+    assert d["log_bins"] and sum(b["count"] for b in d["log_bins"]) == 20
+    assert all("p25" in b and "p75" in b for b in tr["buckets"])
+
+
+def test_trajectory_distribution_present_even_when_degraded():
+    tr = build_trajectory([_post(i=i, like=100 + i, days=i) for i in range(5)])  # < MIN_POINTS
+    assert tr["distribution"]["count"] == 5  # 降级也给分布
+
+
+# ============================ audience(受众需求·读者最常问) ============================
+
+def test_audience_reader_comments_filters_and_sorts():
+    posts = [
+        N(comments_json=json.dumps([
+            {"content": "这个多少钱啊", "like_count": 50, "is_author": False},
+            {"content": "谢谢支持", "like_count": 5, "is_author": True},    # 博主回复→剔
+            {"content": "适合新手吗", "like_count": 99, "is_author": False},
+            {"content": "1", "like_count": 3, "is_author": False},          # 太短→剔
+        ])),
+        N(comments_json="not-json"),  # 坏 json 跳过
+        N(comments_json=None),
+    ]
+    out = _reader_comments(posts)
+    assert [c["text"] for c in out] == ["适合新手吗", "这个多少钱啊"]  # 热度降序,博主/短评剔除
+
+
+def test_audience_parse_ignores_legacy_and_junk():
+    assert parse_audience(json.dumps({"questions": [{"theme": "价格", "sample": "多少钱"}]})) is not None
+    assert parse_audience(json.dumps({"hypotheses": []})) is None  # 旧归因形态 → 视为无
+    assert parse_audience("") is None
+    assert parse_audience("broken") is None
 
 
 # ============================ stats ============================

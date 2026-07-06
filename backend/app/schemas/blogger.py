@@ -292,7 +292,7 @@ class DossierBuilding(BaseModel):
 
 
 class BloggerDossierRead(BaseModel):
-    """档案页聚合读:物理层(池)+ 分析层(统计/轨迹/归因)+ 画像 + 构建状态。"""
+    """档案页聚合读:物理层(池)+ 分析层(统计/轨迹/受众需求)+ 画像 + 构建状态。"""
 
     blogger_id: int
     pool: DossierPoolInfo
@@ -300,7 +300,7 @@ class BloggerDossierRead(BaseModel):
     habits: dict | None = None
     compliance: dict | None = None
     trajectory: dict | None
-    attribution: dict | None
+    audience: dict | None = None
     portraits: list[DossierPortrait]
     building: DossierBuilding | None
 

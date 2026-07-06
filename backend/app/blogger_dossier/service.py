@@ -1,7 +1,7 @@
-"""博主档案编排:一键建档(五阶段)、档案聚合读、爆文归因入口、构建互斥。
+"""博主档案编排:一键建档(五阶段)、档案聚合读、受众需求入口、构建互斥。
 
 建档 = 资料 → 全量笔记池 → 统计/轨迹(免费即时算) → 最新 N 篇升详情级(复用采集管线) → 自动蒸馏默认画像。
-级联原则:免费的(统计/轨迹)读取时现算、池一变自然新;花钱的(画像/归因)只标过时,绝不自动重跑。
+级联原则:免费的(统计/轨迹/分布)读取时现算、池一变自然新;花钱的(画像/受众需求)按钮触发、绝不自动重跑。
 """
 
 from __future__ import annotations
@@ -14,8 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.blogger_dossier import compliance, habits, pool, stats, trajectory
-from app.blogger_dossier.attribution import parse_attribution, run_attribution
+from app.blogger_dossier import audience, compliance, habits, pool, stats, trajectory
 from app.blogger_distillation.service.collection import refresh_blogger_profile, run_blogger_collection
 from app.blogger_distillation.service.distillation import run_blogger_distillation
 from app.blogger_distillation.service.events import record_task_event
@@ -187,15 +186,15 @@ def sync_pool(db: Session, settings: Settings, task_id: str, tenant_id: int, blo
             db.commit()
 
 
-# ============================ 归因入口 ============================
+# ============================ 受众需求入口(读者最常问) ============================
 
-def run_attribution_for_blogger(db: Session, settings: Settings, tenant_id: int, blogger_id: int) -> dict[str, Any]:
+def run_audience_for_blogger(db: Session, settings: Settings, tenant_id: int, blogger_id: int) -> dict[str, Any]:
     blogger = _get_blogger(db, tenant_id, blogger_id)
     posts = active_posts(db, tenant_id, blogger_id)
     if not posts:
         raise ValueError("笔记池为空，请先构建博主画像")
-    result = run_attribution(settings, posts, trajectory.build_trajectory(posts))
-    blogger.attribution_json = json.dumps(result, ensure_ascii=False)
+    result = audience.run_audience(settings, posts)
+    blogger.attribution_json = json.dumps(result, ensure_ascii=False)  # 复用该列存受众需求结果(归因退役,列腾出)
     db.commit()
     return result
 
@@ -229,7 +228,7 @@ def dossier_overview(db: Session, settings: Settings, tenant_id: int, blogger_id
             if posts else None
         ),
         "trajectory": trajectory.build_trajectory(posts) if posts else None,
-        "attribution": parse_attribution(blogger.attribution_json),
+        "audience": audience.parse_audience(blogger.attribution_json),
         "portraits": _portraits(db, settings, tenant_id, blogger_id),
         "building": building,
     }
