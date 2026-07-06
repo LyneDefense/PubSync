@@ -115,10 +115,8 @@ function onDelete() {
         <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
         <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
         <DossierAudience :audience="dossier.audience" :audience-running="audienceRunning" :busy="busy" @run-audience="handleRunAudience" />
-        <div class="dossier-view__two-col">
-          <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
-          <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
-        </div>
+        <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
+        <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
 
         <!-- 产线带 B · 创作画像 · 笔记池 -->
         <div class="dossier-band">

@@ -5,7 +5,14 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as N
 
 from app.blogger_dossier.audience import _reader_comments, parse_audience
-from app.blogger_dossier.habits import _author_reply_habit, _comment_guide_ratio, _genre_distribution
+from app.blogger_dossier.habits import (
+    _author_reply_habit,
+    _comment_guide_ratio,
+    _content_format,
+    _genre_distribution,
+    _hashtag_usage,
+    _posting_time,
+)
 from app.blogger_dossier.pool import _new_list_row, refresh_from_candidate
 from app.blogger_dossier.stats import account_stats
 from app.blogger_dossier.trajectory import build_trajectory
@@ -178,6 +185,41 @@ def test_habits_author_reply_ignores_reader_comments():
     reader_only = _dp(comments=[{"content": "帮我看看号吗", "is_author": False}])
     ar = _author_reply_habit([replied, reader_only])
     assert ar["with_comments"] == 2 and ar["replied"] == 1 and ar["ratio"] == 0.5
+
+
+def test_habits_posting_time_beijing():
+    # UTC 13:00 周一 → 北京 21:00 周一(晚间)。2024-01-01 是周一。
+    posts = [N(published_at=datetime(2024, 1, 1, 13, 0, tzinfo=timezone.utc), content_type="image") for _ in range(5)]
+    pt = _posting_time(posts)
+    assert pt["sample"] == 5 and sum(pt["weekday_counts"]) == 5
+    assert pt["top_weekday"] == "一" and pt["top_band"] == "晚间"
+
+
+def test_habits_posting_time_too_few_degrades():
+    pt = _posting_time([N(published_at=None, content_type="image")])
+    assert pt["top_weekday"] is None and pt["weekday_counts"] == []
+
+
+def test_habits_hashtag_usage():
+    detail = [
+        N(hashtags_json='["#香港保险", "储蓄险"]'),
+        N(hashtags_json='["香港保险"]'),
+        N(hashtags_json="[]"),
+    ]
+    h = _hashtag_usage(detail)
+    assert h["avg_per_note"] == 1.0 and h["notes_with"] == 2  # (2+1+0)/3
+    assert h["top_tags"][0] == {"tag": "香港保险", "count": 2}  # # 前缀已剥
+
+
+def test_habits_content_format():
+    posts = [
+        N(content_type="image", vision_image_count=8, media_urls_json="[]", duration_seconds=None),
+        N(content_type="image", vision_image_count=0, media_urls_json='["a", "b", "c", "d"]', duration_seconds=None),
+        N(content_type="video", vision_image_count=0, media_urls_json="[]", duration_seconds=60.0),
+    ]
+    f = _content_format(posts)
+    assert f["avg_images"] == 6.0 and f["image_notes"] == 2  # (8+4)/2
+    assert f["avg_video_sec"] == 60 and f["video_notes"] == 1
 
 
 # ============================ compliance (合规体检) ============================

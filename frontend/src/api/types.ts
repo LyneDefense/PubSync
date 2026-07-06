@@ -1004,8 +1004,17 @@ export interface DossierTrajectory {
 export interface DossierHabits {
   coverage: { pool: number; detail: number }
   posting_rhythm: { pattern: string; avg_days_between: number | null }
+  posting_time: {
+    sample: number
+    weekday_counts: number[]
+    band_counts: { name: string; count: number }[]
+    top_weekday: string | null
+    top_band: string | null
+  }
   modality_pref: Record<string, unknown>
   genre: { listicle: number; total: number; ratio: number | null }
+  hashtag_usage: { avg_per_note: number | null; notes_with: number; total: number; top_tags: { tag: string; count: number }[] }
+  content_format: { avg_images: number | null; image_notes: number; avg_video_sec: number | null; video_notes: number }
   comment_guide: { count: number; total: number; ratio: number | null }
   author_reply: { replied: number; with_comments: number; ratio: number | null }
 }
