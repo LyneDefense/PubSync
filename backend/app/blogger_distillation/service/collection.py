@@ -17,6 +17,7 @@ from app.blogger_distillation.modality_adjudicator import adjudicate_modality
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import quality_report
 from app.blogger_distillation.service.note_pipeline import build_collect_providers, process_one_note
+from app.blogger_distillation.service.extract.post import extract_note_key
 from app.blogger_distillation.service.vision_step import revise_post_vision
 from app.blogger_distillation.service.selection import select_detail_targets
 from app.blogger_distillation.service.events import (
@@ -54,17 +55,23 @@ def select_targets(
     return pool if fetch_all else pool[:sample_limit]
 
 
+def _note_key_of(c: XhsPostCandidate) -> str:
+    """候选的稳定标识:note_key(笔记卡内 id,跨端点稳定),取不到回退 external_id。
+    增量 diff / 去重都必须按它——external_id 会漂移,用它会把已详情的笔记误判成"新的"再重采(白花钱、总数不涨)。"""
+    return extract_note_key(c.raw, {}, c.external_id) or (c.external_id or "").strip()
+
+
 def _dedup_candidates(cands: list[XhsPostCandidate]) -> list[XhsPostCandidate]:
-    """按 external_id 去重(保留先出现的)。列表翻页/note_id 漂移会返回同一 external_id 多次,
-    重复进 to_fetch 会让并发线程抢插同一行、触发 external_id 唯一键冲突,导致升详情静默失败。"""
+    """按 note_key 去重(保留先出现的)。列表翻页/漂移会返回同一篇笔记多次,重复进 to_fetch 会并发
+    抢插同一行、触发唯一键冲突,导致升详情静默失败。"""
     seen: set[str] = set()
     out: list[XhsPostCandidate] = []
     for c in cands:
-        eid = (c.external_id or "").strip()
-        if eid and eid in seen:
+        key = _note_key_of(c)
+        if key and key in seen:
             continue
-        if eid:
-            seen.add(eid)
+        if key:
+            seen.add(key)
         out.append(c)
     return out
 
@@ -164,8 +171,9 @@ def run_blogger_collection(
             logger.warning("解析博主资料失败:blogger_id=%s,error=%s", blogger.id, exc)
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
         # 先把笔记池(库内该博主已有 external_id)读出来,翻页时据此判断"新/旧"。
+        # 按 note_key(跨端点稳定)索引;external_id 会漂移,用它做增量 diff 会把已详情的笔记误判成"新的"。
         existing = {
-            post.external_id: post
+            (post.note_key or post.external_id or f"id:{post.id}"): post
             for post in db.scalars(
                 select(BloggerPost).where(BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger.id)
             )
@@ -174,7 +182,7 @@ def run_blogger_collection(
 
         # "需要详情" = 池里没有,或只有列表级行(list 级行本就是"未抓详情",视同新增去升级)。
         def _needs_detail(c: XhsPostCandidate) -> bool:
-            post = existing.get(c.external_id)
+            post = existing.get(_note_key_of(c))
             return post is None or post.detail_level != "full"
 
         # 动态翻页:最新优先翻到"需要详情的够 N 条"就停;高赞优先/全部翻到底(或安全上限)再排序。
@@ -202,7 +210,7 @@ def run_blogger_collection(
 
         # 增量:从"需要详情的"里按排序取最多 N 条当新增(含 list 级行升级);已是详情级的顺带刷新。
         new_candidates = [c for c in candidates if _needs_detail(c)]
-        existing_candidates = [(c, existing[c.external_id]) for c in candidates if not _needs_detail(c)]
+        existing_candidates = [(c, existing[_note_key_of(c)]) for c in candidates if not _needs_detail(c)]
         if order == "smart":  # 建档/升详情:高赞+最近优先 + 动态 K 爆文保底(用全量候选算中位数/总数)
             new_targets = select_detail_targets(
                 new_candidates, total=len(candidates), limit=sample_limit,
@@ -250,8 +258,8 @@ def run_blogger_collection(
             post.status = "active" if post.status != "excluded" else "excluded"
 
         # 笔记池全量落库:没被选中升级详情的候选也 upsert 为 list 级行(此前直接丢弃),统计/轨迹靠它。
-        fetch_ids = {c.external_id for c in to_fetch}
-        leftovers = [c for c in all_candidates if c.external_id not in existing and c.external_id not in fetch_ids]
+        fetch_ids = {_note_key_of(c) for c in to_fetch}
+        leftovers = [c for c in all_candidates if _note_key_of(c) not in existing and _note_key_of(c) not in fetch_ids]
         if leftovers:
             pool_counts = note_pool.upsert_list_candidates(db, tenant_id, blogger, leftovers)
             record_task_event(
