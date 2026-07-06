@@ -57,7 +57,6 @@ function confirmUrls() {
           <label class="uc__chk"><input v-model="image" type="checkbox" />图文</label>
           <label class="uc__chk"><input v-model="video" type="checkbox" />视频</label>
         </div>
-        <p class="uc__hint">系统按「高赞 + 最近优先 + 爆文保底」自动选片;ASR 默认开,每篇采 20 条最高赞评论。</p>
         <div class="uc__foot">
           <button type="button" class="uc__cancel" @click="emit('close')">取消</button>
           <button type="button" class="uc__go" :disabled="!contentTypes.length" @click="confirmBatch">开始升级</button>
