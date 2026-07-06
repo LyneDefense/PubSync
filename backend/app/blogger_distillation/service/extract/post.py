@@ -7,6 +7,7 @@ import json
 import re
 from typing import Any
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.blogger_distillation.tikhub_client import TikHubDouyinClient
 from app.blogger_distillation.tikhub_client import TikHubXhsClient
@@ -237,10 +238,23 @@ def upsert_post(db: Session, tenant_id: int, blogger: BloggerProfile, data: dict
             )
         )
     if not post:
-        post = BloggerPost(tenant_id=tenant_id, blogger_id=blogger.id, platform=blogger.platform, **data)
-        db.add(post)
-        db.flush()
-        return post
+        # 并发/漂移下别的线程可能已插入同 external_id;用 savepoint 试插,冲突则回退取已有行改为更新,不让升详情崩。
+        try:
+            with db.begin_nested():
+                post = BloggerPost(tenant_id=tenant_id, blogger_id=blogger.id, platform=blogger.platform, **data)
+                db.add(post)
+                db.flush()
+            return post
+        except IntegrityError:
+            post = db.scalar(
+                select(BloggerPost).where(
+                    BloggerPost.tenant_id == tenant_id,
+                    BloggerPost.blogger_id == blogger.id,
+                    BloggerPost.external_id == data["external_id"],
+                )
+            )
+            if post is None:
+                raise
     for key, value in data.items():
         setattr(post, key, value)
     db.flush()

@@ -54,6 +54,21 @@ def select_targets(
     return pool if fetch_all else pool[:sample_limit]
 
 
+def _dedup_candidates(cands: list[XhsPostCandidate]) -> list[XhsPostCandidate]:
+    """按 external_id 去重(保留先出现的)。列表翻页/note_id 漂移会返回同一 external_id 多次,
+    重复进 to_fetch 会让并发线程抢插同一行、触发 external_id 唯一键冲突,导致升详情静默失败。"""
+    seen: set[str] = set()
+    out: list[XhsPostCandidate] = []
+    for c in cands:
+        eid = (c.external_id or "").strip()
+        if eid and eid in seen:
+            continue
+        if eid:
+            seen.add(eid)
+        out.append(c)
+    return out
+
+
 @dataclass
 class CollectionResult:
     run: BloggerCollectionRun
@@ -174,7 +189,7 @@ def run_blogger_collection(
         notes_result = client.get_user_notes(
             blogger.homepage_url, settings.candidate_pool_cap, blogger.external_id, should_stop=_should_stop
         )
-        all_candidates = notes_result.candidates
+        all_candidates = _dedup_candidates(notes_result.candidates)  # 列表分页/漂移会重复同一 external_id,先去重
         record_task_event(
             db, tenant_id, task_id, "样本采集", "running",
             f"已获取笔记候选 {len(all_candidates)} 条" + ("（已翻到列表底部）" if notes_result.reached_end else ""),
