@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { bloggerRuns, SUBTYPE_LABELS } from '../../composables/useWorkspaceStore'
 
-const props = defineProps<{ runId: number }>()
+const props = defineProps<{ runId: number; compact?: boolean }>()
 
 type Dist = Record<string, unknown>
 const distillation = computed<Dist | null>(() => {
@@ -70,13 +70,46 @@ const currentLane = computed(() => lanes.value.find((l) => l.lane === activeLane
 
 const hasTopic = computed(() => angle.value && (list(angle.value, 'topic_method').length || list(angle.value, 'topic_angles').length || list(angle.value, 'trend_hijacking').length))
 const hasMethod = computed(() => hasTopic.value || lanes.value.length || strategy.value)
+
+// 精简态看点:各抽 1 条最有代表性的(核心信念 / 选题方法 / 招牌写法)。
+const highlights = computed(() => {
+  const out: { label: string; text: string }[] = []
+  const belief = list(cognitive.value, 'core_beliefs')[0]
+  if (belief) out.push({ label: '核心信念', text: belief })
+  const method = list(angle.value, 'topic_method')[0] || list(angle.value, 'topic_angles').slice(0, 3).join(' · ')
+  if (method) out.push({ label: '选题方法', text: method })
+  const firstLane = lanes.value[0]
+  const sig = firstLane ? (firstLane.groups.find((g) => g.label === '标题公式')?.items[0] || firstLane.groups[0]?.items[0] || '') : ''
+  if (sig) out.push({ label: '招牌写法', text: sig })
+  return out.slice(0, 3)
+})
+// 完整创作方法的条目总数(给精简态的「见详情」提示用)。
+const totalMethods = computed(() => {
+  let n = cognitiveCards.value.reduce((s, c) => s + c.items.length, 0)
+  if (angle.value) n += list(angle.value, 'topic_method').length + list(angle.value, 'topic_angles').length + list(angle.value, 'trend_hijacking').length
+  for (const l of lanes.value) for (const g of l.groups) n += g.items.length
+  return n
+})
 </script>
 
 <template>
-  <div v-if="distillation" class="pc">
+  <div v-if="distillation" class="pc" :class="{ 'pc--compact': compact }">
     <blockquote v-if="text(distillation, 'one_glance')" class="pc-glance">{{ text(distillation, 'one_glance') }}</blockquote>
     <p v-if="voiceLine" class="pc-voice"><strong>人设声音</strong>{{ voiceLine }}</p>
 
+    <!-- 精简态:看点 + 见详情提示 -->
+    <template v-if="compact">
+      <div v-if="highlights.length" class="pc-hl">
+        <div v-for="h in highlights" :key="h.label" class="pc-hl-row">
+          <span class="pc-hl-tag">{{ h.label }}</span>
+          <span class="pc-hl-text">{{ h.text }}</span>
+        </div>
+      </div>
+      <p v-if="totalMethods" class="pc-more">完整创作方法(标题公式 / 开头模板 / 封面 / 图内编排 / 语言 DNA 等,共 {{ totalMethods }} 条)见「查看详情」。</p>
+    </template>
+
+    <!-- 完整态:认知 + 方法 -->
+    <template v-if="!compact">
     <!-- 认知 · 她怎么想 -->
     <div v-if="cognitiveCards.length" class="pc-group">
       <p class="pc-group__h">认知 · 她怎么想</p>
@@ -133,6 +166,7 @@ const hasMethod = computed(() => hasTopic.value || lanes.value.length || strateg
         </div>
       </template>
     </div>
+    </template>
   </div>
   <p v-else class="pc-missing">该画像的蒸馏详情不可用（记录可能已清理），可重新蒸馏生成。</p>
 </template>
@@ -151,6 +185,14 @@ const hasMethod = computed(() => hasTopic.value || lanes.value.length || strateg
 }
 .pc-voice { margin: 0; font-size: 12.5px; color: var(--color-ink-2); }
 .pc-voice strong { color: var(--color-ink); margin-right: 8px; font-size: 12px; }
+
+/* 精简态:看点 + 提示 */
+.pc--compact { gap: 12px; }
+.pc-hl { display: flex; flex-direction: column; gap: 7px; }
+.pc-hl-row { display: flex; gap: 8px; align-items: baseline; }
+.pc-hl-tag { flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: var(--color-accent-soft); color: var(--color-accent-ink); }
+.pc-hl-text { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.6; }
+.pc-more { margin: 0; font-size: 11.5px; color: var(--color-ink-3); }
 
 .pc-group { display: flex; flex-direction: column; gap: 8px; }
 .pc-group__h { margin: 0; font-size: 12px; font-weight: 650; color: var(--color-accent-ink); }

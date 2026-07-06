@@ -27,6 +27,9 @@ function openFullReport(portrait: DossierPortrait) {
   selectedBloggerRunId.value = portrait.run_id
   setCurrentSocialTab('distill')
 }
+
+// 「查看详情」弹窗:展开完整创作方法(认知/方法/分车道),避免卡片内堆太密。
+const detailPortrait = ref<DossierPortrait | null>(null)
 </script>
 
 <template>
@@ -46,11 +49,28 @@ function openFullReport(portrait: DossierPortrait) {
       </button>
 
       <div v-if="expanded.has(p.skill_id)" class="cp__body">
-        <DossierPortraitContent :run-id="p.run_id" />
+        <DossierPortraitContent :run-id="p.run_id" compact />
         <div class="cp__actions">
-          <button type="button" class="cp__btn cp__btn--accent" @click="openFullReport(p)">查看完整报告 →</button>
+          <button type="button" class="cp__btn cp__btn--accent" @click="detailPortrait = p">查看详情</button>
           <button type="button" class="cp__btn" :disabled="busy" title="用现有笔记重新蒸馏(便宜)" @click="$emit('redistill')">更新画像</button>
           <button type="button" class="cp__btn" :disabled="busy" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)" @click="$emit('rebuild')">彻底重建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创作画像详情弹窗:完整创作方法 -->
+    <div v-if="detailPortrait" class="cp-modal" @click.self="detailPortrait = null">
+      <div class="cp-modal__card">
+        <div class="cp-modal__head">
+          <strong>{{ detailPortrait.snapshot_name || detailPortrait.name }} · 创作画像</strong>
+          <button type="button" class="cp-modal__close" aria-label="关闭" @click="detailPortrait = null">✕</button>
+        </div>
+        <div class="cp-modal__body">
+          <DossierPortraitContent :run-id="detailPortrait.run_id" />
+        </div>
+        <div class="cp-modal__foot">
+          <button type="button" class="cp__btn" @click="openFullReport(detailPortrait)">查看完整报告 →</button>
+          <button type="button" class="cp__btn cp__btn--accent" @click="detailPortrait = null">关闭</button>
         </div>
       </div>
     </div>
@@ -102,4 +122,13 @@ function openFullReport(portrait: DossierPortrait) {
 .cp__btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .cp__btn--accent { border: 0; background: var(--color-accent); color: #fff; font-weight: 620; }
 .cp__btn--accent:hover { background: var(--color-accent-press); }
-</style>
+
+/* —— 详情弹窗 —— */
+.cp-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(20, 24, 28, 0.4); }
+.cp-modal__card { width: min(640px, 96vw); max-height: 88vh; display: flex; flex-direction: column; background: var(--color-surface); border-radius: 16px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25); }
+.cp-modal__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--color-paper-3); }
+.cp-modal__head strong { font-size: 15px; font-weight: 650; }
+.cp-modal__close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-size: 13px; cursor: pointer; }
+.cp-modal__close:hover { background: var(--color-rule-strong); }
+.cp-modal__body { padding: 4px 18px 8px; overflow-y: auto; }
+.cp-modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-paper-3); }</style>
