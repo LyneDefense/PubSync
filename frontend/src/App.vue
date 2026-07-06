@@ -115,7 +115,7 @@ const SOCIAL_NAV: NavConfig = {
       title: '对标蒸馏',
       icon: 'funnel',
       items: [
-        { tab: 'find', label: '找对标博主', icon: 'search' },
+        { tab: 'find', label: '查找博主', icon: 'search' },
         { tab: 'dossier', label: '博主档案', icon: 'user', badge: '新' },
         { tab: 'analysis', label: '对标分析', icon: 'target' },
         { tab: 'collect', label: '数据采集', icon: 'download' },

@@ -66,7 +66,7 @@ function adopt(r: BloggerSearchResult) {
 <template>
   <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="find-benchmark">
     <header class="fb-head">
-      <h1>找对标博主</h1>
+      <h1>查找博主</h1>
       <p>知道名字或关键词直接搜,「采用」即加入{{ currentSocialPlatformName }}对标库;再去「对标分析」诊断它值不值得学。</p>
     </header>
 
