@@ -11,7 +11,6 @@ defineEmits<{ (e: 'run-audience'): void }>()
   <section class="da">
     <div class="da__head">
       <h3>受众需求 · 读者最常问</h3>
-      <span class="da__hint">从读者评论归纳 · 选题的直接输入</span>
     </div>
 
     <template v-if="audience">

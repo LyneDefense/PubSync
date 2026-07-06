@@ -66,7 +66,7 @@ const modality = computed(() => {
 <template>
   <section class="ds">
     <div class="ds__head">
-      <h3>数据面板</h3>
+      <h3>账号数据</h3>
       <span class="ds__head-sub">表现如何</span>
       <span class="ds__head-note">池更新后自动重算</span>
     </div>

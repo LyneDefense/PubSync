@@ -65,7 +65,6 @@ function onDelete() {
 <template>
   <section v-if="visible" class="dossier-view">
     <div class="dossier-view__header">
-      <h1>博主画像</h1>
       <DossierBloggerPicker v-if="benchmarkAccounts.length" :accounts="benchmarkAccounts" :selected-id="selectedBloggerId" @select="selectBlogger" />
     </div>
 
@@ -106,24 +105,12 @@ function onDelete() {
           可升级详情并自动蒸馏。
         </div>
 
-        <!-- 产线带 A · 账号事实 -->
-        <div class="dossier-band">
-          <span class="dossier-band__badge dossier-band__badge--fact">事</span>
-          <h2>账号事实</h2>
-          <span class="dossier-band__rule"></span>
-        </div>
         <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
         <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
         <DossierAudience :audience="dossier.audience" :audience-running="audienceRunning" :busy="busy" @run-audience="handleRunAudience" />
         <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
         <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
 
-        <!-- 产线带 B · 创作画像 · 笔记池 -->
-        <div class="dossier-band">
-          <span class="dossier-band__badge dossier-band__badge--create">创</span>
-          <h2>创作画像 · 笔记池</h2>
-          <span class="dossier-band__rule"></span>
-        </div>
         <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="handleRedistill" @rebuild="rebuild" />
         <DossierNotePool />
 
@@ -140,30 +127,13 @@ function onDelete() {
 .dossier-view__header {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
-.dossier-view__header h1 { margin: 0; font-size: 21px; font-weight: 680; letter-spacing: -0.01em; }
 .dossier-view__hint { font-size: 13px; color: var(--color-ink-3); }
 .dossier-view__content { display: flex; flex-direction: column; gap: 14px; }
-
-.dossier-band { display: flex; align-items: center; gap: 11px; margin-top: 6px; }
-.dossier-band h2 { margin: 0; font-size: 14.5px; font-weight: 680; letter-spacing: 0.01em; }
-.dossier-band__badge {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 700;
-  flex: 0 0 auto;
-}
-.dossier-band__badge--fact { background: #eef2f5; color: #44607a; }
-.dossier-band__badge--create { background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.dossier-band__rule { flex: 1; height: 1px; background: var(--color-rule); }
 
 .dossier-view__two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 

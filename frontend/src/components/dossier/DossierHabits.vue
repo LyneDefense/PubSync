@@ -92,7 +92,6 @@ const tiles = computed(() => {
   <section v-if="tiles.length || time" class="hb">
     <div class="hb__head">
       <h3>运营习惯</h3>
-      <span class="hb__hint">行为事实 · 全量 {{ habits.coverage?.pool ?? 0 }} 篇(需正文的项按详情级 {{ habits.coverage?.detail ?? 0 }} 篇)</span>
     </div>
 
     <!-- 发布时段:招牌块 -->

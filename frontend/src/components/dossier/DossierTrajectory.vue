@@ -123,7 +123,7 @@ const chartB = computed(() => {
     </div>
 
     <!-- 图A：互动基线走势 -->
-    <div class="dt__sub">图A · 互动基线走势<span>(对数刻度 · 阴影为 P25–P75 典型区间)</span></div>
+    <div class="dt__sub">图A · 互动基线走势<span>(对数刻度 · 阴影为 P25–P75 典型区间)</span><span class="dt__info" tabindex="0" role="img" aria-label="P25–P75 是什么" title="P25–P75 = 第 25 到第 75 百分位。把这段时间的笔记按赞数从低到高排,中间那 50% 落在的赞数区间就是 P25–P75。它避开偶发爆款和个别冷门,代表这个账号「正常水平」的波动范围;区间越窄=发挥越稳。">i</span></div>
     <template v-if="chartA">
       <svg :viewBox="`0 0 ${W} ${H}`" class="dt__chart" role="img" aria-label="互动基线随发布时间的走势与典型区间">
         <line v-for="(y, i) in [0.25, 0.5, 0.75]" :key="`g${i}`" x1="0" :y1="PAD_T + y * (BOTTOM - PAD_T)" :x2="W" :y2="PAD_T + y * (BOTTOM - PAD_T)" stroke="var(--color-paper-3)" stroke-width="1" />
@@ -181,6 +181,12 @@ const chartB = computed(() => {
 .dt__sub { font-size: 12.5px; font-weight: 600; color: var(--color-ink-2); margin: 4px 0 2px; }
 .dt__sub--gap { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--color-rule); }
 .dt__sub span { font-weight: 400; color: var(--color-ink-3); font-size: 11.5px; margin-left: 6px; }
+.dt__info {
+  display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 5px;
+  border-radius: 50%; border: 1px solid var(--color-ink-3); color: var(--color-ink-3);
+  font-size: 9.5px; font-weight: 700; font-style: normal; line-height: 1; cursor: help; vertical-align: middle;
+}
+.dt__info:hover, .dt__info:focus-visible { border-color: var(--color-accent); color: var(--color-accent); outline: none; }
 
 .dt__chart { width: 100%; height: auto; overflow: visible; }
 .dt__axis-note { margin: 6px 2px 0; font-size: 11.5px; color: var(--color-ink-3); line-height: 1.5; }
