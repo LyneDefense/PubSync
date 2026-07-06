@@ -22,10 +22,6 @@ const hasProfile = computed(() => props.blogger.follower_count != null)
 const distilled = computed(() => props.dossier.portraits.length > 0)
 const stale = computed(() => props.dossier.portraits.some((p) => p.stale))
 const canDistill = computed(() => pool.value.full_count >= 8)
-const coverage = computed(() => {
-  const n = pool.value.note_total
-  return n ? Math.min(100, Math.round((pool.value.total / n) * 100)) : null
-})
 const locked = computed(() => props.busy) // busy 已含「构建中」→ 一次一操作
 
 function fmt(n: number): string {
@@ -68,8 +64,8 @@ function fmt(n: number): string {
         <div class="ck__main">
           <span class="ck__label">笔记池</span>
           <span class="ck__status">
-            {{ hasPool ? `已入池 ${pool.total}${pool.note_total ? ` / ${pool.note_total}` : ''}` : '空' }}
-            <em v-if="coverage != null" class="ck__muted">{{ coverage }}%</em>
+            {{ hasPool ? `已入池 ${pool.total} 篇` : '空' }}
+            <em v-if="hasPool && pool.note_total" class="ck__muted">平台现有 {{ pool.note_total }}</em>
             <em v-if="hasPool && !pool.reached_end" class="ck__warn">未到底</em>
           </span>
         </div>
