@@ -118,7 +118,6 @@ const SOCIAL_NAV: NavConfig = {
         { tab: 'find', label: '查找博主', icon: 'search' },
         { tab: 'dossier', label: '博主档案', icon: 'user', badge: '新' },
         { tab: 'analysis', label: '对标分析', icon: 'target' },
-        { tab: 'collect', label: '数据采集', icon: 'download' },
         { tab: 'distill', label: '提炼 Skill', icon: 'funnel' }
       ]
     },

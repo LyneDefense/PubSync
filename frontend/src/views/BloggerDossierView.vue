@@ -2,7 +2,7 @@
 // 博主画像(档案主页):右上角下拉选择器切博主,内容全宽分两条产线带 ——
 // 账号事实(身份卡 / 数据面板 / 成长趋势 / 运营习惯 + 合规)与 创作画像 · 笔记池。
 // 设计见 UI-Refactor/design_handoff_dossier_redesign;旧 /assets 路由按别名落到本页。
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import DossierAudience from '../components/dossier/DossierAudience.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
@@ -31,11 +31,12 @@ import {
 import {
   benchmarkAccounts,
   currentSocialTab,
-  goCollectForBlogger,
   handleDeleteBlogger,
   handleRefreshBlogger,
   handleToggleBloggerFavorite,
   isSocialPlatform,
+  myAccountsOnPlatform,
+  openCreateMyAccountModal,
   openEditBloggerModal,
   pendingAction,
   selectBlogger,
@@ -44,10 +45,26 @@ import {
 } from '../composables/useWorkspaceStore'
 
 // 旧「博主资产」tab 并入本页:assets 作为别名仍然渲染这里,老链接/收藏不失效。
-const visible = computed(() => isSocialPlatform.value && ['dossier', 'assets'].includes(currentSocialTab.value))
+const visible = computed(() => isSocialPlatform.value && ['dossier', 'assets', 'my-accounts'].includes(currentSocialTab.value))
 const busy = computed(() => dossierBusy())
 const hasPool = computed(() => (dossier.value?.pool.total || 0) > 0)
 const built = computed(() => (dossier.value?.portraits.length || 0) > 0)
+
+// mine(我的账号)/ benchmark(对标博主)同一套档案组件,只按 account_type 换账号列表。
+const mode = computed<'mine' | 'benchmark'>(() => (currentSocialTab.value === 'my-accounts' ? 'mine' : 'benchmark'))
+const accounts = computed(() => (mode.value === 'mine' ? myAccountsOnPlatform.value : benchmarkAccounts.value))
+
+// 选中态始终对齐当前 tab 的账号类型(两类共用 selectedBloggerId):失效则自动选第一个。
+watch(
+  [currentSocialTab, accounts],
+  () => {
+    if (!visible.value) return
+    if (!selectedBloggerId.value || !accounts.value.some((a) => a.id === selectedBloggerId.value)) {
+      selectedBloggerId.value = accounts.value[0]?.id ?? null
+    }
+  },
+  { immediate: true }
+)
 
 // 彻底重建 = 重跑一键建档(重拉全部笔记 + 重升详情 + 重蒸)。信息确认告知耗时,不劝退。
 async function rebuild() {
@@ -81,11 +98,15 @@ function onUpgradeUrls(urls: string[]) {
 <template>
   <section v-if="visible" class="dossier-view">
     <div class="dossier-view__header">
-      <DossierBloggerPicker v-if="benchmarkAccounts.length" :accounts="benchmarkAccounts" :selected-id="selectedBloggerId" @select="selectBlogger" />
+      <DossierBloggerPicker v-if="accounts.length" :accounts="accounts" :selected-id="selectedBloggerId" @select="selectBlogger" />
+      <button v-if="mode === 'mine'" type="button" class="dossier-view__add" @click="openCreateMyAccountModal">+ 添加我的账号</button>
     </div>
 
-    <p v-if="!benchmarkAccounts.length" class="dossier-view__hint">还没有对标博主，先去「找对标博主」添加。</p>
-    <p v-else-if="!selectedBlogger" class="dossier-view__hint">从右上角选择器选择一个博主查看画像。</p>
+    <p v-if="!accounts.length" class="dossier-view__hint">
+      <template v-if="mode === 'mine'">还没有我的账号，点右上角「+ 添加我的账号」。</template>
+      <template v-else>还没有对标博主，先去「查找博主」添加。</template>
+    </p>
+    <p v-else-if="!selectedBlogger" class="dossier-view__hint">从上方选择器选择一个账号查看档案。</p>
 
     <div v-else class="dossier-view__content">
       <DossierIdentityCard
@@ -96,7 +117,7 @@ function onUpgradeUrls(urls: string[]) {
         :building="dossier?.building?.message || null"
         @toggle-favorite="handleToggleBloggerFavorite(selectedBlogger)"
         @refresh="refreshProfile"
-        @collect="goCollectForBlogger(selectedBlogger.id)"
+        @collect="showUpgrade = true"
         @edit="openEditBloggerModal(selectedBlogger)"
         @delete="onDelete"
       />
@@ -153,6 +174,11 @@ function onUpgradeUrls(urls: string[]) {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
+.dossier-view__add {
+  height: 34px; padding: 0 14px; border: 1px solid var(--color-field-border); border-radius: 9px;
+  background: var(--color-surface); color: var(--color-ink-2); font-size: 13px; cursor: pointer;
+}
+.dossier-view__add:hover { border-color: var(--color-accent); color: var(--color-accent-ink); }
 .dossier-view__hint { font-size: 13px; color: var(--color-ink-3); }
 .dossier-view__content { display: flex; flex-direction: column; gap: 14px; }
 

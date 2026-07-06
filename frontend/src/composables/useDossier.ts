@@ -43,7 +43,7 @@ export async function loadDossier() {
 
 // 进入画像页(assets 为并入前的别名) / 切换博主时自动加载:档案聚合 + 笔记池/快照/蒸馏记录(store)。
 watch([selectedBloggerId, currentSocialTab], ([id, tab]) => {
-  if (!id || !['dossier', 'assets'].includes(tab as string)) return
+  if (!id || !['dossier', 'assets', 'my-accounts'].includes(tab as string)) return
   void loadDossier()
   void refreshSelectedBlogger()
 })
