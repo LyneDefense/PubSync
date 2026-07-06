@@ -88,6 +88,40 @@ const showSample = computed(
       </div>
     </section>
 
+    <!-- 我 vs TA 差距(对标 + 绑了我的账号才有) -->
+    <section v-if="report.gap" class="zone">
+      <div class="zone-head"><h3>我 vs TA 差距</h3><span>{{ report.gap.mine_name }} × {{ report.gap.ta_name }}</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div
+          v-for="(f, i) in report.gap.facts"
+          :key="i"
+          style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:12.5px"
+        >
+          <b style="flex:0 0 92px;color:var(--color-ink-2)">{{ f.aspect }}</b>
+          <span style="color:var(--color-ink-3)">我 {{ f.me }} · TA {{ f.ta }}</span>
+          <span style="color:var(--color-accent-ink)">{{ f.gap }}</span>
+        </div>
+      </div>
+      <template v-if="report.gap.playbook">
+        <p style="margin:11px 0 6px;font-size:12.5px;font-weight:600;color:var(--color-ink)">
+          打法差距:{{ report.gap.playbook.summary }}
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div
+            v-for="(it, i) in report.gap.playbook.items"
+            :key="i"
+            style="border:1px solid var(--color-rule);border-radius:9px;padding:8px 11px"
+          >
+            <div style="font-size:12px;font-weight:650;color:var(--color-accent-ink);margin-bottom:3px">{{ it.aspect }}</div>
+            <p style="margin:1px 0;font-size:12.5px;color:var(--color-ink-2)"><b>TA</b> {{ it.ta }}</p>
+            <p style="margin:1px 0;font-size:12.5px;color:var(--color-ink-2)"><b>我</b> {{ it.me }}</p>
+            <p style="margin:2px 0 0;font-size:12.5px;color:var(--color-ink)">→ {{ it.gap }}</p>
+          </div>
+        </div>
+      </template>
+      <p v-else-if="report.gap.note" style="margin:8px 0 0;font-size:12px;color:var(--color-ink-3)">{{ report.gap.note }}</p>
+    </section>
+
     <!-- 目标契合(诊断自己 + 填了目标才有) -->
     <section v-if="report.goal_fit" class="zone">
       <div class="zone-head">

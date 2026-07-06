@@ -890,6 +890,13 @@ export interface AppraisalReport {
   relevant_count?: number
   low_relevance?: boolean
   notes_relevance?: { title: string; relevant: boolean; reason: string }[]
+  gap?: {
+    mine_name: string
+    ta_name: string
+    facts: { aspect: string; me: string; ta: string; gap: string }[]
+    playbook: { items: { aspect: string; ta: string; me: string; gap: string }[]; summary: string } | null
+    note: string | null
+  } | null
 }
 
 // 对标分析·意图引导:选博主后,系统看 TA 在做什么 → 给几道多选题帮用户明确「想学什么」。

@@ -13,6 +13,7 @@ import {
   appraisalRun,
   benchmarkAccounts,
   bloggers,
+  myAccountsOnPlatform,
   currentSocialPlatformName,
   currentSocialTab,
   fetchIntentContext,
@@ -317,7 +318,21 @@ onUnmounted(() => {
           <span class="radio" :class="{ on: appraiseForm.blogger_id === b.id }">✓</span>
         </button>
       </div>
-      <p v-else class="empty-region pad">对标库还没有博主,先去「找对标博主」加一个。</p>
+      <p v-else class="empty-region pad">对标库还没有博主,先去「查找博主」加一个。</p>
+      <div
+        v-if="myAccountsOnPlatform.length"
+        style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--color-ink-2)"
+      >
+        <label>结合我的账号(可选)</label>
+        <select
+          v-model.number="appraiseForm.my_blogger_id"
+          style="height:32px;padding:0 10px;border:1px solid var(--color-field-border);border-radius:8px;background:var(--color-field);font-size:13px"
+        >
+          <option :value="0">不结合</option>
+          <option v-for="a in myAccountsOnPlatform" :key="a.id" :value="a.id">{{ a.display_name }}</option>
+        </select>
+        <span style="font-size:12px;color:var(--color-ink-3)">绑定后报告会多出「我 vs TA 差距」</span>
+      </div>
       <div class="card-foot">
         <button type="button" class="btn-primary" :disabled="!appraiseForm.blogger_id" @click="step = 2">下一步 →</button>
       </div>

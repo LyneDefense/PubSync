@@ -161,11 +161,12 @@ export const bloggerSnapshots = ref<BloggerSnapshot[]>([])
 export const selectedPostIds = ref<number[]>([])
 export const activeNotePostId = ref<number | null>(null)
 // 对标分析(诊断别人):诊断一个对标库博主 → 硬/软/合规 三区报告。kind 固定 benchmark。
-export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark'; intent: string; industry: string }>({
+export const appraiseForm = reactive<{ blogger_id: number; kind: 'benchmark'; intent: string; industry: string; my_blogger_id: number }>({
   blogger_id: 0,
   kind: 'benchmark',
   intent: '',
-  industry: ''
+  industry: '',
+  my_blogger_id: 0
 })
 export const appraisalRun = ref<AccountAuditRun | null>(null)
 // 历史诊断:已成功且可解析的 benchmark 报告,供「历史诊断」列表查看。
@@ -2462,7 +2463,8 @@ export async function handleRunAppraisal() {
         blogger_id: appraiseForm.blogger_id,
         kind: 'benchmark',
         intent,
-        industry: appraiseForm.industry || null
+        industry: appraiseForm.industry || null,
+        my_blogger_id: appraiseForm.my_blogger_id || null
       }),
     async () => {
       const runs = await listAccountAuditRuns(currentSocialPlatform.value, 'benchmark')

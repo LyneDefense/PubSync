@@ -567,6 +567,7 @@ export function appraiseBlogger(payload: {
   kind: 'benchmark' | 'self'
   intent?: string
   industry?: string | null
+  my_blogger_id?: number | null
 }) {
   return request<OperationTask>('/account-audit/appraise', {
     method: 'POST',
