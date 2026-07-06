@@ -100,6 +100,9 @@ const totalMethods = computed(() => {
   for (const l of lanes.value) for (const g of l.groups) n += g.items.length
   return n
 })
+
+// 合规红线(蒸馏 grounding 产出;老 skill 重蒸后才有,空则不显示)。
+const watchouts = computed(() => list(distillation.value, 'compliance_watchouts'))
 </script>
 
 <template>
@@ -116,6 +119,7 @@ const totalMethods = computed(() => {
         </div>
       </div>
       <p v-if="totalMethods" class="pc-more">完整创作方法(标题公式 / 开头模板 / 封面 / 图内编排 / 语言 DNA 等,共 {{ totalMethods }} 条)见「查看详情」。</p>
+      <p v-if="watchouts.length" class="pc-redline-hint">⚠ 合规红线 {{ watchouts.length }} 条(会限流,学思路别抄词)—— 详情看全部</p>
     </template>
 
     <!-- 完整态:认知 + 方法 -->
@@ -174,6 +178,12 @@ const totalMethods = computed(() => {
         </div>
       </template>
     </div>
+
+    <!-- 合规红线(护栏):该博主高频但会限流的写法 -->
+    <div v-if="watchouts.length" class="pc-redline">
+      <p class="pc-redline__h">⚠ 合规红线（该博主高频、但会限流/违规的写法——学思路，别抄词）</p>
+      <ul><li v-for="(w, i) in watchouts" :key="i">{{ w }}</li></ul>
+    </div>
     </template>
   </div>
   <p v-else class="pc-missing">该画像的蒸馏详情不可用（记录可能已清理），可重新蒸馏生成。</p>
@@ -201,6 +211,13 @@ const totalMethods = computed(() => {
 .pc-hl-tag { flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: var(--color-accent-soft); color: var(--color-accent-ink); }
 .pc-hl-text { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.6; }
 .pc-more { margin: 0; font-size: 11.5px; color: var(--color-ink-3); }
+.pc-redline-hint { margin: 0; font-size: 11.5px; color: #8a5a12; }
+
+/* 合规红线护栏块 */
+.pc-redline { border: 1px solid var(--color-warn-card-bd, #f0e3d2); background: var(--color-warn-card-bg, #fdf9f1); border-radius: 10px; padding: 10px 13px; }
+.pc-redline__h { margin: 0 0 6px; font-size: 12px; font-weight: 650; color: #8a5a12; }
+.pc-redline ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.pc-redline li { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.55; }
 
 .pc-group { display: flex; flex-direction: column; gap: 8px; }
 .pc-group__h { margin: 0; font-size: 12px; font-weight: 650; color: var(--color-accent-ink); }
