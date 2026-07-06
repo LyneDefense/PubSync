@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from app.blogger_distillation.evidence import render_stats_digest
+from app.blogger_distillation.evidence import render_grounding, render_stats_digest
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
     TALKING_VIDEO,
@@ -40,7 +40,10 @@ def normalize_mode(mode: str | None) -> str:
 
 @dataclass
 class DistillContext:
-    """一次蒸馏合成的上下文。内核 lane=None(stats=全账号);车道 lane=subtype(stats=该车道)。"""
+    """一次蒸馏合成的上下文。内核 lane=None(stats=全账号);车道 lane=subtype(stats=该车道)。
+
+    grounding = 档案层全量池信号(真爆文/读者需求/合规红线),跨样本校准,内核与各车道共用。
+    """
 
     blogger: BloggerProfile
     user_info: dict[str, Any]
@@ -48,6 +51,13 @@ class DistillContext:
     mode: str
     settings: Settings
     lane: str | None = None
+    grounding: dict[str, Any] | None = None
+
+
+def _grounding_block(ctx: DistillContext) -> str:
+    """把 grounding 渲染成提示词尾段;空则返回空串。"""
+    text = render_grounding(ctx.grounding)
+    return f"\n\n档案信号（全量池·跨样本校准）：\n{text}" if text else ""
 
 
 # ============================ 内核(认知 / 策略 / 人设) ============================
@@ -77,6 +87,7 @@ def build_core_prompt(ctx: DistillContext) -> str:
 - 输出必须是合法 JSON 对象,不要 Markdown/HTML/解释/<think>。
 - 每条结论尽量贴着“下方证据”的事实与数字,不要正确的废话;空缺给空数组,不要编造。
 - 图内文字以内容性要点为准;装饰/引导字(点赞收藏关注、水印、背景杂字)不要当方法论。
+- 「档案信号」里的合规红线是该博主会被平台限流/违规的写法:只可在 do_not_do 里点一句提醒,**绝不**写进认知金句、选题方法或价值立场。
 
 博主：
 {json.dumps({"display_name": blogger.display_name, "homepage_url": blogger.homepage_url, "niche": blogger.niche, "description": blogger.description, "platform": blogger.platform}, ensure_ascii=False)}
@@ -85,7 +96,7 @@ TikHub 用户信息摘要：
 {json.dumps(ctx.user_info, ensure_ascii=False, default=str)[:2500]}
 
 证据(全账号·跨模态;已按优先级装配:账号概览/观点金句池/爆款证据块/代表样本)：
-{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="core", legacy=ctx.settings.distill_evidence_legacy)}
+{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="core", legacy=ctx.settings.distill_evidence_legacy)}{_grounding_block(ctx)}
 
 只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
 {{
@@ -148,12 +159,12 @@ def build_lane_prompt(ctx: DistillContext) -> str:
 
 车道说明:{framing}
 
-硬边界：合法 JSON;不复制原文原标题;贴“下方证据”的事实;空缺给空数组,不编造;图内文字以内容性要点为准,装饰/引导字(点赞收藏关注、水印)不当方法论。
+硬边界：合法 JSON;不复制原文原标题;贴“下方证据”的事实;空缺给空数组,不编造;图内文字以内容性要点为准,装饰/引导字(点赞收藏关注、水印)不当方法论;**「档案信号」里的合规红线绝不写进标题公式/语言DNA/封面文案/CTA**。
 
 博主：{ctx.blogger.display_name}（{ctx.blogger.platform}）｜车道：{subtype_label(lane)}
 
 该车道证据(已按优先级装配;爆款证据块用「来源:external_id」标来源)：
-{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="lane", legacy=ctx.settings.distill_evidence_legacy)}
+{render_stats_digest(ctx.stats, char_budget=ctx.settings.distill_evidence_char_budget, scope="lane", legacy=ctx.settings.distill_evidence_legacy)}{_grounding_block(ctx)}
 
 只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
 {{
@@ -261,10 +272,11 @@ def distill_core(
     stats: dict[str, Any],
     mode: str,
     on_event: Any = None,
+    grounding: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], SynthesisTrace]:
-    """内核蒸馏(认知/策略/人设),吃全账号 stats。返回 (内核结果, 轨迹)。"""
+    """内核蒸馏(认知/策略/人设),吃全账号 stats + 档案 grounding。返回 (内核结果, 轨迹)。"""
     mode = normalize_mode(mode)
-    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=stats, mode=mode, settings=settings, lane=None)
+    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=stats, mode=mode, settings=settings, lane=None, grounding=grounding)
     model = (settings.distill_text_model or "").strip() or None
     guide = TaskGuide(name="内核蒸馏", build_prompt=build_core_prompt, normalize=lambda d, c: normalize_core(d, c.mode))
     sensors = [CoreSchemaSensor(), CoreQualitySensor()]
@@ -280,9 +292,10 @@ def distill_lane(
     lane_stats: dict[str, Any],
     mode: str,
     on_event: Any = None,
+    grounding: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], SynthesisTrace]:
-    """某条模态车道的内容层蒸馏,只吃该车道 stats。返回 (内容层结果, 轨迹)。"""
-    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=lane_stats, mode=normalize_mode(mode), settings=settings, lane=lane)
+    """某条模态车道的内容层蒸馏,只吃该车道 stats + 档案 grounding(共用)。返回 (内容层结果, 轨迹)。"""
+    ctx = DistillContext(blogger=blogger, user_info=user_info, stats=lane_stats, mode=normalize_mode(mode), settings=settings, lane=lane, grounding=grounding)
     model = (settings.distill_text_model or "").strip() or None
     guide = TaskGuide(name=f"内容层·{subtype_label(lane)}", build_prompt=build_lane_prompt, normalize=lambda d, c: normalize_lane(d))
     sensors = [LaneSchemaSensor(), LaneQualitySensor()]

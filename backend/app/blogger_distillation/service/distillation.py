@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis, artifacts
+from app.blogger_distillation.evidence import compliance_watchouts
 from app.blogger_distillation.modality import ALL as SCOPE_ALL
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
@@ -37,6 +38,7 @@ from app.blogger_distillation.service.events import (
     record_task_event,
 )
 from app.blogger_distillation.tikhub_client import TikHubUsage
+from app.blogger_dossier import audience, compliance, trajectory
 from app.config import Settings
 from app.models import (
     BloggerDistillationRun,
@@ -53,6 +55,39 @@ logger = logging.getLogger(__name__)
 class DistillationResult:
     run: BloggerDistillationRun
     skill: BloggerSkill
+
+
+def _gather_grounding(db: Session, tenant_id: int, blogger: BloggerProfile) -> dict[str, Any]:
+    """全量在架池信号(跨样本校准):合规红线 + 读者需求 + 全量真爆文/起号点。失败不阻断蒸馏。"""
+    try:
+        full = list(
+            db.scalars(
+                select(BloggerPost).where(
+                    BloggerPost.tenant_id == tenant_id,
+                    BloggerPost.blogger_id == blogger.id,
+                    BloggerPost.status == "active",
+                )
+            )
+        )
+        if not full:
+            return {}
+        tags = [t.get("name") for t in (blogger.tags or []) if isinstance(t, dict) and t.get("name")]
+        comp = compliance.scan_pool(blogger.platform, blogger.niche or "", tags, full)
+        demand = [c["text"] for c in audience._reader_comments(full)[:15]]
+        traj = trajectory.build_trajectory(full)
+        breakout_ids = {
+            (u.get("trigger") or {}).get("post_id")
+            for u in (traj.get("level_ups") or [])
+            if isinstance(u.get("trigger"), dict)
+        }
+        hot_titles = [
+            {"title": b.get("title"), "like": b.get("like"), "date": b.get("date"), "breakout": b.get("post_id") in breakout_ids}
+            for b in (traj.get("bursts") or [])[:8]
+        ]
+        return {"compliance": comp, "reader_demand": demand, "hot_titles": hot_titles, "pool_size": len(full)}
+    except Exception:  # noqa: BLE001 - grounding 是增强项;拿不到就退化为原来的样本级蒸馏
+        logger.warning("蒸馏 grounding 采集失败,退化为样本级蒸馏", exc_info=True)
+        return {}
 
 
 def run_blogger_distillation(
@@ -109,6 +144,13 @@ def run_blogger_distillation(
         record_task_event(db, tenant_id, task_id, "蒸馏选材", "succeeded", f"{source_label}:{len(posts)} 篇笔记")
         stats = analysis.analyze_posts(posts)  # 内核 stats(全账号,跨模态)
         user_info: dict[str, Any] = {"homepage_url": blogger.homepage_url, "nickname": blogger.display_name}
+        # 档案层全量池信号(真爆文/读者需求/合规红线),跨样本校准蒸馏;拿不到则退化为样本级。
+        grounding = _gather_grounding(db, tenant_id, blogger)
+        if grounding:
+            record_task_event(
+                db, tenant_id, task_id, "档案信号", "succeeded",
+                f"接入全量池信号：{grounding.get('pool_size', 0)} 篇(真爆文/读者需求/合规红线),校准本次蒸馏",
+            )
 
         def on_distill_event(kind: str, event: dict[str, Any]) -> None:
             triple = humanize_event(kind, event, subject="博主方法论", gerund="提炼")
@@ -120,7 +162,7 @@ def run_blogger_distillation(
         # 1) 内核蒸馏(认知/策略/人设,吃全部笔记含 unknown)。
         record_task_event(db, tenant_id, task_id, "内核蒸馏", "running", "提炼这个人的认知层、策略层与人设(跨模态)")
         ensure_distillation_not_cancelled(db, tenant_id, task_id)
-        core, core_trace = distill_core(settings, blogger, user_info, stats, mode, on_event=on_distill_event)
+        core, core_trace = distill_core(settings, blogger, user_info, stats, mode, on_event=on_distill_event, grounding=grounding)
         core_quality = evaluate_core_quality(core, stats, mode)
 
         # 2) 内容层按 content_subtype 分车道蒸馏;样本不足的车道诚实跳过。
@@ -142,7 +184,7 @@ def run_blogger_distillation(
             ensure_distillation_not_cancelled(db, tenant_id, task_id)
             lane_stats = analysis.analyze_posts(lps)
             record_task_event(db, tenant_id, task_id, "内容层", "running", f"蒸馏{subtype_label(lane)}写法({len(lps)}篇)")
-            content, lane_trace = distill_lane(settings, blogger, user_info, lane, lane_stats, mode, on_event=on_distill_event)
+            content, lane_trace = distill_lane(settings, blogger, user_info, lane, lane_stats, mode, on_event=on_distill_event, grounding=grounding)
             content["sample_count"] = len(lps)
             content_lanes[lane] = content
             lane_quality[lane] = evaluate_lane_quality(content, lane_stats, lane)
@@ -151,7 +193,7 @@ def run_blogger_distillation(
         # 兜底:一条车道都不够(小号)→ 对全部笔记走一次内容层,标「综合」,不让内容层空着。
         if not content_lanes:
             dominant = max(lane_posts, key=lambda k: len(lane_posts[k])) if any(lane_posts.values()) else IMAGE_TEXT
-            content, lane_trace = distill_lane(settings, blogger, user_info, dominant, stats, mode, on_event=on_distill_event)
+            content, lane_trace = distill_lane(settings, blogger, user_info, dominant, stats, mode, on_event=on_distill_event, grounding=grounding)
             content["sample_count"] = len(posts)
             content["mixed"] = True
             content_lanes[dominant] = content
@@ -165,6 +207,8 @@ def run_blogger_distillation(
             VISUAL_VIDEO: len(lane_posts[VISUAL_VIDEO]), "unknown": unknown_count, "skipped": skipped,
         }
         distillation = {**core, "content_lanes": content_lanes, "lane_coverage": lane_coverage}
+        # 合规红线(确定性,来自全量池扫描):让「学思路别抄词」落到 skill 与创作套件。
+        distillation["compliance_watchouts"] = compliance_watchouts(grounding.get("compliance"))
         lane_scores = [q["score"] for q in lane_quality.values()]
         combined = round((core_quality["score"] + sum(lane_scores)) / (1 + len(lane_scores))) if lane_scores else core_quality["score"]
         all_issues = list(core_quality.get("issues", []))

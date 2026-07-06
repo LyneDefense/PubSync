@@ -272,7 +272,7 @@ def generate_package_content(
 
     返回 (生成稿, 合成轨迹, 对标对比, 质量评分, 合规结果)。
     """
-    benchmark_stats = _load_benchmark_stats(db, skill)
+    benchmark_stats, distillation = _load_report(db, skill)
     ctx = CreationContext(
         blogger=blogger,
         skill=skill,
@@ -280,6 +280,7 @@ def generate_package_content(
         platform=blogger.platform,
         content_type=payload.content_type,
         benchmark_stats=benchmark_stats,
+        distillation=distillation,
         extra_block_words=_load_extra_block_words(db),
         compliance_enabled=settings.creation_compliance_enabled,
     )
@@ -327,17 +328,20 @@ def _load_extra_block_words(db: Session) -> list[str]:
     return [str(w).strip() for w in words if isinstance(words, list) and str(w).strip()]
 
 
-def _load_benchmark_stats(db: Session, skill: BloggerSkill) -> dict[str, Any]:
-    """从该 Skill 对应蒸馏 run 的 report_json 里取回对标博主的统计画像(供对标对比用)。"""
+def _load_report(db: Session, skill: BloggerSkill) -> tuple[dict[str, Any], dict[str, Any]]:
+    """从该 Skill 对应蒸馏 run 的 report_json 取 (统计画像 stats, 结构化蒸馏 distillation)。缺则各空。"""
     run = db.get(BloggerDistillationRun, skill.run_id)
     if not run or not run.report_json:
-        return {}
+        return {}, {}
     try:
         report = json.loads(run.report_json)
     except (json.JSONDecodeError, TypeError):
-        return {}
-    stats = report.get("stats") if isinstance(report, dict) else None
-    return stats if isinstance(stats, dict) else {}
+        return {}, {}
+    if not isinstance(report, dict):
+        return {}, {}
+    stats = report.get("stats") if isinstance(report.get("stats"), dict) else {}
+    distillation = report.get("distillation") if isinstance(report.get("distillation"), dict) else {}
+    return stats, distillation
 
 
 def normalize_topic_idea(item: dict[str, Any]) -> dict[str, Any]:

@@ -6,6 +6,7 @@ from typing import Any
 from app.compliance import detect_verticals, prompt_guidance
 from app.xhs_creation.agent.content_types import BASE_SCHEMA, CONTENT_TYPE_SPECS
 from app.xhs_creation.agent.context import CreationContext
+from app.xhs_creation.agent.creation_kit import build_creation_kit
 from app.xhs_creation.agent.platforms import PLATFORM_SPECS
 from app.xhs_creation.normalize import normalize_image_plan, normalize_script, normalize_string_list
 
@@ -36,6 +37,11 @@ def build_creation_prompt(ctx: CreationContext) -> str:
 
     schema_lines = BASE_SCHEMA + ("," if spec.schema_fragment else "") + ("\n" + spec.schema_fragment if spec.schema_fragment else "")
 
+    # 优先用「创作套件」(按本次内容形态装配、对齐输出字段、带护栏);老 skill 无结构化蒸馏时回落整篇 skill_markdown。
+    creation_kit = build_creation_kit(ctx.distillation, ctx.content_type)
+    skill_block = creation_kit or ctx.skill.skill_markdown[:12000]
+    skill_label = "对标博主创作套件（已按本次内容形态装配,直接照用）" if creation_kit else "对标博主蒸馏方法论 Skill"
+
     creation_input = {
         "content_type": ctx.content_type,
         "content_type_label": spec.label,
@@ -64,8 +70,8 @@ def build_creation_prompt(ctx: CreationContext) -> str:
 - {spec.instruction}
 - {image_instruction}
 {_compliance_block(ctx)}
-对标博主蒸馏方法论 Skill:
-{ctx.skill.skill_markdown[:12000]}
+{skill_label}:
+{skill_block}
 
 创作输入:
 {json.dumps(creation_input, ensure_ascii=False, indent=2)}

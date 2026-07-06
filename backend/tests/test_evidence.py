@@ -1,6 +1,6 @@
 """证据装配器(evidence.render_stats_digest):预算/优先级/去冗余/分型/去噪/legacy(纯函数,无 LLM)。"""
 
-from app.blogger_distillation.evidence import render_stats_digest
+from app.blogger_distillation.evidence import compliance_watchouts, render_grounding, render_stats_digest
 
 
 def _digest(hook="", layout="", style="", images=None):
@@ -107,3 +107,31 @@ def test_small_budget_keeps_core_drops_tail():
     assert "【账号概览】" in small and "观点/金句池" in small  # 核心必进
     rep_lines = [ln for ln in small.splitlines() if ln.startswith("· 代表作品编号")]
     assert 0 < len(rep_lines) < 40  # 尾部代表样本被预算裁剪
+
+
+# ============================ 档案信号 grounding ============================
+
+def test_compliance_watchouts_from_groups():
+    comp = {
+        "violations": [{"category": "绝对化用语", "matched": ["顶级", "最强"]}],
+        "advisories": [{"category": "收益承诺", "matched": ["稳赚"]}],
+    }
+    out = compliance_watchouts(comp)
+    assert out[0] == "绝对化用语：顶级、最强" and "收益承诺：稳赚" in out
+    assert compliance_watchouts(None) == [] and compliance_watchouts({}) == []
+
+
+def test_render_grounding_three_sections():
+    g = {
+        "hot_titles": [{"title": "香港保险vs内地", "like": 12000, "date": "2024-04", "breakout": True}],
+        "reader_demand": ["多少钱啊", "适合新手吗"],
+        "compliance": {"violations": [{"category": "绝对化用语", "matched": ["顶级"]}]},
+    }
+    text = render_grounding(g)
+    assert "★香港保险vs内地" in text and "1.2w" in text  # 全量真爆文 + 起号★ + 人性化数字
+    assert "读者需求" in text and "适合新手吗" in text
+    assert "合规红线" in text and "绝对化用语：顶级" in text
+
+
+def test_render_grounding_empty():
+    assert render_grounding(None) == "" and render_grounding({}) == ""

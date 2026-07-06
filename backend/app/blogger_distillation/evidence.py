@@ -72,6 +72,52 @@ def render_stats_digest(
     return "\n\n".join(out)
 
 
+# ============================ 档案信号(全量池 grounding) ============================
+
+def compliance_watchouts(compliance: dict[str, Any] | None, limit: int = 6) -> list[str]:
+    """该博主的合规红线归一成「类别：词1、词2」若干条(违规优先)。蒸馏输出与证据块共用。"""
+    if not isinstance(compliance, dict):
+        return []
+    groups = (compliance.get("violations") or []) + (compliance.get("advisories") or [])
+    out: list[str] = []
+    for g in groups:
+        if not isinstance(g, dict):
+            continue
+        cat = str(g.get("category") or "").strip()
+        words = "、".join(str(w) for w in (g.get("matched") or [])[:4] if str(w).strip())
+        if cat and words:
+            out.append(f"{cat}：{words}")
+        if len(out) >= limit:
+            break
+    return out
+
+
+def render_grounding(grounding: dict[str, Any] | None, *, char_budget: int = 2400) -> str:
+    """档案层全量信号(跨样本校准):全量真爆文 + 读者需求 + 合规红线。附在样本证据之后。"""
+    if not grounding:
+        return ""
+    out: list[str] = []
+    hot = grounding.get("hot_titles") or []
+    if hot:
+        lines = ["【全量真爆文（跨全池、非样本；起号那条标 ★）】"]
+        for h in hot[:8]:
+            if not isinstance(h, dict):
+                continue
+            star = "★" if h.get("breakout") else ""
+            lines.append(f"· {star}{(h.get('title') or '').strip()}｜赞{_human_num(h.get('like'))}｜{h.get('date') or ''}")
+        out.append("\n".join(lines))
+    demand = [str(d).strip() for d in (grounding.get("reader_demand") or []) if str(d).strip()]
+    if demand:
+        out.append("【读者需求（全量评论高频声音，用于选题对齐）】\n" + "\n".join(f"· {d[:60]}" for d in demand[:15]))
+    watch = compliance_watchouts(grounding.get("compliance"))
+    if watch:
+        out.append(
+            "【合规红线（该博主高频但会限流/违规的写法——只学思路，绝不抄进标题公式/金句/语言DNA/正文）】\n"
+            + "\n".join(f"· {w}" for w in watch)
+        )
+    return "\n\n".join(out)[:char_budget]
+
+
 # ============================ 分段 ============================
 
 def _account_summary(stats: dict[str, Any]) -> str:
