@@ -68,6 +68,16 @@ const lanes = computed(() => {
 const activeLane = ref('')
 const currentLane = computed(() => lanes.value.find((l) => l.lane === activeLane.value) || lanes.value[0] || null)
 
+// 旧形态策略层(系列/蹭热点/运营)也做成卡片,和车道写法一致。
+const STRATEGY_KEYS: { key: string; label: string }[] = [
+  { key: 'series_planning', label: '系列 / 选题规划' },
+  { key: 'trend_hijacking', label: '蹭热点 / 借势' },
+  { key: 'ops_habits', label: '运营习惯' }
+]
+const strategyGroups = computed(() =>
+  strategy.value ? STRATEGY_KEYS.map((k) => ({ label: k.label, items: list(strategy.value, k.key).slice(0, 6) })).filter((g) => g.items.length) : []
+)
+
 const hasTopic = computed(() => angle.value && (list(angle.value, 'topic_method').length || list(angle.value, 'topic_angles').length || list(angle.value, 'trend_hijacking').length))
 const hasMethod = computed(() => hasTopic.value || lanes.value.length || strategy.value)
 
@@ -138,13 +148,11 @@ const totalMethods = computed(() => {
           <p v-if="list(angle, 'trend_hijacking').length"><em>借势</em>{{ list(angle, 'trend_hijacking').slice(0, 4).join(' · ') }}</p>
         </div>
       </div>
-      <!-- 旧形态兜底:策略层 -->
-      <div v-else-if="strategy" class="pc-cols">
-        <div v-for="k in ['series_planning', 'trend_hijacking', 'ops_habits']" :key="k" class="pc-col">
-          <template v-if="list(strategy, k).length">
-            <h5>{{ k === 'series_planning' ? '系列 / 选题规划' : k === 'trend_hijacking' ? '蹭热点 / 借势' : '运营习惯' }}</h5>
-            <ul><li v-for="(item, i) in list(strategy, k).slice(0, 3)" :key="i">{{ item }}</li></ul>
-          </template>
+      <!-- 旧形态兜底:策略层(卡片) -->
+      <div v-else-if="strategyGroups.length" class="pc-lane">
+        <div v-for="g in strategyGroups" :key="g.label" class="pc-lane-card">
+          <div class="pc-lane-card__h">{{ g.label }}</div>
+          <ul class="pc-lane-card__list"><li v-for="(item, i) in g.items" :key="i">{{ item }}</li></ul>
         </div>
       </div>
 
@@ -159,9 +167,9 @@ const totalMethods = computed(() => {
           >{{ l.label }}写法</button>
         </div>
         <div v-if="currentLane" class="pc-lane">
-          <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-group">
-            <h5>{{ group.label }}</h5>
-            <ul><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+          <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-card">
+            <div class="pc-lane-card__h">{{ group.label }}</div>
+            <ul class="pc-lane-card__list"><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
           </div>
         </div>
       </template>
@@ -203,10 +211,6 @@ const totalMethods = computed(() => {
 .pc-card__text { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.6; }
 .pc-card__sep { color: var(--color-ink-3); }
 
-.pc-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.pc-col h5, .pc-lane-group h5 { margin: 0 0 6px; font-size: 12px; color: var(--color-ink-3); font-weight: 600; }
-.pc-col ul, .pc-lane-group ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
-.pc-col li, .pc-lane-group li { font-size: 12.5px; color: var(--color-ink-2); line-height: 1.55; }
 .pc-lane-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
 .pc-lane-tabs button {
   border: 1px solid var(--color-rule);
@@ -218,7 +222,14 @@ const totalMethods = computed(() => {
   cursor: pointer;
 }
 .pc-lane-tabs button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.pc-lane { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+/* 方法卡片:每组(标题公式/开头模板/…)一张卡,条目分行、hairline 分隔,不再挤成一坨 */
+.pc-lane { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-top: 10px; }
+.pc-lane-card { background: var(--color-paper); border: 1px solid var(--color-paper-3); border-radius: 10px; overflow: hidden; }
+.pc-lane-card__h { padding: 8px 12px; font-size: 12px; font-weight: 650; color: var(--color-accent-ink); background: var(--color-accent-soft); }
+.pc-lane-card__list { margin: 0; padding: 2px 0; list-style: none; }
+.pc-lane-card__list li { padding: 8px 12px; font-size: 12.5px; color: var(--color-ink-2); line-height: 1.6; border-top: 1px solid var(--color-paper-3); }
+.pc-lane-card__list li:first-child { border-top: 0; }
 .pc-missing { margin: 8px 0 0; font-size: 12px; color: var(--color-ink-3); }
 
 /* 选题思路:强调块 */
