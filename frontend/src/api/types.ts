@@ -1010,14 +1010,18 @@ export interface DossierHabits {
   author_reply: { replied: number; with_comments: number; ratio: number | null }
 }
 
+// 档案合规 = 与诊断报告同一份 to_report_dict():violations/advisories 为归并后的组
+// (类别/严重度/命中覆盖/样例词/依据/改法),hits 为兼容用的扁平命中。
 export interface DossierCompliance {
   score: number
   grade: string
   has_ban: boolean
+  verticals?: string[]
   vertical_labels: string[]
-  violations: { word: string; field: string; rule: string; severity: string }[]
-  advisories: { word: string; field: string; rule: string; severity: string }[]
-  hits: { word: string; field: string; rule: string; severity: string }[]
+  violations: AppraisalComplianceGroup[]
+  advisories: AppraisalComplianceGroup[]
+  by_severity?: Record<string, number>
+  hits: Array<{ category?: string; severity: string; quote?: string; suggestion?: string; matched?: string }>
   coverage: { pool: number; title_level: number; full_text: number }
 }
 
