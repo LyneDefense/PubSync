@@ -1,23 +1,28 @@
 <script setup lang="ts">
-// 档案页·笔记池:分类 tab(全部 / 图文 / 口播 / 测评 / 未采详情)+ 每类独立分页(每页 5 条)。
-// 最新/最热排序;切分类或排序回到第 1 页。行点击开单篇详情弹窗(公共组件)。
+// 档案页·笔记池:两级分类 —— 一级 已采详情 / 未采详情,二级按模态细分,每类独立分页(每页 5)。
+//   已采详情(detail_level=full):二级 = 图文 / 口播视频 / 非口播视频(按 content_subtype)。
+//   未采详情(列表级):还没判模态,二级按列表自带的 content_type 分 图文 / 视频。
+// 最新/最热排序;切分类或排序回第 1 页。行点击开单篇详情弹窗(公共组件)。
 import { computed, ref, watch } from 'vue'
 import type { BloggerPost } from '../../api/types'
 import { bloggerCommentLabel } from '../../utils/format'
 import NoteDetailDrawer from '../NoteDetailDrawer.vue'
 import {
-  bloggerNoteGroups,
+  activeNotePool,
   delistedNoteCount,
   formatDate,
+  NOTE_GROUP_ORDER,
   openNote,
-  selectedBloggerId
+  selectedBloggerId,
+  subtypeLabel
 } from '../../composables/useWorkspaceStore'
 
 const PAGE_SIZE = 5
 
 type NoteSort = 'recent' | 'hot'
 const noteSort = ref<NoteSort>('recent')
-const activeType = ref<string>('')
+const primary = ref<'' | 'full' | 'list'>('') // 一级:全部 / 已采详情 / 未采详情
+const secondary = ref<string>('') // 二级:模态(full)或 content_type(list)
 const page = ref(0)
 
 function interaction(p: BloggerPost): number {
@@ -26,25 +31,62 @@ function interaction(p: BloggerPost): number {
 function fmt(v: number): string {
   return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v.toLocaleString()
 }
-function rowIcon(post: BloggerPost): { ch: string; cls: string } {
+function isVideo(post: BloggerPost): boolean {
   const sub = post.content_subtype || ''
-  if (sub.includes('口播') || sub.includes('视频') || (!sub && post.content_type === 'video')) return { ch: '▶', cls: 'np-ico--oral' }
-  if (sub.includes('测评') || sub.includes('评测')) return { ch: '⚖', cls: 'np-ico--review' }
-  return { ch: '▦', cls: 'np-ico--image' }
+  if (sub === 'talking_video' || sub === 'visual_video') return true
+  if (sub === 'image_text' || sub === 'article' || sub === 'article_with_image') return false
+  return post.content_type === 'video'
+}
+function rowIcon(post: BloggerPost): { ch: string; cls: string } {
+  return isVideo(post) ? { ch: '▶', cls: 'np-ico--oral' } : { ch: '▦', cls: 'np-ico--image' }
 }
 
-const groups = computed(() => bloggerNoteGroups.value)
-const poolTotal = computed(() => groups.value.reduce((n, g) => n + g.posts.length, 0))
+const allPosts = computed(() => activeNotePool.value)
+const fullPosts = computed(() => allPosts.value.filter((p) => p.detail_level === 'full'))
+const listPosts = computed(() => allPosts.value.filter((p) => p.detail_level !== 'full'))
 
-const tabs = computed(() => [
-  { key: '', label: `全部 ${poolTotal.value}` },
-  ...groups.value.map((g) => ({ key: g.subtype, label: `${g.label} ${g.posts.length}` }))
+// 一级 tab(含计数)。
+const primaryTabs = computed(() => [
+  { key: '' as const, label: `全部 ${allPosts.value.length}` },
+  { key: 'full' as const, label: `已采详情 ${fullPosts.value.length}` },
+  { key: 'list' as const, label: `未采详情 ${listPosts.value.length}` }
 ])
 
+// 已采详情二级:按 content_subtype 分,顺序沿用 NOTE_GROUP_ORDER,只留有笔记的。
+const detailSubGroups = computed(() => {
+  const counts = new Map<string, number>()
+  for (const p of fullPosts.value) {
+    const k = p.content_subtype || 'unknown'
+    counts.set(k, (counts.get(k) || 0) + 1)
+  }
+  const order = NOTE_GROUP_ORDER as readonly string[]
+  return [...counts.keys()]
+    .sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)))
+    .map((k) => ({ key: k, label: subtypeLabel(k), count: counts.get(k)! }))
+})
+// 未采详情二级:列表级按 content_type 分 图文 / 视频。
+const listSubGroups = computed(() =>
+  [
+    { key: 'image', label: '图文', count: listPosts.value.filter((p) => p.content_type !== 'video').length },
+    { key: 'video', label: '视频', count: listPosts.value.filter((p) => p.content_type === 'video').length }
+  ].filter((g) => g.count > 0)
+)
+
+const secondaryTabs = computed(() => {
+  if (primary.value === 'full') return [{ key: '', label: `全部 ${fullPosts.value.length}` }, ...detailSubGroups.value.map((g) => ({ key: g.key, label: `${g.label} ${g.count}` }))]
+  if (primary.value === 'list') return [{ key: '', label: `全部 ${listPosts.value.length}` }, ...listSubGroups.value.map((g) => ({ key: g.key, label: `${g.label} ${g.count}` }))]
+  return []
+})
+
 const filtered = computed<BloggerPost[]>(() => {
-  const src = activeType.value
-    ? groups.value.find((g) => g.subtype === activeType.value)?.posts || []
-    : groups.value.flatMap((g) => g.posts)
+  let src: BloggerPost[]
+  if (primary.value === 'full') {
+    src = secondary.value ? fullPosts.value.filter((p) => (p.content_subtype || 'unknown') === secondary.value) : fullPosts.value
+  } else if (primary.value === 'list') {
+    src = secondary.value ? listPosts.value.filter((p) => (secondary.value === 'video' ? p.content_type === 'video' : p.content_type !== 'video')) : listPosts.value
+  } else {
+    src = allPosts.value
+  }
   return [...src].sort((a, b) =>
     noteSort.value === 'hot'
       ? interaction(b) - interaction(a)
@@ -56,9 +98,10 @@ const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 
 const clampedPage = computed(() => Math.min(page.value, totalPages.value - 1))
 const pagedNotes = computed(() => filtered.value.slice(clampedPage.value * PAGE_SIZE, (clampedPage.value + 1) * PAGE_SIZE))
 
-// 切分类 / 排序 / 博主 → 回到第 1 页;切博主还要重置到「全部」。
-watch([activeType, noteSort], () => { page.value = 0 })
-watch(selectedBloggerId, () => { activeType.value = ''; page.value = 0 })
+// 切一级 → 二级归全部;切任意分类 / 排序 → 回第 1 页;切博主 → 全部重置。
+watch(primary, () => { secondary.value = ''; page.value = 0 })
+watch([secondary, noteSort], () => { page.value = 0 })
+watch(selectedBloggerId, () => { primary.value = ''; secondary.value = ''; page.value = 0 })
 
 function prev() { if (clampedPage.value > 0) page.value = clampedPage.value - 1 }
 function next() { if (clampedPage.value < totalPages.value - 1) page.value = clampedPage.value + 1 }
@@ -68,22 +111,33 @@ function next() { if (clampedPage.value < totalPages.value - 1) page.value = cla
   <section class="np">
     <div class="np__head">
       <h3>笔记池</h3>
-      <span class="np__count">共 {{ poolTotal }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
+      <span class="np__count">共 {{ allPosts.length }} 条<template v-if="delistedNoteCount"> · {{ delistedNoteCount }} 已下架</template></span>
       <div class="np__seg">
         <button type="button" :class="{ on: noteSort === 'recent' }" @click="noteSort = 'recent'">最新</button>
         <button type="button" :class="{ on: noteSort === 'hot' }" @click="noteSort = 'hot'">最热</button>
       </div>
     </div>
 
-    <div v-if="poolTotal" class="np__tabs">
-      <button
-        v-for="t in tabs"
-        :key="t.key || '__all__'"
-        type="button"
-        :class="{ on: activeType === t.key }"
-        @click="activeType = t.key"
-      >{{ t.label }}</button>
-    </div>
+    <template v-if="allPosts.length">
+      <div class="np__tabs">
+        <button
+          v-for="t in primaryTabs"
+          :key="t.key || '__all__'"
+          type="button"
+          :class="{ on: primary === t.key }"
+          @click="primary = t.key"
+        >{{ t.label }}</button>
+      </div>
+      <div v-if="secondaryTabs.length" class="np__subtabs">
+        <button
+          v-for="t in secondaryTabs"
+          :key="t.key || '__sub_all__'"
+          type="button"
+          :class="{ on: secondary === t.key }"
+          @click="secondary = t.key"
+        >{{ t.label }}</button>
+      </div>
+    </template>
 
     <div v-if="pagedNotes.length" class="np__rows">
       <button v-for="post in pagedNotes" :key="post.id" type="button" class="np__row" @click="openNote(post.id)">
@@ -91,15 +145,14 @@ function next() { if (clampedPage.value < totalPages.value - 1) page.value = cla
         <span class="np__main">
           <span class="np__title-row">
             <span class="np__title">{{ post.title || '(无标题)' }}</span>
-            <span v-if="post.detail_level === 'list'" class="np__pill">列表级</span>
-            <span v-if="post.status === 'delisted'" class="np__pill np__pill--del">已下架</span>
+            <span v-if="post.detail_level !== 'full'" class="np__pill">列表级</span>
           </span>
           <span class="np__meta">收藏 {{ fmt(post.favorite_count) }} · 点赞 {{ fmt(post.like_count) }} · {{ bloggerCommentLabel(post) }}<template v-if="post.published_at"> · {{ formatDate(post.published_at) }}</template></span>
         </span>
         <span class="np__chevron">›</span>
       </button>
     </div>
-    <p v-else class="np__empty">笔记池为空。用身份卡的「采集笔记 →」或去「数据采集」拉取。</p>
+    <p v-else class="np__empty">这个分类下暂无笔记。用身份卡的「采集笔记 →」或去「数据采集」拉取。</p>
 
     <div v-if="filtered.length" class="np__pager">
       <span class="np__pager-total">共 {{ filtered.length }} 篇</span>
@@ -134,21 +187,47 @@ function next() { if (clampedPage.value < totalPages.value - 1) page.value = cla
 }
 .np__seg button.on { background: var(--color-surface); color: var(--color-accent-ink); box-shadow: 0 1px 2px var(--color-shadow); }
 
-.np__tabs { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 6px; }
+.np__tabs { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
 .np__tabs button {
   height: 28px;
-  padding: 0 12px;
+  padding: 0 13px;
   border: 1px solid var(--color-rule);
   border-radius: 8px;
   background: var(--color-surface);
   color: var(--color-ink-2);
-  font-size: 12px;
-  font-weight: 550;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out), color 140ms var(--ease-out);
 }
 .np__tabs button.on { border-color: var(--color-accent-soft-bd); background: var(--color-accent-soft); color: var(--color-accent-ink); }
+
+/* 二级(模态)tab:淡底容器 + 左缩进,读作「一级下的细分」。 */
+.np__subtabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 6px 14px;
+  padding: 6px 8px;
+  background: var(--color-paper);
+  border-radius: 10px;
+}
+.np__subtabs button {
+  height: 25px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-3);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.np__subtabs button:hover { color: var(--color-ink-2); }
+.np__subtabs button.on { background: var(--color-surface); border-color: var(--color-accent-soft-bd); color: var(--color-accent-ink); box-shadow: 0 1px 2px var(--color-shadow); }
 
 .np__rows { display: flex; flex-direction: column; }
 .np__row {
@@ -167,12 +246,10 @@ function next() { if (clampedPage.value < totalPages.value - 1) page.value = cla
 .np__ico { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; font-size: 12px; flex: 0 0 auto; }
 .np__ico--oral { background: #fdeee9; color: #bd5b34; }
 .np__ico--image { background: var(--color-accent-soft); color: #2f6b54; }
-.np__ico--review { background: #eef1f6; color: #44506a; }
 .np__main { flex: 1; min-width: 0; }
 .np__title-row { display: flex; align-items: center; gap: 8px; }
 .np__title { font-size: 13.5px; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np__pill { flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px; background: var(--color-paper-3); color: var(--color-ink-3); }
-.np__pill--del { background: #fbeae8; color: var(--color-danger); }
 .np__meta { display: block; margin-top: 3px; font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
 .np__chevron { flex: 0 0 auto; color: var(--color-rule-strong); font-size: 18px; }
 .np__empty { margin: 8px 0; padding: 24px 0; text-align: center; font-size: 12.5px; color: var(--color-ink-3); }
