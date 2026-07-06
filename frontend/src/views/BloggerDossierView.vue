@@ -2,11 +2,12 @@
 // 博主画像(档案主页):右上角下拉选择器切博主,内容全宽分两条产线带 ——
 // 账号事实(身份卡 / 数据面板 / 成长趋势 / 运营习惯 + 合规)与 创作画像 · 笔记池。
 // 设计见 UI-Refactor/design_handoff_dossier_redesign;旧 /assets 路由按别名落到本页。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import DossierAudience from '../components/dossier/DossierAudience.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
 import DossierBuildChecklist from '../components/dossier/DossierBuildChecklist.vue'
+import DossierUpgradeCard from '../components/dossier/DossierUpgradeCard.vue'
 import DossierCompliance from '../components/dossier/DossierCompliance.vue'
 import DossierHabits from '../components/dossier/DossierHabits.vue'
 import DossierIdentityCard from '../components/dossier/DossierIdentityCard.vue'
@@ -23,6 +24,7 @@ import {
   handleRedistill,
   handleRunAudience,
   handleSyncPool,
+  handleUpgradeByUrls,
   handleUpgradeDetail,
   loadDossier
 } from '../composables/useDossier'
@@ -63,6 +65,17 @@ async function refreshProfile() {
 function onDelete() {
   if (selectedBlogger.value) handleDeleteBlogger(selectedBlogger.value)
 }
+
+// 建档清单④ 升详情弹卡:批量升 / 定向补采,确认后走 useDossier 跑任务(就地进度)。
+const showUpgrade = ref(false)
+function onUpgradeBatch(payload: { sampleLimit: number; contentTypes: string[] }) {
+  showUpgrade.value = false
+  void handleUpgradeDetail(payload.sampleLimit, payload.contentTypes)
+}
+function onUpgradeUrls(urls: string[]) {
+  showUpgrade.value = false
+  void handleUpgradeByUrls(urls)
+}
 </script>
 
 <template>
@@ -99,10 +112,18 @@ function onDelete() {
           @build="handleBuildDossier"
           @rebuild="rebuild"
           @redistill="handleRedistill"
-          @upgrade="handleUpgradeDetail"
+          @upgrade="showUpgrade = true"
           @sync="handleSyncPool"
           @audience="handleRunAudience"
           @refresh="refreshProfile"
+        />
+
+        <DossierUpgradeCard
+          v-if="showUpgrade && selectedBlogger"
+          :blogger-id="selectedBlogger.id"
+          @close="showUpgrade = false"
+          @batch="onUpgradeBatch"
+          @urls="onUpgradeUrls"
         />
 
         <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />

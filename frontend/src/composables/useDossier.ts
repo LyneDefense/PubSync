@@ -5,6 +5,7 @@ import { ref, watch } from 'vue'
 import {
   buildBloggerDossier,
   collectBlogger,
+  collectBloggerByUrls,
   getBloggerDossier,
   redistillBloggerDossier,
   runBloggerAudience,
@@ -110,6 +111,19 @@ export async function handleUpgradeDetail(sampleLimit = 80, contentTypes = ['ima
       }),
     reloadAll,
     '升级仍在后台执行，请稍后刷新查看'
+  )
+  await reloadAll()
+}
+
+// 定向补采(建档清单④模式B):粘链接补/深挖指定笔记。
+export async function handleUpgradeByUrls(urls: string[]) {
+  if (!selectedBloggerId.value || !urls.length) return
+  await runTaskAction(
+    'dossier',
+    `已提交定向补采 ${urls.length} 条任务`,
+    () => collectBloggerByUrls(selectedBloggerId.value!, { urls, comments_per_post: 20 }),
+    reloadAll,
+    '补采仍在后台执行，请稍后刷新查看'
   )
   await reloadAll()
 }
