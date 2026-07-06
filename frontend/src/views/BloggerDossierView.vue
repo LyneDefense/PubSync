@@ -8,6 +8,7 @@ import DossierAudience from '../components/dossier/DossierAudience.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
 import DossierBuildChecklist from '../components/dossier/DossierBuildChecklist.vue'
 import DossierUpgradeCard from '../components/dossier/DossierUpgradeCard.vue'
+import LiveProgress from '../components/LiveProgress.vue'
 import DossierCompliance from '../components/dossier/DossierCompliance.vue'
 import DossierHabits from '../components/dossier/DossierHabits.vue'
 import DossierIdentityCard from '../components/dossier/DossierIdentityCard.vue'
@@ -138,6 +139,8 @@ function onUpgradeUrls(urls: string[]) {
           @audience="handleRunAudience"
           @refresh="refreshProfile"
         />
+
+        <LiveProgress v-if="pendingAction === 'dossier' || pendingAction === 'pool-sync'" />
 
         <DossierUpgradeCard
           v-if="showUpgrade && selectedBlogger"

@@ -936,7 +936,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'recommend', 'optimize'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'recommend', 'optimize', 'dossier', 'pool-sync'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 // 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
 export const isOnTaskHome = computed(
@@ -955,7 +955,7 @@ export const miniTaskStep = computed(() =>
   latestEventAny.value ? humanizeStepName(latestEventAny.value.step_name) : '进行中'
 )
 // 是否有「需要展示进度」的任务在执行(全局顶部进度卡片用)。涵盖所有会跑一会儿的动作。
-export const PROGRESS_ACTIONS = ['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-package-save', 'xhs-topic', 'audit'] as const
+export const PROGRESS_ACTIONS = ['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-package-save', 'xhs-topic', 'audit', 'dossier', 'pool-sync'] as const
 export const isProgressTaskRunning = computed(() => PROGRESS_ACTIONS.includes(pendingAction.value as (typeof PROGRESS_ACTIONS)[number]))
 const TASK_NAME_MAP: Record<string, string> = {
   fetch: '抓取新闻',
@@ -967,6 +967,8 @@ const TASK_NAME_MAP: Record<string, string> = {
   audit: '账号诊断',
   recommend: '智能找对标',
   optimize: '优化 Skill',
+  dossier: '构建档案',
+  'pool-sync': '同步笔记池',
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
 export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)

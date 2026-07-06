@@ -17,7 +17,6 @@ const emit = defineEmits<{
 }>()
 
 const pool = computed(() => props.dossier.pool)
-const building = computed(() => props.dossier.building)
 const hasPool = computed(() => pool.value.total > 0)
 const hasProfile = computed(() => props.blogger.follower_count != null)
 const distilled = computed(() => props.dossier.portraits.length > 0)
@@ -27,7 +26,7 @@ const coverage = computed(() => {
   const n = pool.value.note_total
   return n ? Math.min(100, Math.round((pool.value.total / n) * 100)) : null
 })
-const locked = computed(() => props.busy || Boolean(building.value)) // 一把构建锁 → 一次一操作
+const locked = computed(() => props.busy) // busy 已含「构建中」→ 一次一操作
 
 function fmt(n: number): string {
   if (n >= 10000) {
@@ -42,24 +41,18 @@ function fmt(n: number): string {
   <section class="ck">
     <div class="ck__head">
       <h3>建档清单</h3>
-      <button v-if="!hasPool && !building" type="button" class="ck__cta" :disabled="busy" @click="emit('build')">
+      <button v-if="!hasPool && !busy" type="button" class="ck__cta" :disabled="busy" @click="emit('build')">
         一键构建画像
       </button>
     </div>
-    <p v-if="!hasPool && !building" class="ck__intro">
+    <p v-if="!hasPool && !busy" class="ck__intro">
       依次:拉资料 → 全量列表入池 → 数据/成长/运营/合规 → 相关样本升详情 → 蒸馏创作画像。约 10–20 分钟,后台执行。
     </p>
-
-    <!-- 就地进度(某一步在跑) -->
-    <div v-if="building" class="ck__progress">
-      <span class="ck__spin" />
-      <span class="ck__progress-msg">{{ building.message || '处理中…' }}</span>
-    </div>
 
     <ol class="ck__rows">
       <!-- ① 资料 -->
       <li class="ck__row">
-        <span class="ck__dot" :class="hasProfile ? 'is-done' : 'is-pending'" />
+        <span class="ck__mark" :class="hasProfile ? 'is-done' : 'is-pending'" />
         <div class="ck__main">
           <span class="ck__label">账号资料</span>
           <span class="ck__status">
@@ -71,7 +64,7 @@ function fmt(n: number): string {
 
       <!-- ② 笔记池 -->
       <li class="ck__row">
-        <span class="ck__dot" :class="hasPool ? 'is-done' : 'is-pending'" />
+        <span class="ck__mark" :class="hasPool ? 'is-done' : 'is-pending'" />
         <div class="ck__main">
           <span class="ck__label">笔记池</span>
           <span class="ck__status">
@@ -86,7 +79,7 @@ function fmt(n: number): string {
 
       <!-- ③ 数据·轨迹·运营·合规(读池即算)+ 受众需求 -->
       <li class="ck__row">
-        <span class="ck__dot" :class="hasPool ? 'is-done' : 'is-pending'" />
+        <span class="ck__mark" :class="hasPool ? 'is-done' : 'is-pending'" />
         <div class="ck__main">
           <span class="ck__label">数据 · 轨迹 · 运营 · 合规</span>
           <span class="ck__status">
@@ -100,7 +93,7 @@ function fmt(n: number): string {
 
       <!-- ④ 详情级 -->
       <li class="ck__row">
-        <span class="ck__dot" :class="pool.full_count > 0 ? (canDistill ? 'is-done' : 'is-warn') : 'is-pending'" />
+        <span class="ck__mark" :class="pool.full_count > 0 ? (canDistill ? 'is-done' : 'is-warn') : 'is-pending'" />
         <div class="ck__main">
           <span class="ck__label">详情级笔记</span>
           <span class="ck__status">
@@ -112,7 +105,7 @@ function fmt(n: number): string {
 
       <!-- ⑤ 创作画像 -->
       <li class="ck__row">
-        <span class="ck__dot" :class="distilled ? (stale ? 'is-warn' : 'is-done') : 'is-pending'" />
+        <span class="ck__mark" :class="distilled ? (stale ? 'is-warn' : 'is-done') : 'is-pending'" />
         <div class="ck__main">
           <span class="ck__label">创作画像</span>
           <span class="ck__status">{{ distilled ? (stale ? '已蒸馏 · 可能过时' : '已蒸馏') : '未蒸馏' }}</span>
@@ -175,31 +168,6 @@ function fmt(n: number): string {
   line-height: 1.6;
   color: var(--color-ink-3);
 }
-.ck__progress {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 12px;
-  padding: 9px 12px;
-  border-radius: 9px;
-  background: var(--color-accent-soft);
-  color: var(--color-accent-ink);
-  font-size: 12.5px;
-}
-.ck__spin {
-  width: 13px;
-  height: 13px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: ck-spin 0.7s linear infinite;
-  flex: 0 0 auto;
-}
-@keyframes ck-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 .ck__rows {
   list-style: none;
   margin: 10px 0 0;
@@ -217,21 +185,33 @@ function fmt(n: number): string {
 .ck__row:first-child {
   border-top: 0;
 }
-.ck__dot {
+.ck__mark {
   flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: var(--color-rule-strong);
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--color-rule-strong);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: transparent;
 }
-.ck__dot.is-done {
+.ck__mark.is-done {
   background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
 }
-.ck__dot.is-warn {
-  background: #d9a441;
+.ck__mark.is-done::before {
+  content: '✓';
 }
-.ck__dot.is-pending {
-  background: var(--color-rule-strong);
+.ck__mark.is-warn {
+  border-color: #d9a441;
+  color: #d9a441;
+}
+.ck__mark.is-warn::before {
+  content: '!';
 }
 .ck__main {
   flex: 1;
