@@ -415,6 +415,7 @@ def run_appraisal_task(task_id: str, payload: dict) -> None:
             db=db, settings=get_settings(), task_id=task_id, tenant_id=task.tenant_id,
             blogger_id=int(payload["blogger_id"]), kind=kind,
             intent=str(payload.get("intent") or ""), industry=payload.get("industry"),
+            my_blogger_id=(int(payload["my_blogger_id"]) if payload.get("my_blogger_id") else None),
         )
         mark_task_succeeded(db, task, f"{subject}完成")
         logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)

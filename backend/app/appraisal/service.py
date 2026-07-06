@@ -24,7 +24,7 @@ from app.appraisal.judge import judge_goal_fit, judge_note_relevance, judge_soft
 from app.blogger_distillation.service import record_task_event, run_blogger_collection
 from app.compliance import scan_account
 from app.config import Settings
-from app.models import AccountAuditRun, BloggerPost, BloggerProfile
+from app.models import AccountAuditRun, BloggerPost, BloggerProfile, BloggerSkill
 from app.services.ai_service import AIServiceError, is_ai_enabled
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ def run_appraisal(
     kind: str = "benchmark",
     intent: str = "",
     industry: str | None = None,
+    my_blogger_id: int | None = None,
 ) -> AccountAuditRun:
     if not is_ai_enabled(settings):
         raise AIServiceError("未配置可用的大模型 API Key")
@@ -65,7 +66,8 @@ def run_appraisal(
         benchmark_blogger_id=blogger_id if kind == "benchmark" else None,
         task_id=task_id,
         status="running",
-        input_snapshot=json.dumps({"blogger_id": blogger_id, "kind": kind, "intent": intent, "industry": industry},
+        input_snapshot=json.dumps({"blogger_id": blogger_id, "kind": kind, "intent": intent,
+                                   "industry": industry, "my_blogger_id": my_blogger_id},
                                   ensure_ascii=False)[:20000],
     )
     db.add(run)
@@ -122,6 +124,10 @@ def run_appraisal(
         report["relevant_count"] = len(used)
         report["low_relevance"] = low_relevance
         report["notes_relevance"] = notes_relevance
+        # #22 P2:对标 + 绑了「我的账号」→ 出「我 vs TA」差距(B 事实差 + A 打法 diff)。
+        if kind == "benchmark" and my_blogger_id:
+            _attach_gap(db, settings, tenant_id, task_id, report, mine_id=int(my_blogger_id),
+                        ta=blogger, ta_pool=pool_posts, intent=intent, timeout=tmo)
 
         run.status = "succeeded"
         run.score = report["hard_score"]
@@ -173,6 +179,35 @@ def _active_pool(db: Session, tenant_id: int, blogger_id: int) -> list[BloggerPo
             BloggerPost.status == "active",
         )
     )))
+
+
+def _active_skill_md(db: Session, tenant_id: int, blogger_id: int) -> str:
+    """取该账号 active 创作画像的人读方法论(A 打法 diff 用);没蒸过则空串。"""
+    skill = db.scalars(
+        select(BloggerSkill).where(
+            BloggerSkill.tenant_id == tenant_id, BloggerSkill.blogger_id == blogger_id,
+            BloggerSkill.status == "active",
+        ).order_by(BloggerSkill.created_at.desc())
+    ).first()
+    return (skill.skill_markdown or "") if skill else ""
+
+
+def _attach_gap(db, settings, tenant_id, task_id, report, *, mine_id, ta, ta_pool, intent, timeout) -> None:
+    """挂「我 vs TA」差距到报告;任何失败只记日志、绝不让诊断失败。"""
+    try:
+        mine = db.get(BloggerProfile, mine_id)
+        if not mine or mine.tenant_id != tenant_id or mine.id == ta.id:
+            return
+        from app.appraisal.gap import build_gap
+
+        record_task_event(db, tenant_id, task_id, "对标诊断", "running", "对拍「我 vs TA」差距…")
+        report["gap"] = build_gap(
+            settings, mine, ta, _active_pool(db, tenant_id, mine_id), ta_pool,
+            _active_skill_md(db, tenant_id, mine_id), _active_skill_md(db, tenant_id, ta.id),
+            intent, timeout,
+        )
+    except Exception as exc:  # noqa: BLE001 - 差距是增强,不能挡诊断
+        logger.warning("我 vs TA 差距计算失败,跳过:%s", exc)
 
 
 def _diagnose(settings, blogger, posts, *, pool_posts=None, kind, intent, industry, db, tenant_id, relevance_ratio=None) -> dict[str, Any]:

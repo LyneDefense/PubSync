@@ -29,6 +29,7 @@ class AppraiseCreate(BaseModel):
     kind: str = Field(default="benchmark", pattern="^(benchmark|self)$")
     intent: str = Field(default="", max_length=500)  # 意图:对标=想学什么;自诊=目标/痛点/阶段
     industry: str | None = Field(default=None, max_length=50)  # 品类(触发合规红线,如「香港保险」)
+    my_blogger_id: int | None = None  # 可选:对标时绑「我的账号」→ 报告出「我 vs TA 差距」
 
 
 class AppraisalIntentSuggestRequest(BaseModel):
