@@ -18,6 +18,7 @@ from app.blogger_distillation.providers import ensure_collection_provider_availa
 from app.blogger_distillation.quality import quality_report
 from app.blogger_distillation.service.note_pipeline import build_collect_providers, process_one_note
 from app.blogger_distillation.service.vision_step import revise_post_vision
+from app.blogger_distillation.service.selection import select_detail_targets
 from app.blogger_distillation.service.events import (
     DistillationCancelled,
     ensure_distillation_not_cancelled,
@@ -187,7 +188,13 @@ def run_blogger_collection(
         # 增量:从"需要详情的"里按排序取最多 N 条当新增(含 list 级行升级);已是详情级的顺带刷新。
         new_candidates = [c for c in candidates if _needs_detail(c)]
         existing_candidates = [(c, existing[c.external_id]) for c in candidates if not _needs_detail(c)]
-        new_targets = select_targets(new_candidates, order, fetch_all, sample_limit)
+        if order == "smart":  # 建档/升详情:高赞+最近优先 + 动态 K 爆文保底(用全量候选算中位数/总数)
+            new_targets = select_detail_targets(
+                new_candidates, total=len(candidates), limit=sample_limit,
+                hot_ratio=settings.dossier_hot_ratio, hot_floor=settings.dossier_hot_floor, hot_cap=settings.dossier_hot_cap,
+            )
+        else:
+            new_targets = select_targets(new_candidates, order, fetch_all, sample_limit)
 
         to_fetch: list[XhsPostCandidate] = list(new_targets)  # 新笔记
         new_count = len(new_targets)

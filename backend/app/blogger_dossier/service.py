@@ -83,23 +83,16 @@ def build_dossier(db: Session, settings: Settings, task_id: str, tenant_id: int,
             db, tenant_id, task_id, "建档·数据与轨迹", "succeeded",
             f"数据面板与成长轨迹已就绪：{len(posts)} 篇入池，{len(traj.get('bursts') or [])} 个爆发点",
         )
-        # 阶段4 系统选样升详情级:最新 N 篇(基本盘/近期)+ 历史高赞 M 篇(爆文),两批并起来 = 分层样本。
-        # 采样由系统定,用户不选;历史爆文进样是为了让画像学到"爆文怎么写"(选题思路那块最值钱的料)。
+        # 阶段4 系统选样升详情级:高赞+最近优先 + 随笔记总数动态的爆文保底(order="smart",选片见 selection.py)。
+        # 采样由系统定,用户不选;爆文保底让画像学到"爆文怎么写"(选题思路那块最值钱的料)。
         recent_n = max(1, settings.dossier_default_full_count)
-        hot_n = max(0, settings.dossier_hot_count)
         record_task_event(db, tenant_id, task_id, "建档·详情升级", "running",
-                          f"升级最新 {recent_n} 篇 + 历史高赞 {hot_n} 篇为详情级(正文/转写/图文理解/评论)")
+                          f"升级最多 {recent_n} 篇为详情级(高赞+最近优先,含爆文保底;正文/转写/图文理解/评论)")
         run_blogger_collection(
             db, settings, task_id, tenant_id, blogger_id,
             sample_limit=recent_n, comments_per_post=20, asr_enabled=settings.asr_enabled,
-            content_types=None, order="latest", fetch_all=False, backfill=True,
+            content_types=None, order="smart", fetch_all=False, backfill=True,
         )
-        if hot_n:
-            run_blogger_collection(
-                db, settings, task_id, tenant_id, blogger_id,
-                sample_limit=hot_n, comments_per_post=20, asr_enabled=settings.asr_enabled,
-                content_types=None, order="top_liked", fetch_all=False, backfill=True,
-            )
         # 阶段5 自动蒸馏唯一画像(系统选样的详情级笔记;去多画像 = 重蒸即覆盖,不建快照)
         ids = _sample_post_ids(db, tenant_id, blogger_id)
         distilled = False
