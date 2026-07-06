@@ -496,7 +496,7 @@ export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
   content_types?: string[]
-  order?: 'top_liked' | 'latest'
+  order?: 'top_liked' | 'latest' | 'smart'
   fetch_all?: boolean
   backfill?: boolean
 }

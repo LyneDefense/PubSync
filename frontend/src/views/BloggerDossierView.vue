@@ -6,6 +6,7 @@ import { computed } from 'vue'
 
 import DossierAudience from '../components/dossier/DossierAudience.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
+import DossierBuildChecklist from '../components/dossier/DossierBuildChecklist.vue'
 import DossierCompliance from '../components/dossier/DossierCompliance.vue'
 import DossierHabits from '../components/dossier/DossierHabits.vue'
 import DossierIdentityCard from '../components/dossier/DossierIdentityCard.vue'
@@ -21,6 +22,8 @@ import {
   handleBuildDossier,
   handleRedistill,
   handleRunAudience,
+  handleSyncPool,
+  handleUpgradeDetail,
   loadDossier
 } from '../composables/useDossier'
 import {
@@ -87,23 +90,20 @@ function onDelete() {
 
       <p v-if="dossierLoading && !dossier" class="dossier-view__hint">档案加载中…</p>
 
-      <!-- 空态:未建档 → 一键构建 -->
-      <div v-else-if="dossier && !hasPool && !dossier.building" class="dossier-view__empty">
-        <h3>还没有这个博主的画像</h3>
-        <p>
-          一键构建会依次完成：拉取资料 → 全量笔记列表入池 → 数据面板与成长趋势 →
-          最新笔记升级详情（正文 / 转写 / 图文理解）→ 自动蒸馏默认创作画像。
-        </p>
-        <p class="dossier-view__empty-note">全程约 10–20 分钟，后台执行，可离开本页随时回来看进度。</p>
-        <button type="button" class="primary" :disabled="busy" @click="handleBuildDossier">构建博主画像</button>
-      </div>
-
       <template v-else-if="dossier">
-        <div v-if="!dossier.building && dossier.pool.list_count === dossier.pool.total && hasPool" class="dossier-view__nudge">
-          笔记池目前只有列表级数据（无正文/转写），
-          <button type="button" class="link-button" :disabled="busy" @click="handleBuildDossier">一键构建画像</button>
-          可升级详情并自动蒸馏。
-        </div>
+        <!-- 建档状态清单:每步状态 + 就地入口 + 就地进度(不跳 tab) -->
+        <DossierBuildChecklist
+          :dossier="dossier"
+          :blogger="selectedBlogger"
+          :busy="busy"
+          @build="handleBuildDossier"
+          @rebuild="rebuild"
+          @redistill="handleRedistill"
+          @upgrade="handleUpgradeDetail"
+          @sync="handleSyncPool"
+          @audience="handleRunAudience"
+          @refresh="refreshProfile"
+        />
 
         <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
         <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
@@ -115,7 +115,7 @@ function onDelete() {
         <DossierNotePool />
 
         <span v-if="!dossier.pool.reached_end && hasPool" class="dossier-view__sync-hint">
-          提示:列表未翻到底,早期笔记可能缺失,可在「数据采集」用全量校准补齐。
+          提示:列表未翻到底,早期笔记可能缺失,可用上方清单的「全量校准」补齐。
         </span>
       </template>
     </div>

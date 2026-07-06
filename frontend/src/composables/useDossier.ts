@@ -4,6 +4,7 @@ import { ref, watch } from 'vue'
 
 import {
   buildBloggerDossier,
+  collectBlogger,
   getBloggerDossier,
   redistillBloggerDossier,
   runBloggerAudience,
@@ -89,6 +90,26 @@ export async function handleSyncPool(mode: 'incremental' | 'full') {
     () => syncBloggerPool(selectedBloggerId.value!, mode),
     reloadAll,
     '同步仍在后台执行，请稍后刷新查看'
+  )
+  await reloadAll()
+}
+
+// 升级详情(建档清单④):系统选片(smart:中位数+最近+爆文保底),升级到详情级。
+export async function handleUpgradeDetail(sampleLimit = 80, contentTypes = ['image', 'video']) {
+  if (!selectedBloggerId.value) return
+  await runTaskAction(
+    'dossier',
+    '已提交升级详情任务',
+    () =>
+      collectBlogger(selectedBloggerId.value!, {
+        sample_limit: sampleLimit,
+        comments_per_post: 20,
+        order: 'smart',
+        content_types: contentTypes,
+        backfill: true,
+      }),
+    reloadAll,
+    '升级仍在后台执行，请稍后刷新查看'
   )
   await reloadAll()
 }

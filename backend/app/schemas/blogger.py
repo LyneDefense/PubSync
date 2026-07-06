@@ -139,8 +139,8 @@ class BloggerCollectRequest(BaseModel):
     # ASR 已改为后台全局控制,采集请求不再携带 asr 开关。
     # 拉取范围:image=图文,video=视频;默认全部。仅这两类(口播细分在采集后判定)。
     content_types: list[str] = Field(default_factory=lambda: ["image", "video"])
-    # 选材排序:top_liked=高赞优先(默认),latest=最新优先。
-    order: str = Field(default="top_liked", pattern="^(top_liked|latest)$")
+    # 选材排序:top_liked=高赞优先(默认),latest=最新优先,smart=建档升详情(中位数+最近+爆文保底)。
+    order: str = Field(default="top_liked", pattern="^(top_liked|latest|smart)$")
     # 数量:False=取 sample_limit 条,True=全部到系统上限。
     fetch_all: bool = False
     # 是否给存量笔记补采(补图片理解/转写)。False=只采新增的 N 条,不回填(用户在大回填确认框选了"否"时)。
