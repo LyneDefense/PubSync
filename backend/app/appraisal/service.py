@@ -115,8 +115,9 @@ def run_appraisal(
         record_task_event(db, tenant_id, task_id, subject, "running",
                           f"采集 {len(examined)} 篇,相关 {len(used)} 篇,打分中…")
 
-        report = _diagnose(settings, blogger, diagnose_posts, kind=kind, intent=intent, industry=industry,
-                           db=db, tenant_id=tenant_id, relevance_ratio=ratio)
+        pool_posts = _active_pool(db, tenant_id, blogger_id) or diagnose_posts  # 全量池(和档案同源)算硬实力
+        report = _diagnose(settings, blogger, diagnose_posts, pool_posts=pool_posts, kind=kind, intent=intent,
+                           industry=industry, db=db, tenant_id=tenant_id, relevance_ratio=ratio)
         report["examined_count"] = len(examined)
         report["relevant_count"] = len(used)
         report["low_relevance"] = low_relevance
@@ -164,22 +165,33 @@ def _active_count(db: Session, tenant_id: int, blogger_id: int) -> int:
     ) or 0
 
 
-def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id, relevance_ratio=None) -> dict[str, Any]:
+def _active_pool(db: Session, tenant_id: int, blogger_id: int) -> list[BloggerPost]:
+    """全量在架池(status=active,去重)——硬实力与账号级互动按它算,与博主档案同源、数字不打架。"""
+    return _dedup_posts(list(db.scalars(
+        select(BloggerPost).where(
+            BloggerPost.tenant_id == tenant_id, BloggerPost.blogger_id == blogger_id,
+            BloggerPost.status == "active",
+        )
+    )))
+
+
+def _diagnose(settings, blogger, posts, *, pool_posts=None, kind, intent, industry, db, tenant_id, relevance_ratio=None) -> dict[str, Any]:
     """把硬实力(算)+ 垂直度/软实力(模型)+ 合规 串成三区报告。
 
-    三个判定型大模型调用(垂直度 / 软实力 / 合规语义)互不依赖,并行跑 →
-    墙钟从「逐个相加」降到「最慢的那个」;各自带可配读超时,卡住快速兜底而非干等。
+    硬实力/账号级互动按【全量在架池 pool_posts】算(与博主档案同源,数字不打架);
+    垂直度/软实力/合规/相关性仍看【意图相关样本 posts】。三个判定型大模型调用并行跑。
     软实力要的 brief 走 db,提前在并行外建好(线程里只读 settings + 入参,不碰 db)。
     """
+    hard_src = pool_posts or posts
     post_stats = [
         PostStat(likes=p.like_count or 0, collects=p.favorite_count or 0, comments=p.comment_count or 0,
                  published_at=p.published_at, content_type=p.content_type or "image")
-        for p in posts
+        for p in hard_src
     ]
-    total_lc = sum((p.like_count or 0) + (p.favorite_count or 0) for p in posts)
+    total_lc = sum((p.like_count or 0) + (p.favorite_count or 0) for p in hard_src)
     acc = AccountStat(follower_count=blogger.follower_count or 0,
-                      note_total=blogger.note_total or len(posts), total_like_collect=total_lc)
-    computed = hard_dimensions(acc, post_stats)  # 4 个纯算维度,不花模型
+                      note_total=blogger.note_total or len(hard_src), total_like_collect=total_lc)
+    computed = hard_dimensions(acc, post_stats)  # 4 个纯算维度(全量池),不花模型
 
     titles = [p.title or "" for p in posts]
     texts = [((p.title or "") + " " + (p.body_text or "")).strip() for p in posts]
@@ -223,6 +235,7 @@ def _diagnose(settings, blogger, posts, *, kind, intent, industry, db, tenant_id
         "intent": intent,
         "industry": industry,
         "sample_count": len(posts),
+        "pool_count": len(hard_src),
         "hard": [_dim_dict(d) for d in hard],
         "hard_score": hard_score,
         "soft": [_dim_dict(d) for d in soft_dims.values()],
