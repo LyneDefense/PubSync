@@ -40,7 +40,6 @@ from .runners import (
     run_blogger_url_collection_task,
     run_daily_publish_task,
     run_news_fetch_task,
-    run_skill_optimization_task,
     run_xhs_package_draft_task,
 )
 
@@ -68,7 +67,6 @@ __all__ = [
     "run_blogger_url_collection_task",
     "run_daily_publish_task",
     "run_news_fetch_task",
-    "run_skill_optimization_task",
     "run_xhs_package_draft_task",
     "reap_stale_tasks",
     "reap_stale_tasks_in_session",

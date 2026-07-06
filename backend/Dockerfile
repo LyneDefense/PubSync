@@ -24,12 +24,6 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
-# Vendored SkillOpt(锁定源码、含 prompts):PyPI wheel 不打包 prompts,故 vendored 进仓库并以
-# editable 方式安装——保留源码树(prompts 可被 load_prompt 解析),并自动拉取其轻量依赖。
-COPY vendor ./vendor
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -e ./vendor/skillopt
-
 COPY app ./app
 # Alembic 配置与迁移脚本（放在 app/ 之外），打包进镜像以便容器内运行
 # `alembic upgrade head`。应用启动仍由 ensure_runtime_schema 兜底建表，此处仅为可用性。

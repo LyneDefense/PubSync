@@ -1,9 +1,9 @@
 """笔记 →「可学文本」的统一装配。
 
-历史上各功能各自拼 body_text + transcript_text(analysis / rollout / account_audit …)。
+历史上各功能各自拼 body_text + transcript_text(analysis / account_audit …)。
 这里收口成一处:一篇笔记的完整可学文本 = 标题 + 正文 + 口播/字幕 + 图内文字(逐张带
 「第N张」标签);外加一个紧凑的"视觉"块(封面话术/版式/风格/逐张说明)。新增模态(如视频
-关键帧文字)只改这一个文件,蒸馏/SkillOpt/对标/诊断即自动受益。
+关键帧文字)只改这一个文件,蒸馏/对标/诊断即自动受益。
 """
 
 from __future__ import annotations

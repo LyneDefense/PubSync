@@ -57,7 +57,6 @@ from app.schemas.blogger import (
     BloggerSkillRead,
 )
 from app.schemas.news import NewsItemRead, NewsItemUpdate, NewsSourceRead
-from app.schemas.skill_training import SkillOptimizeConfirm, SkillOptimizeRequest, SkillTrainingRunRead
 from app.schemas.settings import SettingRead, SettingUpdate
 from app.schemas.task import OperationTaskEventRead, OperationTaskRead
 from app.schemas.tenant import AdminUserCreate, AdminUserRead, CurrentUserRead, TenantRead
@@ -138,9 +137,6 @@ __all__ = [
     "EvaluateRequest",
     "EvaluateResult",
     "BenchmarkRecommendationRunRead",
-    "SkillOptimizeRequest",
-    "SkillOptimizeConfirm",
-    "SkillTrainingRunRead",
     "SettingRead",
     "SettingUpdate",
     "BloggerProfileCreate",

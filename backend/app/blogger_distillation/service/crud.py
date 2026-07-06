@@ -20,7 +20,6 @@ from app.models import (
     BloggerSnapshot,
     OperationTask,
     OperationTaskEvent,
-    SkillTrainingRun,
     XhsPublishPackage,
 )
 
@@ -228,7 +227,6 @@ def delete_blogger(db: Session, tenant_id: int, blogger_id: int) -> None:
     # blogger 已按 tenant 校验(上方),子表按博主外键删即可(不会跨租户)。
     db.execute(delete(XhsPublishPackage).where(or_(XhsPublishPackage.blogger_id == blogger_id, XhsPublishPackage.my_account_id == blogger_id)))
     db.execute(delete(BloggerSkill).where(BloggerSkill.blogger_id == blogger_id))
-    db.execute(delete(SkillTrainingRun).where(SkillTrainingRun.blogger_id == blogger_id))
     db.execute(delete(BloggerCollectionPost).where(BloggerCollectionPost.blogger_id == blogger_id))
     db.execute(delete(BloggerDistillationRun).where(BloggerDistillationRun.blogger_id == blogger_id))
     db.execute(delete(BloggerCollectionRun).where(BloggerCollectionRun.blogger_id == blogger_id))

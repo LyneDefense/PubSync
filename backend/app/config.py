@@ -121,9 +121,6 @@ class Settings(BaseSettings):
     creation_llm_critic_enabled: bool = True
     # 创作产出的平台限流词/违禁词规避（提示词规避 + 命中强制重写）。
     creation_compliance_enabled: bool = True
-    # Skill 优化训练护栏：单次大模型调用超时(秒) + 整个训练的总时长上限(分钟,超时即中止判失败)。
-    skill_opt_llm_timeout_seconds: int = 120
-    skill_opt_max_minutes: int = 25
     # 僵死任务看门狗：running/cancel_requested 任务若超过这么多分钟没有新进展事件
     # （多半是 worker 进程被 OOM/强杀），自动标记为失败并告知前端。设大于最长合理静默期。
     task_stale_minutes: int = 20

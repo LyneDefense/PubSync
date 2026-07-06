@@ -33,7 +33,6 @@ from app.services.wechat_service import WeChatAPIError
 from app.account_audit.service import run_account_audit
 from app.benchmark_discovery.service import run_recommendation
 from app.blogger_dossier.service import build_dossier, redistill_dossier, sync_pool
-from app.skill_optimization.service import run_skill_optimization
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
 from .core import execute_task, get_task, mark_task_running, mark_task_succeeded
@@ -328,41 +327,6 @@ def run_benchmark_recommend_task(task_id: str, payload: dict) -> None:
         )
         mark_task_succeeded(db, task, f"找到 {len(run.candidates)} 个候选对标博主")
         logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)
-
-    def record_failure(db: Session, task_id: str, exc: Exception) -> None:
-        task = get_task(db, task_id)
-        if task:
-            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
-
-    execute_task(
-        task_id,
-        label=subject,
-        fail_message=f"{subject}失败",
-        work=work,
-        expected=(ValueError, AIServiceError),
-        on_unexpected=record_failure,
-    )
-
-
-def run_skill_optimization_task(task_id: str, payload: dict) -> None:
-    subject = "Skill 优化"
-
-    def work(db: Session, task: OperationTask) -> None:
-        mark_task_running(db, task, "正在优化 Skill…")
-        run = run_skill_optimization(
-            db=db,
-            settings=get_settings(),
-            task_id=task_id,
-            tenant_id=task.tenant_id,
-            blogger_id=int(payload["blogger_id"]),
-            epochs=int(payload.get("epochs") or 2),
-            skill_id=(int(payload["skill_id"]) if payload.get("skill_id") else None),
-        )
-        if run.status == "failed":
-            mark_task_succeeded(db, task, f"优化未完成:{run.error_message or '生成失败,请稍后重试'}")
-        else:
-            mark_task_succeeded(db, task, f"优化完成:{run.before_score} → {run.after_score}(请在页面确认是否采纳)")
-        logger.info("任务成功：任务ID=%s,类型=%s,运行ID=%s,状态=%s", task_id, subject, run.id, run.status)
 
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)

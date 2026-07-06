@@ -19,7 +19,6 @@ from app.models.blogger import (
 from app.models.common import utc_now
 from app.models.cost_event import CostEvent
 from app.models.news import NewsItem, NewsSource, SourceStatus
-from app.models.skill_training import SkillTrainingRun
 from app.models.system_config import SystemConfig
 from app.models.task import OperationTask, OperationTaskEvent, TaskStatus
 from app.models.tenant import Tenant, TenantStatus, User
@@ -68,5 +67,4 @@ __all__ = [
     "AccountAuditRun",
     "BenchmarkRecommendationRun",
     "BenchmarkDiscoverySession",
-    "SkillTrainingRun",
 ]

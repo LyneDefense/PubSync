@@ -134,8 +134,7 @@ const SOCIAL_NAV: NavConfig = {
       icon: 'pulse',
       items: [
         { tab: 'self-diagnosis', label: '诊断我的账号', icon: 'pulse' },
-        { tab: 'effects', label: '效果看板', icon: 'chart', badge: '新' },
-        { tab: 'skill-optimize', label: 'Skill 优化', icon: 'arrow-up', badge: '新' }
+        { tab: 'effects', label: '效果看板', icon: 'chart', badge: '新' }
       ]
     }
   ],

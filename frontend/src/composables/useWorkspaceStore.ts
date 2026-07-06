@@ -61,9 +61,6 @@ import {
   recommendBloggers,
   listRecommendRuns,
   evaluateBlogger,
-  optimizeSkill,
-  listSkillTrainingRuns,
-  confirmSkillTrainingRun,
   getDashboardOverview,
   getAccountDashboard,
   getAccountGrowth,
@@ -91,7 +88,6 @@ import type {
   BloggerSearchResult,
   BloggerSkill,
   CandidateScore,
-  SkillTrainingRun,
   ContentGroup,
   ContentProfile,
   CurrentUser,
@@ -112,7 +108,7 @@ import type {
 } from '../api/types'
 
 
-export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'optimize' | 'dossier' | 'pool-sync'
+export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'dossier' | 'pool-sync'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
 export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
@@ -120,7 +116,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'overview' | 'find' | 'dossier' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'skill-optimize' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'dossier' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'effects' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -254,7 +250,6 @@ export const taskProgress = reactive<Record<TaskActionName, number>>({
   'xhs-package': 0,
   audit: 0,
   recommend: 0,
-  optimize: 0,
   dossier: 0,
   'pool-sync': 0,
 })
@@ -857,7 +852,7 @@ export const visibleTaskEvents = computed(() => {
 })
 export const latestTaskEvent = computed(() => visibleTaskEvents.value[visibleTaskEvents.value.length - 1] || null)
 // 所有会跑一会儿、需要展示进度的动作(统一进度面板据此显示)。
-const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'recommend', 'optimize', 'dossier', 'pool-sync'])
+const LONG_RUNNING_ACTIONS = new Set(['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-topic', 'audit', 'recommend', 'dossier', 'pool-sync'])
 export const isTaskRunning = computed(() => LONG_RUNNING_ACTIONS.has(pendingAction.value || ''))
 // 是否就在「发起任务的那个页面」(同平台 + 同子页签)。进度条只在这里展开。
 export const isOnTaskHome = computed(
@@ -887,7 +882,6 @@ const TASK_NAME_MAP: Record<string, string> = {
   'xhs-topic': '生成选题',
   audit: '账号诊断',
   recommend: '智能找对标',
-  optimize: '优化 Skill',
   dossier: '构建档案',
   'pool-sync': '同步笔记池',
 }
@@ -1833,86 +1827,6 @@ export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearc
   })
   showBloggerModal.value = true
   showMessage(`已选「${candidate.display_name}」,补充领域/备注后点保存即可`)
-}
-
-// —— Skill 优化 ——
-export const optimizeBloggerId = ref<number | null>(null)
-export const optimizeSkillId = ref<number | null>(null)
-export const currentTrainingRun = ref<SkillTrainingRun | null>(null)
-export const trainingRuns = ref<SkillTrainingRun[]>([]) // 该博主的历史优化记录(新→旧)
-export const optimizeConfirming = ref(false)
-
-// 所选博主下的 Skill 版本(active 在前);用于让用户选具体哪个 Skill 来优化。
-export const optimizeSkillOptions = computed(() =>
-  bloggerSkills.value
-    .filter((s) => s.blogger_id === optimizeBloggerId.value)
-    .sort((a, b) => (a.status === 'active' ? -1 : b.status === 'active' ? 1 : 0))
-)
-
-async function loadTrainingRuns(bloggerId: number | null) {
-  if (!bloggerId) {
-    trainingRuns.value = []
-    return
-  }
-  try {
-    trainingRuns.value = await listSkillTrainingRuns(bloggerId)
-  } catch {
-    trainingRuns.value = []
-  }
-}
-
-// 切博主时:把 Skill 选择重置到 active 版本,并加载该博主的历史优化记录。
-watch(optimizeBloggerId, async (bloggerId) => {
-  const opts = optimizeSkillOptions.value
-  const active = opts.find((s) => s.status === 'active')
-  optimizeSkillId.value = active?.id ?? opts[0]?.id ?? null
-  currentTrainingRun.value = null
-  await loadTrainingRuns(bloggerId)
-})
-
-export function selectTrainingRun(run: SkillTrainingRun) {
-  currentTrainingRun.value = run
-}
-
-export async function handleOptimizeSkill() {
-  const bloggerId = optimizeBloggerId.value
-  if (!bloggerId) {
-    showMessage('请先选择要优化的对标博主', true)
-    return
-  }
-  const skillId = optimizeSkillId.value
-  currentTrainingRun.value = null
-  await runTaskAction(
-    'optimize',
-    '正在优化 Skill',
-    async () => optimizeSkill(bloggerId, 2, skillId),
-    async () => {
-      await loadTrainingRuns(bloggerId)
-      currentTrainingRun.value = trainingRuns.value[0] || null
-    },
-    '优化仍在后台执行，请稍后刷新查看'
-  )
-}
-
-export async function handleConfirmOptimize(adopt: boolean) {
-  const run = currentTrainingRun.value
-  if (!run) return
-  optimizeConfirming.value = true
-  try {
-    const updated = await confirmSkillTrainingRun(run.id, adopt)
-    currentTrainingRun.value = updated
-    // 历史列表里同步这条记录的最新状态。
-    const idx = trainingRuns.value.findIndex((r) => r.id === updated.id)
-    if (idx >= 0) trainingRuns.value[idx] = updated
-    showMessage(adopt ? '已采纳:优化版已设为当前 Skill' : '已放弃:保留原 Skill')
-    if (adopt) {
-      bloggerSkills.value = await listBloggerSkills(currentSocialPlatform.value)
-    }
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '操作失败', true)
-  } finally {
-    optimizeConfirming.value = false
-  }
 }
 
 export async function handleSearchBloggerCandidates() {

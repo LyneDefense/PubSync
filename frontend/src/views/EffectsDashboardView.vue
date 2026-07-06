@@ -53,12 +53,6 @@ const summary = computed(() => {
   const o = dashboardOverview.value
   if (!o) return ''
   const parts: string[] = []
-  const trend = o.similarity_trend
-  if (trend.length) {
-    const first = trend[0]
-    const last = trend[trend.length - 1]
-    parts.push(`相似度 ${Math.round(first.before)}→${Math.round(last.after)}（趋近天花板 ${Math.round(last.gap_closed)}%）`)
-  }
   if (o.creation.created) parts.push(`本期创作 ${o.creation.created} 篇、发布 ${o.creation.published} 篇`)
   if (o.saved_minutes) parts.push(`约省 ${fmtSavedHours(o.saved_minutes)} 小时`)
   return parts.join(' · ')
@@ -131,21 +125,6 @@ const modalityEntries = computed(() => {
           <span class="dash-card-label">对标博主</span>
           <small>{{ dashboardOverview.library.post_count }} 篇真笔记</small>
         </div>
-      </div>
-
-      <!-- 相似度趋近 -->
-      <div v-if="dashboardOverview.similarity_trend.length" class="dash-block">
-        <h3 class="dash-h3">相似度趋近（Skill 越练越像）</h3>
-        <ul class="dash-sim">
-          <li v-for="(s, i) in dashboardOverview.similarity_trend" :key="i">
-            <span class="dash-sim-date">{{ s.date }}</span>
-            <span class="dash-sim-bar">
-              <span class="dash-sim-fill" :style="{ width: Math.min(100, Math.round(s.gap_closed)) + '%' }"></span>
-            </span>
-            <span class="dash-sim-val">{{ Math.round(s.before) }}→{{ Math.round(s.after) }}（趋近 {{ Math.round(s.gap_closed) }}%）</span>
-          </li>
-        </ul>
-        <p class="field-hint">趋近 = 与真笔记天花板的接近程度;越高越像本人。</p>
       </div>
 
       <!-- B 层:账号成果 -->
@@ -233,12 +212,6 @@ const modalityEntries = computed(() => {
 .dash-card-label { font-size: 0.8rem; color: var(--color-ink-2, #6b7280); }
 .dash-card small { color: var(--color-ink-3, #9aa0a6); font-size: 0.72rem; }
 .dash-block { border-top: 1px solid var(--color-field-border, #e3e7ec); padding-top: 12px; margin-top: 16px; }
-.dash-sim { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.dash-sim li { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; }
-.dash-sim-date { width: 84px; color: var(--color-ink-2, #6b7280); }
-.dash-sim-bar { flex: 1; height: 10px; background: var(--color-paper-3, #eef0f3); border-radius: 999px; overflow: hidden; }
-.dash-sim-fill { display: block; height: 100%; background: var(--color-accent, #2563eb); }
-.dash-sim-val { width: 200px; text-align: right; color: var(--color-ink-2, #6b7280); }
 .dash-empty { padding: 20px; border: 1px dashed var(--color-field-border, #c8ced4); border-radius: 12px; text-align: center; }
 .dash-acc-switch { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .dash-acc-switch button { padding: 5px 14px; border: 1px solid var(--color-field-border, #c8ced4); border-radius: 999px; background: var(--color-field, #fff); cursor: pointer; }

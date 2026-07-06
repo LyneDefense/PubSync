@@ -424,43 +424,6 @@ export interface EvaluateResult {
 }
 
 
-// Skill 优化(训练)
-export interface SkillTrainingSample {
-  topic: string
-  seed_text: string
-  seed_sim: number
-  optimized_text: string
-  optimized_sim: number
-  real_text: string
-}
-export interface SkillTrainingReport {
-  anchors?: { floor: number; ceiling: number }
-  counts?: { train: number; val: number; test: number; dropped_minority: number }
-  epochs?: Array<{ step: number | null; action: string; val_score: number | null; edits: string[] }>
-  changelog?: string[]
-  samples?: SkillTrainingSample[]
-  process_note?: string
-}
-export interface SkillTrainingRun {
-  id: number
-  blogger_id: number
-  base_skill_id: number | null
-  result_skill_id: number | null
-  status: string
-  modality: string
-  before_score: number
-  after_score: number
-  before_gap: number
-  after_gap: number
-  delta: number
-  verdict: string
-  recommend_adopt: boolean
-  optimized_skill_markdown: string
-  report: SkillTrainingReport
-  error_message?: string | null
-  created_at: string
-}
-
 export interface BloggerDistillRequest {
   // auto=自动蒸馏(高赞 top-N);custom=自定义(选快照 或 手选 N 篇)
   source: 'auto' | 'custom'
@@ -746,23 +709,12 @@ export interface DashboardActivity {
   attempts: number
   avg_seconds: number
 }
-export interface DashboardSimilarityPoint {
-  date: string | null
-  blogger_id: number
-  before: number
-  after: number
-  gap_closed: number
-  floor: number
-  ceiling: number
-  verdict: string
-}
 export interface DashboardOverview {
   range: string
   activities: DashboardActivity[]
   creation: { created: number; published: number; conversion: number }
   library: { benchmark_count: number; my_account_count: number; post_count: number }
   saved_minutes: number
-  similarity_trend: DashboardSimilarityPoint[]
   recent: Array<{ task_type: string; label: string; status: string; at: string | null }>
 }
 export interface DashboardAccount {

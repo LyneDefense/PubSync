@@ -25,7 +25,6 @@ import type {
   BloggerSearchResult,
   BloggerSkill,
   EvaluateResult,
-  SkillTrainingRun,
   ConfigView,
   ContentProfile,
   CostEvent,
@@ -482,29 +481,6 @@ export function evaluateBlogger(payload: {
   return request<EvaluateResult>('/bloggers/evaluate', {
     method: 'POST',
     body: JSON.stringify(payload)
-  })
-}
-
-export function optimizeSkill(bloggerId: number, epochs = 2, skillId: number | null = null) {
-  return request<OperationTask>(`/bloggers/${bloggerId}/optimize-skill`, {
-    method: 'POST',
-    body: JSON.stringify({ epochs, skill_id: skillId })
-  })
-}
-
-export function listSkillTrainingRuns(bloggerId?: number) {
-  const qs = bloggerId ? `?blogger_id=${bloggerId}&limit=10` : '?limit=10'
-  return request<SkillTrainingRun[]>(`/skill-training/runs${qs}`)
-}
-
-export function getSkillTrainingRun(runId: number) {
-  return request<SkillTrainingRun>(`/skill-training/runs/${runId}`)
-}
-
-export function confirmSkillTrainingRun(runId: number, adopt: boolean) {
-  return request<SkillTrainingRun>(`/skill-training/runs/${runId}/confirm`, {
-    method: 'POST',
-    body: JSON.stringify({ adopt })
   })
 }
 

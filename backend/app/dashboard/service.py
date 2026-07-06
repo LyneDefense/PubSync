@@ -22,7 +22,6 @@ from app.models import (
     BloggerPost,
     BloggerProfile,
     OperationTask,
-    SkillTrainingRun,
     XhsPublishPackage,
 )
 
@@ -31,12 +30,11 @@ ACTIVITY_LABELS: dict[str, str] = {
     "blogger_collection": "采集",
     "blogger_distillation": "蒸馏",
     "xhs_package_draft": "AI 创作",
-    "skill_optimization": "Skill 优化",
     "account_audit": "账号体检",
     "benchmark_recommend": "找对标",
 }
-# overview 计数卡按这个顺序展示的核心四项
-CORE_ACTIVITIES = ["blogger_collection", "blogger_distillation", "xhs_package_draft", "skill_optimization"]
+# overview 计数卡按这个顺序展示的核心三项
+CORE_ACTIVITIES = ["blogger_collection", "blogger_distillation", "xhs_package_draft"]
 
 
 def _since(range_key: str) -> datetime | None:
@@ -81,30 +79,6 @@ def _activity_stats(db: Session, tenant_id: int, since: datetime | None) -> list
 def _saved_minutes(settings: Settings, creations: int, distills: int) -> int:
     per = max(0, settings.dashboard_minutes_write_per_post - settings.dashboard_minutes_ai_draft_per_post)
     return creations * per + distills * settings.dashboard_minutes_research_per_distill
-
-
-def _similarity_trend(db: Session, tenant_id: int) -> list[dict]:
-    """相似度趋近：已完成的 Skill 优化运行(非 running/failed),按时间正序。"""
-    rows = list(db.scalars(
-        select(SkillTrainingRun)
-        .where(SkillTrainingRun.tenant_id == tenant_id,
-               SkillTrainingRun.status.in_(["pending_confirmation", "succeeded", "abandoned"]))
-        .order_by(SkillTrainingRun.created_at.asc(), SkillTrainingRun.id.asc())
-    ))
-    trend = []
-    for r in rows:
-        anchors = r.report.get("anchors") if isinstance(r.report, dict) else {}
-        trend.append({
-            "date": r.created_at.date().isoformat() if r.created_at else None,
-            "blogger_id": r.blogger_id,
-            "before": round(r.before_score, 1),
-            "after": round(r.after_score, 1),
-            "gap_closed": round(r.after_gap, 1),
-            "floor": round(float(anchors.get("floor", 0)), 1) if isinstance(anchors, dict) else 0,
-            "ceiling": round(float(anchors.get("ceiling", 0)), 1) if isinstance(anchors, dict) else 0,
-            "verdict": r.verdict,
-        })
-    return trend
 
 
 def build_overview(db: Session, settings: Settings, tenant_id: int, range_key: str = "30d") -> dict:
@@ -155,7 +129,6 @@ def build_overview(db: Session, settings: Settings, tenant_id: int, range_key: s
                      "conversion": round(published / created, 3) if created else 0.0},
         "library": {"benchmark_count": benchmark_count, "my_account_count": my_account_count, "post_count": post_count},
         "saved_minutes": saved_minutes,
-        "similarity_trend": _similarity_trend(db, tenant_id),
         "recent": recent_out,
     }
 
@@ -225,11 +198,11 @@ def build_account_growth(db: Session, tenant_id: int, account_id: int, range_key
     points = [{"date": s.captured_on.isoformat(), "follower_count": s.follower_count,
                "note_total": s.note_total, "total_interactions": s.total_interactions} for s in snaps]
 
-    # 使用事件打点：租户级的「在用 PubSync」信号(创作/蒸馏/优化) + 本账号已发布
+    # 使用事件打点：租户级的「在用 PubSync」信号(创作/蒸馏) + 本账号已发布
     events: list[dict] = []
     ev_stmt = select(OperationTask).where(
         OperationTask.tenant_id == tenant_id,
-        OperationTask.task_type.in_(["xhs_package_draft", "blogger_distillation", "skill_optimization"]),
+        OperationTask.task_type.in_(["xhs_package_draft", "blogger_distillation"]),
     )
     if since is not None:
         ev_stmt = ev_stmt.where(OperationTask.created_at >= since)
