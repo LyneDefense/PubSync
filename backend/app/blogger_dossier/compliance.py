@@ -12,16 +12,37 @@ from typing import Any
 from app.compliance import scan_account
 from app.models import BloggerPost
 
+_MAX_SAMPLE_TITLES = 3  # 每类风险最多附几篇命中笔记的标题
+
+
+def _attach_sample_titles(groups: list[dict[str, Any]], posts: list[BloggerPost]) -> None:
+    """把每组风险的命中笔记序号(note_idxs)映射成标题(去重、去空,最多 3 篇),并去掉原始序号。"""
+    for g in groups:
+        idxs = g.pop("note_idxs", []) or []
+        titles: list[str] = []
+        seen: set[str] = set()
+        for i in idxs:
+            if 0 <= i < len(posts):
+                title = (posts[i].title or "").strip()
+                if title and title not in seen:
+                    seen.add(title)
+                    titles.append(title)
+            if len(titles) >= _MAX_SAMPLE_TITLES:
+                break
+        g["sample_titles"] = titles
+
 
 def scan_pool(platform: str, niche: str, tags: list[str], posts: list[BloggerPost]) -> dict[str, Any]:
-    """扫全量池,返回 to_report_dict() + 覆盖度。空池返回 {}。"""
+    """扫全量池,返回 to_report_dict() + 覆盖度 + 每类风险附命中笔记标题(≤3)。空池返回 {}。"""
     if not posts:
         return {}
     titles = [p.title or "" for p in posts]
-    # 只看博主自身内容:标题(全量池都有)+ 正文(仅详情级)。
+    # 只看博主自身内容:标题(全量池都有)+ 正文(仅详情级)。texts 与 posts 同序,note_index 即 posts 下标。
     texts = [f"{p.title or ''}\n{p.body_text or ''}".strip() for p in posts]
     result = scan_account(texts, platform, niche=niche, tags=tags, titles=titles)
     report = result.to_report_dict()
+    _attach_sample_titles(report.get("violations") or [], posts)
+    _attach_sample_titles(report.get("advisories") or [], posts)
     report["coverage"] = {
         "pool": len(posts),
         "title_level": len(posts),

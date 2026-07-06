@@ -40,6 +40,7 @@ def grade(hits: list[Hit], total_notes: int, verticals: list[str], *, mode: str 
             "matched": matched_words,
             "coverage": {"hit_notes": len(note_idxs), "total_notes": total_notes},
             "samples": samples,
+            "note_idxs": sorted(note_idxs),  # 命中所在笔记序号;调用方可映射成标题(如档案合规)
         }
         # 扁平命中(创作闸门 + 兼容旧前端 compliance.hits):按 (rule,词,字段) 去重
         for h in hs:

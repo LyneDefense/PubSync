@@ -858,6 +858,7 @@ export interface AppraisalComplianceGroup {
   matched: string[]
   coverage?: { hit_notes: number; total_notes: number }
   samples?: string[]
+  sample_titles?: string[] // 命中该类风险的笔记标题(≤3),档案合规附上
 }
 export interface AppraisalComplianceResult {
   score: number

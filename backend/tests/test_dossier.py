@@ -231,3 +231,18 @@ def test_compliance_scan_pool_reports_coverage():
     rep = scan_pool("xhs", "美妆", ["护肤"], posts)
     assert rep["coverage"] == {"pool": 2, "title_level": 2, "full_text": 1}
     assert "grade" in rep and "hits" in rep
+
+
+def test_compliance_scan_pool_attaches_sample_titles():
+    from app.blogger_dossier.compliance import scan_pool
+    posts = [
+        N(title="顶级护肤面霜秘方", body_text="", detail_level="full"),  # 「顶级」→ 绝对化用语
+        N(title="日常护肤小分享", body_text="", detail_level="full"),
+    ]
+    rep = scan_pool("xhs", "美妆", ["护肤"], posts)
+    groups = (rep.get("violations") or []) + (rep.get("advisories") or [])
+    assert groups, "「顶级」应命中绝对化用语"
+    for g in groups:
+        assert isinstance(g.get("sample_titles"), list) and "note_idxs" not in g  # 附标题、剥离原始序号
+    hit = next(g for g in groups if any("顶级" in t for t in g["sample_titles"]))
+    assert "顶级护肤面霜秘方" in hit["sample_titles"] and len(hit["sample_titles"]) <= 3

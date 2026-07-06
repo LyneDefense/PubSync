@@ -96,6 +96,9 @@ const detailOpen = ref(false)
                 <b>{{ g.category }}</b>
                 <span v-if="g.coverage && g.coverage.total_notes > 1" class="dc-cover">命中 {{ g.coverage.hit_notes }}/{{ g.coverage.total_notes }} 篇</span>
                 <span v-if="g.matched && g.matched.length" class="dc-quote">{{ g.matched.join('、') }}</span>
+                <span v-if="g.sample_titles && g.sample_titles.length" class="dc-notes">
+                  涉及笔记:<em v-for="(t, ti) in g.sample_titles" :key="ti">《{{ t }}》</em><em v-if="g.coverage && g.coverage.hit_notes > g.sample_titles.length" class="dc-notes-more">等 {{ g.coverage.hit_notes }} 篇</em>
+                </span>
                 <span v-if="g.hint" class="dc-sugg">→ {{ g.hint }}</span>
                 <span v-if="g.basis" class="dc-basis">依据:{{ g.basis }}</span>
               </div>
@@ -122,6 +125,7 @@ const detailOpen = ref(false)
             <div v-for="(g, i) in advisories" :key="`a${i}`" class="dc-adv">
               <b>{{ g.category }}</b>
               <span v-if="g.matched && g.matched.length" class="dc-quote">{{ g.matched.join('、') }}</span>
+              <span v-if="g.sample_titles && g.sample_titles.length" class="dc-notes">涉及笔记:<em v-for="(t, ti) in g.sample_titles" :key="ti">《{{ t }}》</em></span>
               <span v-if="g.hint" class="dc-sugg">→ {{ g.hint }}</span>
             </div>
           </template>
@@ -199,6 +203,9 @@ const detailOpen = ref(false)
 .dc-quote { font-size: 12.5px; color: var(--color-ink-2); }
 .dc-sugg { font-size: 12px; color: var(--color-accent-ink); }
 .dc-basis { font-size: 11.5px; color: var(--color-ink-3); line-height: 1.5; }
+.dc-notes { font-size: 12px; color: var(--color-ink-2); line-height: 1.6; }
+.dc-notes em { font-style: normal; color: var(--color-ink); }
+.dc-notes-more { color: var(--color-ink-3); margin-left: 2px; }
 .dc-adv { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-top: 1px solid var(--color-paper-3); }
 .dc-adv:first-of-type { border-top: 0; }
 .dc-adv b { font-size: 12.5px; color: var(--color-ink); }
