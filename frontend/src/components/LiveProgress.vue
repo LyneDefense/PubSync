@@ -4,11 +4,10 @@
 import { ref, watch, nextTick } from 'vue'
 import {
   isVisibleTaskRunning,
-  liveStage,
+  liveHeadline,
   liveStageMessage,
   liveTimeline,
   pendingAction,
-  runningTaskName,
   taskCountProgress,
   taskElapsedLabel,
   handleCancelDistillation
@@ -33,7 +32,7 @@ watch(
     <header class="live-progress__head">
       <span class="live-progress__spinner" aria-hidden="true"></span>
       <div class="live-progress__headline">
-        <strong>{{ runningTaskName }} · {{ liveStage }}</strong>
+        <strong>{{ liveHeadline }}</strong>
         <p>{{ liveStageMessage }}</p>
       </div>
       <span class="live-progress__elapsed">{{ taskElapsedLabel }}</span>

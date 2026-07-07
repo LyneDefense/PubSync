@@ -330,7 +330,7 @@ def generate_package_content(
             if hits:
                 record_task_event(db, tenant_id, task_id, "平台合规", "running", f"已尽力规避,还有 {len(hits)} 个限流词建议手动调整")
             else:
-                record_task_event(db, tenant_id, task_id, "平台合规", "running", "内容已规避平台限流词 ✓")
+                record_task_event(db, tenant_id, task_id, "平台合规", "running", "内容已规避平台限流词")
 
     if task_id:
         record_task_event(db, tenant_id, task_id, "对标对比", "running", "正在和对标博主比对差距…")

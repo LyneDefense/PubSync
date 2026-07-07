@@ -53,7 +53,7 @@ def handle_note_vision(
     scope: str | None = None,
 ) -> None:
     if _reuse_existing_vision(db, tenant_id, blogger, normalized):
-        record_task_event(db, tenant_id, task_id, "图片理解", "succeeded", "命中已解析记录(note_key)，复用图片理解")
+        record_task_event(db, tenant_id, task_id, "图片理解", "succeeded", "这条的图片之前识别过，直接复用")
         return
     if vision_provider is None:
         normalized["vision_status"] = "skipped"
@@ -90,7 +90,7 @@ def handle_note_vision(
             task_id,
             "图片理解",
             "succeeded",
-            f"图片理解完成：图内文字 {len(result.image_text)} 字，解析 {result.image_count} 张（note_id={candidate.external_id}）",
+            f"图片识别完成（识别 {result.image_count} 张、图内文字 {len(result.image_text)} 字）",
             {"image_count": result.image_count, "provider": result.provider},
         )
     except Exception as exc:
@@ -98,7 +98,7 @@ def handle_note_vision(
             raise  # 任务取消/超时不当作单条失败吞掉,一路上抛让任务干净失败(见 #20)
         normalized["vision_status"] = "failed"
         normalized["vision_error"] = str(exc)
-        record_task_event(db, tenant_id, task_id, "图片理解", "failed", f"图片理解未执行，降级分析：note_id={candidate.external_id}，原因={exc}")
+        record_task_event(db, tenant_id, task_id, "图片理解", "failed", "图片识别没跑成，这条改用文字信息分析")
 
 
 def revise_post_vision(post: BloggerPost, vision_provider: Any, settings: Settings) -> bool:

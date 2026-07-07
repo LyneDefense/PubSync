@@ -55,16 +55,14 @@ def handle_video_asr(
     blogger: BloggerProfile,
 ) -> None:
     # 优先复用历史转写(应对 note_id 漂移导致的重复采集),省下重复 ASR 成本。
+    # 注:面向用户的进度文案里不出现 note_id/note_key/ASR/provider 这类技术词(见「进度文案净化」)。
     if _reuse_existing_transcript(db, tenant_id, blogger, normalized):
-        record_task_event(
-            db, tenant_id, task_id, "视频 ASR", "succeeded",
-            f"命中已转写记录(note_key),复用历史转写跳过 ASR：note_id={candidate.external_id}",
-        )
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "这条视频之前转写过，直接复用")
         return
     if asr_provider is None:
         normalized["asr_status"] = "skipped"
         normalized["asr_error"] = "ASR 未开启或初始化失败"
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", f"跳过视频转写：note_id={candidate.external_id}")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "跳过这条视频的转写")
         return
     raw_payload = {}
     try:
@@ -74,13 +72,13 @@ def handle_video_asr(
     # 小红书常挂中/英多条字幕轨。逐条取,优先用「中文」那条;只有英文(自动翻译)则丢弃改走 ASR。
     subtitle_urls = extract_subtitle_urls(candidate.raw) or extract_subtitle_urls(raw_payload)
     if subtitle_urls:
-        record_task_event(db, tenant_id, task_id, "视频字幕", "running", f"正在采集字幕…（note_id={candidate.external_id}）")
+        record_task_event(db, tenant_id, task_id, "视频字幕", "running", "正在读取视频字幕…")
         non_chinese_seen = False
         for subtitle_url in subtitle_urls:
             try:
                 subtitle_text = fetch_subtitle_text(subtitle_url)
-            except Exception as exc:
-                record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", f"字幕解析失败，换下一条/ASR：note_id={candidate.external_id}，原因={exc}")
+            except Exception:
+                record_task_event(db, tenant_id, task_id, "视频字幕", "succeeded", "这条字幕没读到，换用语音转文字")
                 continue
             if not subtitle_text:
                 continue
@@ -89,19 +87,15 @@ def handle_video_asr(
                 normalized["asr_status"] = "subtitle"
                 normalized["asr_error"] = ""
                 record_task_event(
-                    db,
-                    tenant_id,
-                    task_id,
-                    "视频字幕",
-                    "succeeded",
-                    f"已使用中文字幕，跳过 ASR：note_id={candidate.external_id}，字数={len(subtitle_text)}",
+                    db, tenant_id, task_id, "视频字幕", "succeeded",
+                    f"已用中文字幕（{len(subtitle_text)} 字），跳过语音转写",
                 )
                 return
             non_chinese_seen = True
         if non_chinese_seen:
             record_task_event(
                 db, tenant_id, task_id, "视频字幕", "succeeded",
-                f"只找到非中文字幕（疑似自动翻译），改走 ASR：note_id={candidate.external_id}",
+                "只有非中文字幕（疑似自动翻译），改用语音转文字",
             )
     # 选视频流:优先结构化 media.stream(pick_video_stream 含 size);否则从详情按「带音频优先」选——
     # extract_video_url → collect_video_url_candidates 已把无音频的 stream_type 16 排到最后(见 G1)。
@@ -112,23 +106,19 @@ def handle_video_asr(
     if not video_url:
         normalized["asr_status"] = "skipped"
         normalized["asr_error"] = "未提取到可转写的视频 URL"
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", f"未拿到视频直链，跳过转写并降级分析：note_id={candidate.external_id}")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "没拿到视频直链，这条改用文字信息分析")
         return
     size_bytes = (stream_info or {}).get("size") or 0
     if not size_bytes:
         size_bytes = probe_remote_size(video_url)
     size_label = f"{size_bytes / (1 << 20):.1f}MB" if size_bytes else "未知"
     def on_progress(message: str) -> None:
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"{message}（note_id={candidate.external_id}）")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "running", message)
 
     try:
         record_task_event(
-            db,
-            tenant_id,
-            task_id,
-            "视频 ASR",
-            "running",
-            f"正在把视频语音转成文字…（视频 {size_label}，note_id={candidate.external_id}）",
+            db, tenant_id, task_id, "视频 ASR", "running",
+            f"正在把视频语音转成文字…（视频 {size_label}）",
         )
         result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id, on_progress=on_progress)
         normalized["transcript_text"] = strip_asr_timestamps(result.text)
@@ -137,12 +127,8 @@ def handle_video_asr(
         if result.duration_seconds:  # 供 content_subtype 密度判定用(字/秒);字幕/复用路径没有则留空
             normalized["duration_seconds"] = float(result.duration_seconds)
         record_task_event(
-            db,
-            tenant_id,
-            task_id,
-            "视频 ASR",
-            "succeeded",
-            f"视频转写完成：note_id={candidate.external_id}，字数={len(result.text)}（{result.provider}）",
+            db, tenant_id, task_id, "视频 ASR", "succeeded",
+            f"视频转写完成（{len(result.text)} 字）",
             {"task_id": result.task_id, "duration_seconds": result.duration_seconds, "provider": result.provider},
         )
     except Exception as exc:
@@ -151,7 +137,7 @@ def handle_video_asr(
         normalized["asr_status"] = "skipped" if is_expected_asr_skip(exc) else "failed"
         normalized["asr_error"] = str(exc)
         event_status = "succeeded" if normalized["asr_status"] == "skipped" else "failed"
-        record_task_event(db, tenant_id, task_id, "视频 ASR", event_status, f"视频转写未执行，降级分析：note_id={candidate.external_id}，原因={exc}")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", event_status, "视频转写没跑成，这条改用文字信息分析")
 
 
 def is_expected_asr_skip(exc: Exception) -> bool:

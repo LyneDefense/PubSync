@@ -167,7 +167,7 @@ import {
       <div class="actions">
         <button type="button" @click="closeBloggerModal">取消</button>
         <button type="submit" class="primary" :disabled="Boolean(pendingAction) || !bloggerForm.homepage_url">
-          {{ pendingAction === 'blogger' ? '保存中' : editingBlogger ? '保存修改' : '保存博主' }}
+          {{ pendingAction === 'blogger' ? '保存中…' : editingBlogger ? '保存修改' : '保存博主' }}
         </button>
       </div>
     </form>

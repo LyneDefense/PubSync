@@ -32,7 +32,7 @@ import {
             <h2>工作空间配置</h2>
           </div>
           <button type="submit" form="workspace-config-form" class="primary" :disabled="Boolean(pendingAction)">
-            {{ pendingAction === 'config' ? '保存中' : '保存配置' }}
+            {{ pendingAction === 'config' ? '保存中…' : '保存配置' }}
           </button>
         </div>
         <div class="module-subnav">

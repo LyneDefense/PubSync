@@ -121,7 +121,7 @@ def _apply_auto_tags(
     except Exception as exc:  # noqa: BLE001 — 打标签是增强项,不能影响采集主流程
         logger.warning("自动打标签失败,跳过:blogger_id=%s,error=%s", blogger.id, exc)
         try:
-            record_task_event(db, tenant_id, task_id, "内容标签", "running", f"内容标签生成失败,已跳过:{exc}")
+            record_task_event(db, tenant_id, task_id, "内容标签", "running", "内容标签没生成成功，已跳过")
         except Exception:  # noqa: BLE001
             pass
 
@@ -477,8 +477,8 @@ def run_blogger_url_collection(
         for raw in urls:
             try:
                 parsed = parse_xhs_note_link(_expand_short_link(raw))
-            except TikHubError as exc:
-                record_task_event(db, tenant_id, task_id, "链接解析", "failed", f"跳过无法解析的链接：{raw[:80]} — {exc}")
+            except TikHubError:
+                record_task_event(db, tenant_id, task_id, "链接解析", "failed", f"这个链接没解析成功，已跳过：{raw[:50]}")
                 continue
             if parsed["note_id"] in seen:
                 continue

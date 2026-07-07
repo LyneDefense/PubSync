@@ -150,7 +150,7 @@ import {
             <label>导语<textarea v-model="form.intro" rows="4" :disabled="!hasArticle"></textarea></label>
             <label>封面图 URL<input v-model="form.cover_image_url" type="url" :disabled="!hasArticle" /></label>
             <label>正文 HTML<textarea v-model="form.content_html" rows="16" :disabled="!hasArticle"></textarea></label>
-            <button type="submit" :disabled="!hasArticle || Boolean(pendingAction)">{{ pendingAction === 'save' ? '保存中' : '保存修改' }}</button>
+            <button type="submit" :disabled="!hasArticle || Boolean(pendingAction)">{{ pendingAction === 'save' ? '保存中…' : '保存修改' }}</button>
           </form>
           <article v-else class="preview-panel">
             <img v-if="form.cover_image_url" class="cover" :src="form.cover_image_url" alt="文章封面预览" />

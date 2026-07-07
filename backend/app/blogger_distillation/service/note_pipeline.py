@@ -59,18 +59,18 @@ def build_collect_providers(db: Session, tenant_id: int, task_id: str, settings:
     if settings.asr_enabled:
         try:
             asr = build_asr_provider(settings)
-            record_task_event(db, tenant_id, task_id, "视频 ASR", "running", f"ASR 已开启：provider={settings.asr_provider}")
-        except ASRError as exc:
-            record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", f"ASR 初始化失败，将降级分析视频：{exc}")
+            record_task_event(db, tenant_id, task_id, "视频 ASR", "running", "已开启视频语音转写")
+        except ASRError:
+            record_task_event(db, tenant_id, task_id, "视频 ASR", "failed", "视频语音转写没能启动，改用文字信息分析")
     else:
-        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "ASR 未开启，视频样本将使用标题、描述、评论和互动数据参与蒸馏")
+        record_task_event(db, tenant_id, task_id, "视频 ASR", "succeeded", "未开启视频语音转写，视频将用标题、描述、评论参与分析")
     vision = None
     if settings.vision_enabled:
         try:
             vision = build_vision_provider(settings)
-            record_task_event(db, tenant_id, task_id, "图片理解", "running", f"图片理解已开启：model={settings.vision_model}")
-        except VisionError as exc:
-            record_task_event(db, tenant_id, task_id, "图片理解", "failed", f"图片理解初始化失败，将降级分析：{exc}")
+            record_task_event(db, tenant_id, task_id, "图片理解", "running", "已开启图片识别")
+        except VisionError:
+            record_task_event(db, tenant_id, task_id, "图片理解", "failed", "图片识别没能启动，改用文字信息分析")
     return CollectProviders(asr=asr, vision=vision)
 
 
@@ -98,7 +98,7 @@ def process_one_note(
         detail = client.get_image_note_detail(candidate)
     except TikHubError as exc:
         logger.warning("笔记详情采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
-        record_task_event(db, tenant_id, task_id, "笔记详情", "failed", f"详情采集失败：note_id={candidate.external_id}，错误={exc}")
+        record_task_event(db, tenant_id, task_id, "笔记详情", "failed", "有一条笔记详情没采到，已跳过")
         return None
     note_type = candidate.note_type or detect_note_type(detail)
     pipeline = _process_video_note if note_type == "video" else _process_image_note
@@ -109,7 +109,7 @@ def _process_image_note(db, tenant_id, task_id, blogger, client, settings, candi
     """图文管线:正文 + 静态图(封面 + 正文图)图片理解。不碰 ASR / 视频流。"""
     normalized = normalize_post(candidate, detail)
     if _is_empty_content(normalized):
-        record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
+        record_task_event(db, tenant_id, task_id, "样本清洗", "failed", "跳过一条空内容笔记")
         return None
     ensure_distillation_not_cancelled(db, tenant_id, task_id)
     handle_note_vision(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings)
@@ -123,7 +123,7 @@ def _process_video_note(db, tenant_id, task_id, blogger, client, settings, candi
         detail = supplement_video_detail_with_url(client, candidate, detail)
     normalized = normalize_post(candidate, detail)
     if _is_empty_content(normalized):
-        record_task_event(db, tenant_id, task_id, "样本清洗", "failed", f"跳过空内容笔记：note_id={candidate.external_id}")
+        record_task_event(db, tenant_id, task_id, "样本清洗", "failed", "跳过一条空内容笔记")
         return None
     ensure_distillation_not_cancelled(db, tenant_id, task_id)
     handle_video_asr(db, tenant_id, task_id, candidate, normalized, providers.asr, blogger)
@@ -147,7 +147,7 @@ def _collect_comments(db, tenant_id, task_id, client, candidate, normalized, com
         comments = [normalize_comment(item) for item in raw_comments]
     except (TikHubError, RuntimeError) as exc:
         logger.warning("评论采集失败：note_id=%s，错误=%s", candidate.external_id, exc)
-        record_task_event(db, tenant_id, task_id, "评论采集", "failed", f"评论采集失败：note_id={candidate.external_id}，错误={exc}")
+        record_task_event(db, tenant_id, task_id, "评论采集", "failed", "有一条笔记的评论没采到，已跳过")
     normalized["comments_json"] = json.dumps([item for item in comments if item["content"]], ensure_ascii=False)
 
 

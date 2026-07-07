@@ -593,9 +593,15 @@ const TASK_NAME_MAP: Record<string, string> = {
   'pool-sync': '同步笔记池',
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
+// 把后端「技术步骤名」翻成通俗阶段名。**必须覆盖所有后端会发的 step 名**,漏一个就原样露出技术味;
+// 且别和 TASK_NAME_MAP 的任务名取成一模一样(头部会显示「任务名 · 阶段名」,靠 liveHeadline 去重兜底)。
 const STEP_LABEL_MAP: Record<string, string> = {
+  // 采集 / 笔记池
   样本采集: '准备采集',
+  采集样本: '采集账号笔记',
   增量分流: '整理笔记池',
+  笔记池: '整理笔记池',
+  笔记池同步: '同步笔记池',
   笔记详情: '获取笔记内容',
   样本入库: '保存笔记',
   样本清洗: '去重校验',
@@ -607,19 +613,39 @@ const STEP_LABEL_MAP: Record<string, string> = {
   内容标签: '提炼标签',
   基础统计: '统计分析',
   下架对账: '核对在架',
+  模态裁决: '判定内容形态',
   链接解析: '解析链接',
   定向采集: '定向采集',
+  // 建档
+  '建档·资料': '拉取账号资料',
+  '建档·详情升级': '升级笔记详情',
+  '建档·数据与轨迹': '统计数据与轨迹',
+  '建档·创作画像': '蒸馏创作画像',
+  档案信号: '汇总档案信号',
+  更新画像: '更新创作画像',
+  // 蒸馏
   蒸馏选材: '挑选样本',
-  认知蒸馏: '提炼方法论',
+  内核蒸馏: '提炼内核',
+  认知蒸馏: '提炼内核',
+  内容层: '分车道提炼',
+  'Skill 生成': '生成方法论',
+  博主蒸馏: '提炼方法论',
+  停止蒸馏: '已停止',
+  任务中断: '已中断',
+  // 思考过程(通用:蒸馏/创作)
   思考过程: '思考中',
   自检: '自我检查',
   深度评审: '换视角评审',
   完成: '收尾',
-  'Skill 生成': '生成方法论',
+  // 创作
   配图: '生成配图',
+  配图方案: '生成配图方案',
   平台合规: '平台合规检查',
   对标对比: '对标对比',
-  发布包生成: '生成创作内容',
+  对标诊断: '对拍差距',
+  发布包生成: '起草正文/脚本',
+  发布包草稿: '整理成发布包',
+  // 早报
   流程: '总体进度',
   新闻后处理: '筛选评分新闻',
   文章素材准备: '整理素材',
@@ -687,6 +713,12 @@ export const liveTimeline = computed(() =>
 )
 // 顶部当前阶段(最新事件,通俗化);没有事件时回退到任务名。
 export const liveStage = computed(() => (latestTaskEvent.value ? humanizeStepName(latestTaskEvent.value.step_name) : runningTaskName.value))
+// 面板头「任务名 · 阶段名」:阶段名和任务名相同时只显示一个,避免「提炼方法论 · 提炼方法论」这类重复。
+export const liveHeadline = computed(() => {
+  const name = runningTaskName.value
+  const stage = liveStage.value
+  return stage && stage !== name ? `${name} · ${stage}` : name
+})
 export const liveStageMessage = computed(() => latestTaskEvent.value?.message || '正在准备…')
 
 export const articleStateLabel = computed(() => {

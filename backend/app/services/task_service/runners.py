@@ -234,7 +234,7 @@ def run_blogger_distillation_task(
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)
         if task:
-            record_task_event(db, task.tenant_id, task_id, "博主蒸馏", "failed", f"博主蒸馏失败：{type(exc).__name__}: {exc}")
+            record_task_event(db, task.tenant_id, task_id, "博主蒸馏", "failed", "博主蒸馏失败，请稍后重试")
 
     execute_task(
         task_id,
@@ -298,7 +298,7 @@ def run_account_audit_task(task_id: str, payload: dict) -> None:
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)
         if task:
-            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
+            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败，请稍后重试")
 
     execute_task(
         task_id,
@@ -354,7 +354,7 @@ def run_appraisal_task(task_id: str, payload: dict) -> None:
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:
         task = get_task(db, task_id)
         if task:
-            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
+            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败，请稍后重试")
 
     execute_task(task_id, label=subject, fail_message=f"{subject}失败", work=work,
                  expected=(ValueError, AIServiceError), on_unexpected=record_failure)
