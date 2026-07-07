@@ -30,6 +30,7 @@ import {
   loadDossier
 } from '../composables/useDossier'
 import {
+  activeMainTab,
   formatDate,
   handleDeleteBlogger,
   handleRefreshBlogger,
@@ -78,6 +79,8 @@ watch(
   { immediate: true }
 )
 watch(() => route.query.view, (v) => { view.value = v === 'audit' ? 'audit' : 'dossier' })
+// 新架构无平台门:选中账号后把平台对齐到它,让体检/历史等 currentSocialPlatform 相关调用指向对的平台。
+watch(selectedBlogger, (b) => { if (b) activeMainTab.value = b.platform === 'douyin' ? 'douyin' : 'xhs' }, { immediate: true })
 
 function setView(v: 'dossier' | 'audit') {
   view.value = v

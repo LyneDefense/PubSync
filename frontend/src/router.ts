@@ -29,10 +29,9 @@ function isPlatform(value: unknown): value is PlatformParam {
   return typeof value === 'string' && (PLATFORMS as readonly string[]).includes(value)
 }
 
-// 登录后默认目的地：最近平台/对应默认页签，否则选平台页。
+// 登录后默认目的地：对象驱动新首页(UI·9 起,不再落到选平台/旧工作台)。
 function landingTarget() {
-  const last = readLastPlatform()
-  return last ? { name: 'workspace', params: { platform: last, tab: DEFAULT_TAB[last] } } : { name: 'select' }
+  return { name: 'home' }
 }
 
 const routes = [

@@ -31,6 +31,7 @@ import {
   loadDossier
 } from '../composables/useDossier'
 import {
+  activeMainTab,
   handleDeleteBlogger,
   handleRefreshBlogger,
   handleToggleBloggerFavorite,
@@ -64,6 +65,8 @@ watch(
   { immediate: true }
 )
 watch(() => route.query.view, (v) => { view.value = v === 'analysis' ? 'analysis' : 'dossier' })
+// 新架构无平台门:选中博主后把平台对齐到它,让 currentSocialPlatform 相关调用(蒸馏/分析)指向对的平台。
+watch(selectedBlogger, (b) => { if (b) activeMainTab.value = b.platform === 'douyin' ? 'douyin' : 'xhs' }, { immediate: true })
 
 function setView(v: 'dossier' | 'analysis') {
   view.value = v

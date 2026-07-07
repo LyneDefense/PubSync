@@ -977,12 +977,19 @@ export function setArticle(nextArticle: Article | null) {
   form.content_html = nextArticle?.content_html || ''
 }
 
+// 对象驱动新架构:社媒两平台合并展示,博主列表跨平台一次拉全(平台=属性/筛选,不再是门)。
+const SOCIAL_PLATFORMS: SocialPlatform[] = ['xhs', 'douyin']
+async function fetchAllSocialBloggers(): Promise<BloggerProfile[]> {
+  const lists = await Promise.all(SOCIAL_PLATFORMS.map((p) => listBloggers(p)))
+  return lists.flat()
+}
+
 export async function loadAll() {
   const [nextConfig, nextNews, nextArticle, nextBloggers, nextSkills, nextXhsPackages] = await Promise.all([
     getWorkspaceConfig(),
     listNews(),
     getLatestArticle(),
-    listBloggers(currentSocialPlatform.value),
+    fetchAllSocialBloggers(),
     listBloggerSkills(currentSocialPlatform.value),
     listXhsPublishPackages()
   ])
@@ -1106,7 +1113,7 @@ export async function refreshArticle() {
 }
 
 export async function refreshBloggers() {
-  bloggers.value = await listBloggers(currentSocialPlatform.value)
+  bloggers.value = await fetchAllSocialBloggers()
   bloggerSkills.value = await listBloggerSkills(currentSocialPlatform.value)
   syncXhsPackageSelection()
   if (selectedBloggerId.value && !bloggers.value.some((item) => item.id === selectedBloggerId.value)) {

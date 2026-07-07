@@ -8,7 +8,7 @@ import LoginView from './components/LoginView.vue'
 import NavIcon from './components/NavIcon.vue'
 import AppShell from './components/shell/AppShell.vue'
 import { clearAuthToken, clearTenantId } from './api'
-import { DEFAULT_TAB, readLastPlatform } from './router'
+import { DEFAULT_TAB } from './router'
 import type { PlatformParam } from './router'
 
 // 管理后台是完全独立入口(admin.html,自带登录),不在工作台顶栏放入口,管理员直接访问 /PubSync/admin/。
@@ -68,8 +68,7 @@ watch(isAuthenticated, (authed) => {
       if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
         router.replace(redirect) // 深链/新架构页:登录后跳回原目标
       } else {
-        const last = readLastPlatform()
-        router.replace(last ? { name: 'workspace', params: { platform: last, tab: DEFAULT_TAB[last] } } : { name: 'select' })
+        router.replace({ name: 'home' }) // UI·9 起默认落到对象驱动新首页
       }
     }
   } else if (route.name !== 'login') {
@@ -260,9 +259,6 @@ onUnmounted(() => {
       </button>
 
       <span class="sh-spacer"></span>
-
-      <!-- 临时入口:一点跳进对象驱动新版首页(UI·9 设为默认落地后撤掉)。 -->
-      <button type="button" class="sh-newui" @click="router.push({ name: 'home' })">✨ 试新版</button>
 
       <button type="button" class="sh-search" @click="comingSoon('全局搜索')">
         <NavIcon name="search" />
@@ -479,23 +475,6 @@ onUnmounted(() => {
   height: 15px;
 }
 /* 搜索 */
-/* 临时「试新版」入口 pill(青绿描边,醒目但不喧宾夺主)。 */
-.sh-newui {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 13px;
-  border: 1px solid var(--color-accent-soft-bd);
-  border-radius: 999px;
-  background: var(--color-accent-tint);
-  color: var(--color-accent-ink);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.sh-newui:hover { border-color: var(--color-accent); }
-
 .sh-search {
   display: flex;
   align-items: center;
