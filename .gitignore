@@ -15,8 +15,8 @@ backend/.env
 *.sqlite
 *.sqlite3
 
-# Frontend dependencies/build output
-node_modules/
+# Frontend dependencies/build output（无斜杠：同时忽略 node_modules 目录与符号链接）
+node_modules
 dist/
 build/
 
