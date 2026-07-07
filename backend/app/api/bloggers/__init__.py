@@ -2,7 +2,7 @@
 (main.py 仍 ``include_router(bloggers.router, ...)``,所有路径/方法不变)。
 
 - :mod:`.crud`         —— 对标库 CRUD(增删改查 / 收藏 / 刷新资料)+ 笔记列表 + Skill 列表
-- :mod:`.recommend`    —— 关键词搜索 + 智能推荐 + 单博主评分(对标发现的「评分」侧)
+- :mod:`.recommend`    —— 关键词搜索(附火爆度速览;智能推荐 + 单博主评分已下线)
 - :mod:`.collection`   —— 笔记采集(主页增量 / URL 定向)+ 采集批次 + 成本预估
 - :mod:`.distillation` —— 蒸馏发起 + 选材快照 + 蒸馏记录
 - :mod:`.dossier`      —— 博主档案:一键建档 + 聚合读 + 笔记池同步 + 爆文归因

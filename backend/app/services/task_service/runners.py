@@ -31,7 +31,6 @@ from app.services.tenant_service import (
 )
 from app.services.wechat_service import WeChatAPIError
 from app.account_audit.service import run_account_audit
-from app.benchmark_discovery.service import run_recommendation
 from app.blogger_dossier.service import build_dossier, redistill_dossier, sync_pool
 from app.xhs_creation.service import generate_xhs_publish_package_draft
 
@@ -294,38 +293,6 @@ def run_account_audit_task(task_id: str, payload: dict) -> None:
             benchmark_post_ids=[int(x) for x in (payload.get("benchmark_post_ids") or [])],
         )
         mark_task_succeeded(db, task, f"{subject}完成,评分 {run.score}")
-        logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)
-
-    def record_failure(db: Session, task_id: str, exc: Exception) -> None:
-        task = get_task(db, task_id)
-        if task:
-            record_task_event(db, task.tenant_id, task_id, subject, "failed", f"{subject}失败：{type(exc).__name__}: {exc}")
-
-    execute_task(
-        task_id,
-        label=subject,
-        fail_message=f"{subject}失败",
-        work=work,
-        expected=(ValueError, AIServiceError),
-        on_unexpected=record_failure,
-    )
-
-
-def run_benchmark_recommend_task(task_id: str, payload: dict) -> None:
-    subject = "对标推荐"
-
-    def work(db: Session, task: OperationTask) -> None:
-        mark_task_running(db, task, "正在帮你找对标博主…")
-        run = run_recommendation(
-            db=db,
-            settings=get_settings(),
-            task_id=task_id,
-            tenant_id=task.tenant_id,
-            platform=str(payload.get("platform") or "xhs"),
-            intent=payload.get("intent") or {},
-            my_account_id=int(payload["my_account_id"]) if payload.get("my_account_id") else None,
-        )
-        mark_task_succeeded(db, task, f"找到 {len(run.candidates)} 个候选对标博主")
         logger.info("任务成功：任务ID=%s，类型=%s，运行ID=%s", task_id, subject, run.id)
 
     def record_failure(db: Session, task_id: str, exc: Exception) -> None:

@@ -30,14 +30,6 @@ from app.schemas.audit import (
     AppraisalIntentSuggestResult,
     SelfDiagnoseCreate,
 )
-from app.schemas.benchmark import (
-    BenchmarkIntent,
-    BenchmarkRecommendationRunRead,
-    CandidateScore,
-    EvaluateRequest,
-    EvaluateResult,
-    RecommendRequest,
-)
 from app.schemas.blogger import (
     BloggerCollectRequest,
     BloggerUrlCollectRequest,
@@ -131,12 +123,6 @@ __all__ = [
     "AppraisalIntentSuggestRequest",
     "AppraisalIntentSuggestResult",
     "SelfDiagnoseCreate",
-    "BenchmarkIntent",
-    "CandidateScore",
-    "RecommendRequest",
-    "EvaluateRequest",
-    "EvaluateResult",
-    "BenchmarkRecommendationRunRead",
     "SettingRead",
     "SettingUpdate",
     "BloggerProfileCreate",
