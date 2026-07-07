@@ -38,12 +38,12 @@ CONTENT_TYPE_SPECS: dict[str, ContentTypeSpec] = {
         label="图文笔记加配图",
         instruction=(
             "图文笔记加配图:正文配合多张图阅读。**我们不替用户生成图,只给「配图方案」**——"
-            "规划每张配图:用途、图上短文案、版式/画幅(如 竖版3:4·封面/步骤图/对比图)、以及一段可直接拿去 AI 工具生图的英文 prompt。"
+            "规划每张配图:用途、图上短文案、版式/画幅(如 竖版3:4·封面/步骤图/对比图)、以及一段可直接拿去 AI 工具生图的**中文** prompt(面向中文用户,prompt 全程用中文写)。"
             "绘图 prompt 禁止出现真人姓名、真人肖像、logo、品牌标识、平台 UI 截图,用干净可商用的概念图/场景图。"
         ),
         schema_fragment="""  "suitable_image_count": 0,
   "image_plan": [
-    {"slot": 1, "purpose": "这张图的作用", "caption": "图上短文案", "format": "版式/画幅,如 竖版3:4·封面", "prompt": "English image generation prompt"}
+    {"slot": 1, "purpose": "这张图的作用", "caption": "图上短文案", "format": "版式/画幅,如 竖版3:4·封面", "prompt": "中文生图提示词,例如:扁平插画风,一只橘猫蹲在猫粮碗前,暖色调,竖版3:4"}
   ]""",
         required_fields=["title", "body_text", "hashtags", "image_plan"],
     ),

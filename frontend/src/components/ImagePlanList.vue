@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 配图方案(不代生成图):每张给 版式/画幅 · 用途 · 图上文案 · 可直接拿去 AI 工具生图的英文 prompt(可复制)。
+// 配图方案(不代生成图):每张给 版式/画幅 · 用途 · 图上文案 · 可直接拿去 AI 工具生图的中文 prompt(可复制)。
 import { copyText } from '../composables/useWorkspaceStore'
 
 defineProps<{
@@ -26,7 +26,7 @@ function field(item: Record<string, unknown>, key: string): string {
         <p v-if="field(item, 'caption')" class="ipl__row"><em>图上文案</em>{{ field(item, 'caption') }}</p>
         <div v-if="field(item, 'prompt')" class="ipl__prompt">
           <div class="ipl__prompt-head">
-            <span>生图 prompt(英文)</span>
+            <span>生图 prompt(中文)</span>
             <button type="button" class="ipl__copy" @click="copyText(field(item, 'prompt'), '生图 prompt')">复制</button>
           </div>
           <code>{{ field(item, 'prompt') }}</code>

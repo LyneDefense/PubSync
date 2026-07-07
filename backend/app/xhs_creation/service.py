@@ -60,7 +60,7 @@ def generate_xhs_publish_package_draft(
     error_message: str | None = None
 
     if payload.content_type == "image_note":
-        # 只出「配图方案」(张数 + 每张:用途/图上文案/版式/英文生图 prompt),不代生成图片
+        # 只出「配图方案」(张数 + 每张:用途/图上文案/版式/中文生图 prompt),不代生成图片
         # —— 省图像模型成本,用户拿 prompt 去自己的 AI 工具生成。
         target_count = resolve_image_count(payload.image_count_mode, payload.requested_image_count, generated, image_plan)
         image_plan = image_plan[:target_count]

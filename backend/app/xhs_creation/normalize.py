@@ -83,7 +83,7 @@ def resolve_image_count(image_count_mode: str, requested_image_count: int | None
 
 
 def build_fallback_image_plan(generated: dict[str, Any], target_count: int) -> list[dict[str, Any]]:
-    title = str(generated.get("title") or "social media lifestyle note")
+    title = str(generated.get("title") or "生活方式分享笔记")
     return [
         {
             "slot": index,
@@ -91,8 +91,8 @@ def build_fallback_image_plan(generated: dict[str, Any], target_count: int) -> l
             "caption": title[:18],
             "format": "竖版 3:4" + ("（封面）" if index == 1 else ""),
             "prompt": (
-                "Clean social media lifestyle editorial image, soft natural light, practical knowledge sharing scene, "
-                "warm composition, no human face, no celebrity, no logo, no brand mark, no UI screenshot, no text"
+                "干净清爽的生活方式风格配图,自然柔光,贴近实用知识分享的场景,暖色调构图;"
+                "不出现真人面孔、名人、logo、品牌标识、平台 UI 截图,画面不带文字"
             ),
         }
         for index in range(1, target_count + 1)
