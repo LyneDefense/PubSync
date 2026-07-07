@@ -12,8 +12,6 @@ import type {
   BloggerCollectRequest,
   BloggerUrlCollectRequest,
   BloggerCollectionRun,
-  BenchmarkIntent,
-  BenchmarkRecommendationRun,
   BloggerDistillationRun,
   BloggerDossier,
   DossierAudience,
@@ -23,7 +21,6 @@ import type {
   BloggerProfileUpdate,
   BloggerSearchResult,
   BloggerSkill,
-  EvaluateResult,
   ConfigView,
   CostEvent,
   CostSummary,
@@ -414,37 +411,6 @@ export function generateXhsTopicIdeas(payload: XhsTopicIdeaRequest) {
   })
 }
 
-
-export function recommendBloggers(payload: {
-  platform: SocialPlatform
-  intent: BenchmarkIntent
-  my_account_id?: number | null
-}) {
-  return request<OperationTask>('/bloggers/recommend', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
-export function listRecommendRuns(taskId?: string, platform: SocialPlatform = 'xhs') {
-  const qs = taskId ? `&task_id=${encodeURIComponent(taskId)}` : ''
-  return request<BenchmarkRecommendationRun[]>(
-    `/bloggers/recommend/runs?platform=${encodeURIComponent(platform)}${qs}&limit=1`
-  )
-}
-
-export function evaluateBlogger(payload: {
-  platform: SocialPlatform
-  intent: BenchmarkIntent
-  my_account_id?: number | null
-  candidate?: BloggerSearchResult | null
-  homepage_url?: string | null
-}) {
-  return request<EvaluateResult>('/bloggers/evaluate', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
 
 export function listAccountAuditRuns(platform: SocialPlatform = 'xhs', kind?: 'benchmark' | 'self') {
   const qs = kind ? `&kind=${kind}` : ''

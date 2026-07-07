@@ -57,9 +57,6 @@ import {
   sendArticleToWechat,
   saveXhsPublishPackage,
   searchBloggers,
-  recommendBloggers,
-  listRecommendRuns,
-  evaluateBlogger,
   getDashboardOverview,
   getAccountDashboard,
   getAccountGrowth,
@@ -79,7 +76,6 @@ import type {
   AppraisalReport,
   Article,
   ArticleUpdate,
-  BenchmarkIntent,
   BloggerCollectionRun,
   BloggerDistillationRun,
   BloggerPost,
@@ -1299,7 +1295,6 @@ export function closeBloggerModal() {
   editingBloggerId.value = null
   resetBloggerSearch()
   resetBloggerForm()
-  resetBenchmarkFinder()
 }
 
 export function openCreateBloggerModal() {
@@ -1307,7 +1302,6 @@ export function openCreateBloggerModal() {
   bloggerModalAccountType.value = 'benchmark'
   resetBloggerForm()
   resetBloggerSearch()
-  resetBenchmarkFinder()
   showBloggerModal.value = true
 }
 
@@ -1330,107 +1324,6 @@ export function openEditBloggerModal(blogger: BloggerProfile) {
 }
 
 
-// —— 对标博主搜寻:智能推荐 / 单博主评分(共用意图 + 可选「我的账号」)——
-export const benchmarkIntent = reactive<BenchmarkIntent>({ niche: '', audience: '', goal: '', content_form: 'any' })
-export const benchmarkMyAccountId = ref<number | null>(null)
-export const benchmarkCandidates = ref<CandidateScore[]>([])
-// 搜索 tab:按 external_id 缓存「评估」结果。
-export const benchmarkSearchScores = reactive<Record<string, CandidateScore>>({})
-export const benchmarkEvaluatingId = ref<string | null>(null)
-export const benchmarkLinkUrl = ref('')
-export const benchmarkLinkResult = ref<CandidateScore | null>(null)
-
-function benchmarkIntentValid(): boolean {
-  if (!benchmarkIntent.niche.trim()) {
-    showMessage('请先填写你的领域/赛道', true)
-    return false
-  }
-  return true
-}
-
-function benchmarkPayloadIntent(): BenchmarkIntent {
-  return {
-    niche: benchmarkIntent.niche.trim(),
-    audience: benchmarkIntent.audience?.trim() || '',
-    goal: benchmarkIntent.goal?.trim() || '',
-    content_form: benchmarkIntent.content_form || 'any'
-  }
-}
-
-export function resetBenchmarkFinder() {
-  benchmarkCandidates.value = []
-  benchmarkLinkUrl.value = ''
-  benchmarkLinkResult.value = null
-  benchmarkEvaluatingId.value = null
-  for (const key of Object.keys(benchmarkSearchScores)) delete benchmarkSearchScores[key]
-}
-
-// 智能推荐:按意图找一批对标博主(异步任务 + 进度面板),完成后取最新一次运行的候选。
-export async function handleRecommendBloggers() {
-  if (!benchmarkIntentValid()) return
-  benchmarkCandidates.value = []
-  let taskId = ''
-  await runTaskAction(
-    'recommend',
-    '正在帮你找对标博主',
-    async () => {
-      const task = await recommendBloggers({
-        platform: currentSocialPlatform.value,
-        intent: benchmarkPayloadIntent(),
-        my_account_id: benchmarkMyAccountId.value
-      })
-      taskId = task.id
-      return task
-    },
-    async () => {
-      const runs = await listRecommendRuns(taskId, currentSocialPlatform.value)
-      benchmarkCandidates.value = runs[0]?.candidates || []
-    },
-    '推荐仍在后台执行，请稍后刷新查看'
-  )
-}
-
-// 搜索 tab:对某一条搜索结果单独「评估」(同步,跑完整四项指标)。
-export async function handleEvaluateSearchCandidate(candidate: BloggerSearchResult) {
-  if (!benchmarkIntentValid()) return
-  benchmarkEvaluatingId.value = candidate.external_id
-  try {
-    const res = await evaluateBlogger({
-      platform: currentSocialPlatform.value,
-      intent: benchmarkPayloadIntent(),
-      my_account_id: benchmarkMyAccountId.value,
-      candidate
-    })
-    benchmarkSearchScores[candidate.external_id] = res.candidate
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '评估失败', true)
-  } finally {
-    benchmarkEvaluatingId.value = null
-  }
-}
-
-// 链接评分 tab:粘贴主页链接,评估这一个博主。
-export async function handleEvaluateLink() {
-  if (!benchmarkIntentValid()) return
-  const url = benchmarkLinkUrl.value.trim()
-  if (!url) {
-    showMessage('请粘贴博主主页链接', true)
-    return
-  }
-  benchmarkLinkResult.value = null
-  await runAction('benchmark-evaluate', '正在评估该博主', async () => {
-    const res = await evaluateBlogger({
-      platform: currentSocialPlatform.value,
-      intent: benchmarkPayloadIntent(),
-      my_account_id: benchmarkMyAccountId.value,
-      homepage_url: url
-    })
-    benchmarkLinkResult.value = res.candidate
-  })
-}
-
-// 采用候选 → 打开「确认对标博主」弹窗(仅确认表单,候选已选好),用户补领域/备注后保存。
-// 接受 CandidateScore(已评估)或 BloggerSearchResult(搜索未评估),只用两者共有字段。
 export function adoptBenchmarkCandidate(candidate: CandidateScore | BloggerSearchResult) {
   editingBloggerId.value = null
   bloggerModalAccountType.value = 'benchmark'
