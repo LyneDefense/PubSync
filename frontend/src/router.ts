@@ -43,7 +43,7 @@ const routes = [
   // —— 对象驱动新架构(与旧 workspace 并存;阶段4/UI·9 才把默认落地切到 /home 并下线旧壳)——
   // meta.shell='new' → App.vue 用新 AppShell 渲染(无侧栏)。未建成页面先走统一占位。
   { path: '/home', name: 'home', meta: { shell: 'new' }, component: () => import('./views/HomeView.vue') },
-  { path: '/blogger/:id', name: 'blogger', meta: { shell: 'new', title: '博主档案' }, component: () => import('./views/NewShellPlaceholder.vue') },
+  { path: '/blogger/:id', name: 'blogger', meta: { shell: 'new', title: '博主档案' }, component: () => import('./views/BloggerObjectView.vue') },
   { path: '/account/:id', name: 'account', meta: { shell: 'new', title: '我的账号' }, component: () => import('./views/NewShellPlaceholder.vue') },
   { path: '/create', name: 'create', meta: { shell: 'new', title: '创作' }, component: () => import('./views/NewShellPlaceholder.vue') },
   { path: '/drafts', name: 'drafts', meta: { shell: 'new', title: '发布草稿' }, component: () => import('./views/NewShellPlaceholder.vue') },
