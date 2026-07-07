@@ -65,11 +65,11 @@ watch(isAuthenticated, (authed) => {
   if (authed) {
     if (route.name === 'login' || !route.name) {
       const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-      if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
-        router.replace(redirect) // 深链/新架构页:登录后跳回原目标
-      } else {
-        router.replace({ name: 'home' }) // UI·9 起默认落到对象驱动新首页
-      }
+      // 只保留「新架构深链」的 redirect;旧壳路径(/select、/xhs… 浏览器恢复的旧 URL)一律回新首页,
+      // 否则登录后又被带回旧界面/选平台页(正是这次的 bug)。
+      const keepRedirect =
+        !!redirect && redirect.startsWith('/') && !redirect.startsWith('//') && router.resolve(redirect).meta.shell === 'new'
+      router.replace(keepRedirect ? redirect : { name: 'home' })
     }
   } else if (route.name !== 'login') {
     router.replace({ name: 'login' })

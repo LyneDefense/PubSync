@@ -62,6 +62,12 @@ function platMeta(p: string) {
         <span class="hb-tile-label">发布草稿</span>
         <span class="hb-tile-count">{{ draftCount }} 篇</span>
       </button>
+      <!-- 公众号本轮独立不动,仍走旧壳;从首页留一个入口,别把它孤立了。 -->
+      <button type="button" class="hb-tile" @click="router.push({ name: 'workspace', params: { platform: 'wechat', tab: 'brief' } })">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></svg>
+        <span class="hb-tile-label">公众号早报</span>
+        <span class="hb-tile-count">进入 →</span>
+      </button>
     </div>
 
     <!-- 博主档案 -->

@@ -67,6 +67,10 @@ router.beforeEach((to: RouteLocationNormalized) => {
   if (to.name === 'login') {
     return landingTarget()
   }
+  // 选平台页已退役(UI·9):已登录访问一律回新首页。
+  if (to.name === 'select') {
+    return { name: 'home' }
+  }
   if (to.name === 'workspace') {
     const platform = to.params.platform
     if (!isPlatform(platform)) {
