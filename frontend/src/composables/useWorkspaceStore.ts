@@ -526,7 +526,7 @@ export const selectedXhsTopicIdea = computed(() =>
   selectedXhsTopicIndex.value === null ? null : xhsTopicIdeas.value[selectedXhsTopicIndex.value] || null
 )
 // 顶部紧凑步骤条用的简短标签，按步骤顺序排列（取代原先居中的大标题）。
-export const xhsCreationStepLabels = ['选择博主', '选择 Skill', '生成选题', '生成正文', '封面配图', '确认发布']
+export const xhsCreationStepLabels = ['选择对标博主', '生成选题', '生成正文', '封面配图', '确认发布']
 export const wechatBriefStepLabels = ['选新闻', '生成文章', '预览/编辑', '发布草稿箱']
 export const canGoNextWechatBriefStep = computed(() => {
   // 第 1 步「选新闻」不强制勾选(允许用已有勾选直接生成);第 2 步要先生成出文章才能进预览。
@@ -539,19 +539,17 @@ export const canGoNextWechatBriefStep = computed(() => {
   return wechatBriefStep.value === 1
 })
 export const canGoNextXhsCreationStep = computed(() => {
+  // 5 步:① 选对标博主(自动带其唯一创作画像)② 选题 ③ 正文 ④ 配图/脚本 ⑤ 确认
   if (xhsCreationStep.value === 1) {
-    return Boolean(xhsCreatorBloggerId.value)
+    return Boolean(xhsCreatorBloggerId.value) && Boolean(selectedXhsSkill.value)
   }
   if (xhsCreationStep.value === 2) {
-    return Boolean(selectedXhsSkill.value)
-  }
-  if (xhsCreationStep.value === 3) {
     return Boolean(selectedXhsTopicIdea.value)
   }
-  if (xhsCreationStep.value === 4) {
+  if (xhsCreationStep.value === 3) {
     return Boolean(currentXhsDraft.value)
   }
-  if (xhsCreationStep.value === 5) {
+  if (xhsCreationStep.value === 4) {
     return Boolean(currentXhsDraft.value)
   }
   return false
@@ -1115,11 +1113,6 @@ export function handleXhsCreatorBloggerChange() {
   xhsCreationStep.value = 1
 }
 
-export function handleXhsCreatorSkillChange() {
-  resetXhsTopicIdeas()
-  xhsCreationStep.value = 1
-}
-
 export function selectXhsTopicIdea(index: number) {
   const idea = xhsTopicIdeas.value[index]
   if (!idea) {
@@ -1131,7 +1124,7 @@ export function selectXhsTopicIdea(index: number) {
   xhsPackageForm.content_goal = idea.content_goal || xhsPackageForm.content_goal
   xhsPackageForm.keywords = idea.keywords.join(', ')
   currentXhsDraft.value = null
-  xhsCreationStep.value = Math.max(xhsCreationStep.value, 3)
+  xhsCreationStep.value = Math.max(xhsCreationStep.value, 2)
 }
 
 export function goPreviousXhsCreationStep() {
@@ -1141,16 +1134,15 @@ export function goPreviousXhsCreationStep() {
 export function goNextXhsCreationStep() {
   if (!canGoNextXhsCreationStep.value) {
     const messages: Record<number, string> = {
-      1: '请先选择博主',
-      2: '请先选择 Skill',
-      3: '请先选择一个选题方案',
-      4: '请先生成正文或脚本',
-      5: '请先完成素材输出'
+      1: '请先选择一个已蒸馏出创作画像的对标博主',
+      2: '请先选择一个选题方案',
+      3: '请先生成正文或脚本',
+      4: '请先完成素材输出'
     }
     showMessage(messages[xhsCreationStep.value] || '当前步骤还没有完成', true)
     return
   }
-  xhsCreationStep.value = Math.min(6, xhsCreationStep.value + 1)
+  xhsCreationStep.value = Math.min(5, xhsCreationStep.value + 1)
 }
 
 export function goPreviousWechatBriefStep() {
@@ -1596,7 +1588,7 @@ export async function handleCreateXhsPackage() {
         throw new Error('发布包草稿生成完成，但没有返回草稿内容')
       }
       currentXhsDraft.value = draft
-      xhsCreationStep.value = 4
+      xhsCreationStep.value = 3
     },
     '小红书发布包仍在后台生成，请稍后查看任务进度'
   )
@@ -1619,13 +1611,13 @@ export async function handleSaveXhsPackage() {
 
 export function handleDiscardXhsDraft() {
   currentXhsDraft.value = null
-  xhsCreationStep.value = 4
+  xhsCreationStep.value = 3
   showMessage('已放弃本次创作草稿')
 }
 
 export async function handleGenerateXhsTopicIdeas() {
   if (!xhsPackageForm.skill_id) {
-    showMessage('请先选择博主和 Skill', true)
+    showMessage('请先选择一个已蒸馏出创作画像的对标博主', true)
     return
   }
   await runAction('xhs-topic', '正在生成选题方案', async () => {

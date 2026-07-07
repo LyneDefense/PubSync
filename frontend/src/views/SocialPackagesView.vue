@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 社媒·对标博主创作(发布包):六步向导 —— 选博主 → 选 Skill → 选题 → 生成正文/脚本 → 素材 → 发布包。
-// 纯展示重构:状态/方法全部沿用 useWorkspaceStore;第 3/4 步「生成后才出现下一步」;三处进度沿用内嵌进度规范。
+// 社媒·对标博主创作(发布包):五步向导 —— 选对标博主 → 选题 → 生成正文/脚本 → 素材 → 发布包。
+// 选博主即自动带出其创作画像(去多画像后一博主一画像),无需再单选 Skill。
+// 纯展示重构:状态/方法全部沿用 useWorkspaceStore;第 2/3 步「生成后才出现下一步」;三处进度沿用内嵌进度规范。
 import { computed } from 'vue'
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImagePlanList from '../components/ImagePlanList.vue'
@@ -20,7 +21,6 @@ import {
   handleGenerateXhsTopicIdeas,
   handleSaveXhsPackage,
   handleXhsCreatorBloggerChange,
-  handleXhsCreatorSkillChange,
   isSocialPlatform,
   myAccountsOnPlatform,
   pendingAction,
@@ -31,7 +31,6 @@ import {
   xhsCreationStep,
   xhsCreationStepLabels,
   xhsCreatorBloggerId,
-  xhsCreatorSkillOptions,
   xhsDraftBenchmark,
   xhsDraftCompliance,
   xhsDraftHashtags,
@@ -42,12 +41,12 @@ import {
   xhsTopicIdeas
 } from '../composables/useWorkspaceStore'
 
-// 第 3/4 步「生成」与「下一步」不并存:必须先生成出结果才显示下一步。
+// 第 2/3 步「生成」与「下一步」不并存:必须先生成出结果才显示下一步。
 const showNext = computed(() => {
   const s = xhsCreationStep.value
-  if (s >= 6) return false
-  if (s === 3) return xhsTopicIdeas.value.length > 0
-  if (s === 4) return Boolean(currentXhsDraft.value)
+  if (s >= 5) return false
+  if (s === 2) return xhsTopicIdeas.value.length > 0
+  if (s === 3) return Boolean(currentXhsDraft.value)
   return true
 })
 
@@ -60,10 +59,6 @@ function goToStep(n: number) {
 function pickBlogger(id: number) {
   xhsCreatorBloggerId.value = id
   handleXhsCreatorBloggerChange()
-}
-function pickSkill(id: number) {
-  xhsPackageForm.skill_id = id
-  handleXhsCreatorSkillChange()
 }
 
 // 文字头像:名字首字 + 按 id 取柔和底色。
@@ -79,7 +74,7 @@ function avatarStyle(id: number) {
   <section v-if="isSocialPlatform && currentSocialTab === 'packages'" class="packages">
     <header class="page-head">
       <h1>{{ currentSocialPlatformName }}对标博主创作</h1>
-      <p>借鉴对标博主的风格 Skill，按步骤生成一条新内容；历史结果请到「发布草稿」查看。</p>
+      <p>借鉴对标博主的创作画像，按步骤生成一条新内容；历史结果请到「发布草稿」查看。</p>
     </header>
 
     <!-- 步骤条 -->
@@ -98,10 +93,10 @@ function avatarStyle(id: number) {
       </li>
     </ol>
 
-    <!-- 第 1 步:选博主 -->
+    <!-- 第 1 步:选对标博主 -->
     <section v-if="xhsCreationStep === 1" class="card">
       <div class="card-head">
-        <div><span class="eyebrow">01 选择博主</span><h3>选择要借鉴风格的博主</h3></div>
+        <div><span class="eyebrow">01 选择对标博主</span><h3>选择要借鉴创作画像的对标博主</h3></div>
       </div>
       <div v-if="bloggers.length" class="pick-grid">
         <button
@@ -123,37 +118,15 @@ function avatarStyle(id: number) {
       <p v-else class="empty-region pad">还没有可用于创作的博主。请先到「博主档案」建档并蒸馏出创作画像。</p>
     </section>
 
-    <!-- 第 2 步:选 Skill -->
+    <!-- 第 2 步:生成 / 选择选题 -->
     <section v-if="xhsCreationStep === 2" class="card">
       <div class="card-head">
-        <div><span class="eyebrow">02 选择 Skill</span><h3>选择该博主的风格资产</h3></div>
-      </div>
-      <div v-if="xhsCreatorSkillOptions.length" class="pick-grid">
-        <button
-          v-for="skill in xhsCreatorSkillOptions"
-          :key="skill.id"
-          type="button"
-          class="pick text-pick"
-          :class="{ sel: xhsPackageForm.skill_id === skill.id }"
-          @click="pickSkill(skill.id)"
-        >
-          <span class="tp-name">{{ skill.name }}</span>
-          <span class="tp-desc">{{ skill.description }}</span>
-          <span class="tp-date">{{ formatDate(skill.created_at) }}</span>
-        </button>
-      </div>
-      <p v-else class="empty-region pad">这个博主还没有创作画像。请先到「博主档案」蒸馏出创作画像。</p>
-    </section>
-
-    <!-- 第 3 步:生成 / 选择选题 -->
-    <section v-if="xhsCreationStep === 3" class="card">
-      <div class="card-head">
-        <div><span class="eyebrow">03 生成 / 选择选题</span><h3>先确定这次要写什么</h3></div>
+        <div><span class="eyebrow">02 生成 / 选择选题</span><h3>先确定这次要写什么</h3></div>
         <button
           type="button"
           class="btn btn--accent"
           :disabled="Boolean(pendingAction) || !selectedXhsSkill"
-          :title="!selectedXhsSkill ? '请先在第 2 步选择一个 Skill' : ''"
+          :title="!selectedXhsSkill ? '请先在第 1 步选择一个已蒸馏出创作画像的对标博主' : ''"
           @click="handleGenerateXhsTopicIdeas"
         >
           {{ pendingAction === 'xhs-topic' ? '生成中…' : xhsTopicIdeas.length ? '重新生成选题' : '生成选题方案' }}
@@ -206,15 +179,15 @@ function avatarStyle(id: number) {
       <p v-else-if="pendingAction !== 'xhs-topic'" class="empty-region pad">点右上「生成选题方案」，这里会出现多个可选择的选题。</p>
     </section>
 
-    <!-- 第 4 步:生成正文 / 脚本 -->
-    <section v-if="xhsCreationStep === 4" class="card">
+    <!-- 第 3 步:生成正文 / 脚本 -->
+    <section v-if="xhsCreationStep === 3" class="card">
       <div class="card-head">
-        <div><span class="eyebrow">04 生成正文 / 脚本</span><h3>选择内容类型并生成</h3></div>
+        <div><span class="eyebrow">03 生成正文 / 脚本</span><h3>选择内容类型并生成</h3></div>
         <button
           type="button"
           class="btn btn--accent"
           :disabled="Boolean(pendingAction) || !selectedXhsSkill || !xhsPackageForm.topic.trim()"
-          :title="!selectedXhsSkill ? '请先选择 Skill' : !xhsPackageForm.topic.trim() ? '请先在上一步选择或填写一个选题' : ''"
+          :title="!selectedXhsSkill ? '请先选择对标博主' : !xhsPackageForm.topic.trim() ? '请先在上一步选择或填写一个选题' : ''"
           @click="handleCreateXhsPackage"
         >
           {{ pendingAction === 'xhs-package' ? '生成中…' : currentXhsDraft ? '重新生成' : '开始生成' }}
@@ -257,10 +230,10 @@ function avatarStyle(id: number) {
       </section>
     </section>
 
-    <!-- 第 5 步:封面、配图与标签 -->
-    <section v-if="xhsCreationStep === 5" class="card">
+    <!-- 第 4 步:封面、配图与标签 -->
+    <section v-if="xhsCreationStep === 4" class="card">
       <div class="card-head">
-        <div><span class="eyebrow">05 封面、配图与标签</span><h3>检查素材输出</h3></div>
+        <div><span class="eyebrow">04 封面、配图与标签</span><h3>检查素材输出</h3></div>
       </div>
       <template v-if="currentXhsDraft">
         <div class="metric-grid">
@@ -274,10 +247,10 @@ function avatarStyle(id: number) {
       <p v-else class="empty-region pad">生成内容后，这里会展示封面、标签和配图方案。</p>
     </section>
 
-    <!-- 第 6 步:最终发布包 -->
-    <section v-if="xhsCreationStep === 6" class="card">
+    <!-- 第 5 步:最终发布包 -->
+    <section v-if="xhsCreationStep === 5" class="card">
       <div class="card-head">
-        <div><span class="eyebrow">06 最终发布包</span><h3>预览并决定是否保存</h3></div>
+        <div><span class="eyebrow">05 最终发布包</span><h3>预览并决定是否保存</h3></div>
         <div class="pkg-actions">
           <label v-if="myAccountsOnPlatform.length" class="target-account">
             给哪个账号用
