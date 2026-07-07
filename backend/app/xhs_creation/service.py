@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
+from app.blogger_dossier.audience import parse_audience
 from app.compliance import scan_creation
 from app.config import Settings
 from app.models import AppSetting, BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
@@ -189,39 +190,47 @@ def generate_xhs_topic_ideas(
     if not is_ai_enabled(settings):
         raise AIServiceError("未配置可用的大模型 API Key")
     platform_name = social_platform_name(blogger.platform)
+    audience = _my_account_audience(db, tenant_id, payload.my_blogger_id)
 
     logger.info(
-        "%s选题方案生成开始：租户=%s，博主=%s，skill_id=%s，种子主题=%s",
+        "%s选题方案生成开始：租户=%s，对标博主=%s，skill_id=%s，我的账号=%s，受众数据=%s，种子主题=%s",
         platform_name,
         tenant_id,
         blogger.display_name,
         skill.id,
+        payload.my_blogger_id,
+        "有" if audience else "无",
         payload.seed_topic,
     )
+    intent_block = json.dumps(
+        {
+            "seed_topic": payload.seed_topic,
+            "target_audience": payload.target_audience,
+            "content_goal": payload.content_goal,
+            "keywords": payload.keywords,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
     prompt = f"""
-你是{platform_name}选题策划。请基于“博主蒸馏 Skill”为用户生成 5 个可执行的选题方案。
+你是{platform_name}选题策划。请为用户生成 5 个可执行的选题方案。
 
-要求：
-- 只学习 Skill 的选题方法、标题结构、切入角度，不要冒充原博主，不要复制原文。
-- 如果用户提供了种子主题，所有方案都要围绕该主题变化切角。
-- 如果用户没有提供种子主题，请基于 Skill、目标人群和内容目的主动提出可写选题。
-- 每个方案要让用户一眼看出：写什么、怎么切、适合谁、为什么值得写。
+选题公式 =【对标博主的选题方法】×【我的账号读者最关心的问题】×【用户这次的意图】：
+- 只学「对标博主蒸馏 Skill」里的选题方法、标题结构、切入角度；不要冒充原博主、不要复制原文、不要照搬其题材。
+- 每个选题都要落在**我的账号读者真实关心的问题**上（下方给出），让选题是“我的读者真的想看”，而不是对标博主的读者想看。
+- 若用户填了意图（种子主题/目标人群/内容目的/关键词），把选题收敛到该意图；意图与受众需求冲突时以意图为准。
+- 每个方案让用户一眼看出：写什么、怎么切、适合谁、为什么值得写。
 - 输出必须是合法 JSON，不要 Markdown，不要解释文字。
 
-输入：
-{json.dumps({
-        "blogger": {
-            "display_name": blogger.display_name,
-            "niche": blogger.niche,
-            "description": blogger.description,
-        },
-        "seed_topic": payload.seed_topic,
-        "target_audience": payload.target_audience,
-        "content_goal": payload.content_goal,
-        "keywords": payload.keywords,
-    }, ensure_ascii=False, indent=2)}
+【我的账号读者最关心的问题（受众需求）】
+{_render_audience_for_topic(audience)}
 
-博主蒸馏 Skill：
+【用户这次的意图】
+{intent_block}
+
+【对标博主】{blogger.display_name}（领域：{blogger.niche or "未标注"}）
+
+【对标博主蒸馏 Skill（只学方法，不搬题材）】
 {skill.skill_markdown[:10000]}
 
 输出 JSON：
@@ -233,7 +242,7 @@ def generate_xhs_topic_ideas(
       "target_audience": "适合的读者",
       "content_goal": "知识分享/避坑科普/种草转化/观点表达/经验复盘",
       "keywords": ["关键词"],
-      "reason": "为什么这个选题值得做"
+      "reason": "为什么这个选题值得做（点出它回应了读者哪个真实需求）"
     }}
   ]
 }}
@@ -248,6 +257,30 @@ def generate_xhs_topic_ideas(
         raise AIServiceError("AI 返回的选题方案为空")
     logger.info("%s选题方案生成完成：skill_id=%s，数量=%s", platform_name, skill.id, len(normalized))
     return normalized[:5]
+
+
+def _my_account_audience(db: Session, tenant_id: int, my_blogger_id: int | None) -> dict[str, Any] | None:
+    """取「我的账号」的受众需求(读者最常问),作选题的真实需求锚点;缺账号/越权/无数据均返回 None(降级不挡路)。"""
+    if not my_blogger_id:
+        return None
+    mine = db.get(BloggerProfile, my_blogger_id)
+    if not mine or mine.tenant_id != tenant_id:
+        return None
+    return parse_audience(mine.attribution_json)
+
+
+def _render_audience_for_topic(audience: dict[str, Any] | None) -> str:
+    """把受众需求渲染进选题 prompt;无数据 → 明确降级说明,禁止 LLM 凭空编造读者需求。"""
+    if not audience:
+        return "（暂无「我的账号」受众数据：本次仅凭对标博主的选题方法 + 用户填写的意图出选题，不要凭空编造读者需求。）"
+    questions = [str(q.get("theme") or "").strip() for q in (audience.get("questions") or []) if isinstance(q, dict)]
+    questions = [q for q in questions if q][:6]
+    focus = [str(f).strip() for f in (audience.get("focus_points") or []) if str(f).strip()][:6]
+    lines = "\n".join(f"· {q}" for q in questions) if questions else "（无明确高频问题）"
+    out = f"读者反复在问（按热度归纳）：\n{lines}"
+    if focus:
+        out += f"\n高频关注点：{'、'.join(focus)}"
+    return out
 
 
 def generate_package_content(

@@ -1623,6 +1623,7 @@ export async function handleGenerateXhsTopicIdeas() {
   await runAction('xhs-topic', '正在生成选题方案', async () => {
     const result = await generateXhsTopicIdeas({
       skill_id: xhsPackageForm.skill_id,
+      my_blogger_id: xhsPackageForm.my_account_id,
       seed_topic: xhsPackageForm.topic.trim(),
       target_audience: xhsPackageForm.target_audience.trim(),
       content_goal: xhsPackageForm.content_goal.trim(),
@@ -1631,7 +1632,7 @@ export async function handleGenerateXhsTopicIdeas() {
     xhsTopicIdeas.value = result.ideas
     selectedXhsTopicIndex.value = null
     currentXhsDraft.value = null
-    xhsCreationStep.value = 3
+    xhsCreationStep.value = 2
   })
 }
 

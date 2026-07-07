@@ -134,6 +134,14 @@ function avatarStyle(id: number) {
       </div>
 
       <div class="form">
+        <label v-if="myAccountsOnPlatform.length" class="field">
+          <span class="field-label">为哪个「我的账号」创作</span>
+          <select v-model="xhsPackageForm.my_account_id">
+            <option :value="null">暂不指定（只按对标博主的选题方法出选题）</option>
+            <option v-for="a in myAccountsOnPlatform" :key="a.id" :value="a.id">{{ a.display_name }}</option>
+          </select>
+          <span class="field-hint">选定后，选题会结合该账号「读者最关心的问题」——需先在「我的账号 · 体检」跑过受众需求；没跑过则自动降级为只按对标方法出选题。</span>
+        </label>
         <label class="field">
           <span class="field-label">种子主题</span>
           <input v-model="xhsPackageForm.topic" type="text" placeholder="可以留空，也可以输入你想写的大方向" />
@@ -659,6 +667,11 @@ function avatarStyle(id: number) {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-ink);
+}
+.field-hint {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--color-ink-3);
 }
 .field input,
 .field select,

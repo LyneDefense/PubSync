@@ -607,6 +607,7 @@ export interface AccountAuditRun {
 
 export interface XhsTopicIdeaRequest {
   skill_id: number
+  my_blogger_id?: number | null
   seed_topic: string
   target_audience: string
   content_goal: string

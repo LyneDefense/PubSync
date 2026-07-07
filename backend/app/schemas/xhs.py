@@ -66,6 +66,7 @@ class XhsPublishPackageSave(BaseModel):
 
 class XhsTopicIdeaRequest(BaseModel):
     skill_id: int
+    my_blogger_id: int | None = None  # 「我的账号」id:提供受众需求(读者最常问);缺省则降级不挡路
     seed_topic: str = Field(default="", max_length=300)
     target_audience: str = Field(default="", max_length=300)
     content_goal: str = Field(default="", max_length=120)
