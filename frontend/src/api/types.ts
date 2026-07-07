@@ -424,15 +424,6 @@ export interface EvaluateResult {
 }
 
 
-export interface BloggerDistillRequest {
-  // auto=自动蒸馏(高赞 top-N);custom=自定义(选快照 或 手选 N 篇)
-  source: 'auto' | 'custom'
-  post_ids?: number[]
-  snapshot_id?: number | null
-  snapshot_name?: string
-  mode?: string
-}
-
 export interface BloggerCollectRequest {
   sample_limit: number
   comments_per_post: number
@@ -620,20 +611,6 @@ export interface BenchmarkComparison {
 }
 
 export type XhsPublishPackageSave = XhsPublishPackageDraft
-
-export interface AccountAuditCreate {
-  platform: SocialPlatform
-  my_blogger_id: number
-  my_post_ids: number[]
-  benchmark_blogger_id: number
-  benchmark_post_ids: number[]
-}
-
-export interface SelfDiagnoseCreate {
-  platform: SocialPlatform
-  my_blogger_id: number
-  my_post_ids: number[]
-}
 
 export interface AccountAuditRun {
   id: number

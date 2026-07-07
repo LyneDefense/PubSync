@@ -8,22 +8,23 @@
  *
  * 注意：onMounted / onUnmounted 等生命周期钩子必须在组件 setup 中调用，仍保留在 App.vue。
  */
-import { computed, reactive, ref, watch } from 'vue'
-
-import { useToast } from './useToast'
 import {
-  bloggerCommentLabel,
+  computed,
+  reactive,
+  ref,
+  watch
+} from 'vue'
+import {
+  useToast
+} from './useToast'
+import {
   findXhsDraftFromEvents,
   parseEventPayload,
   parseJsonArray,
   parseJsonObject,
-  sampledCommentCount,
-  wait,
-  xhsContentTypeLabel,
-  xhsPackageCopyText
+  wait
 } from '../utils/format'
 import {
-  abandonBloggerRun,
   cancelTask,
   clearAuthToken,
   clearTenantId,
@@ -31,7 +32,6 @@ import {
   listAccountAuditRuns,
   suggestAppraisalIntent,
   fetchAppraisalIntentContext,
-  confirmBloggerRun,
   createBlogger,
   deleteBlogger,
   fetchNews,
@@ -44,7 +44,6 @@ import {
   getTask,
   getTaskEvents,
   getWorkspaceConfig,
-  listBloggerCollectionPosts,
   listBloggerPosts,
   deleteBloggerPosts,
   listBloggerCollectionRuns,
@@ -106,8 +105,6 @@ import type {
   XhsPublishPackageDraft,
   XhsTopicIdea
 } from '../api/types'
-
-
 export type TaskActionName = 'fetch' | 'generate' | 'collect' | 'distill' | 'xhs-package' | 'audit' | 'recommend' | 'dossier' | 'pool-sync'
 export type NewsTab = string
 export type ArticleTab = 'edit' | 'preview'
@@ -273,12 +270,6 @@ export const bloggerForm = reactive({
   tags: '' // 手动标签:逗号分隔。仅编辑时透传,自动标签不在此。
 })
 
-export const bloggerDistillForm = reactive({
-  sample_limit: 50,
-  comments_per_post: 20
-})
-
-// 内容模态标签(与后端 app/blogger_distillation/modality.py 对齐)。
 export const SUBTYPE_LABELS: Record<string, string> = {
   image_text: '图文',
   talking_video: '口播视频',
@@ -290,27 +281,7 @@ export const SUBTYPE_LABELS: Record<string, string> = {
 export function subtypeLabel(value: string) {
   return SUBTYPE_LABELS[value] || value
 }
-// 可被用户勾选蒸馏的模态(口播细分在采集后判定)。
-export const DISTILL_SUBTYPES = ['image_text', 'talking_video', 'visual_video'] as const
-// 阶段B:自定义蒸馏的样本下限(硬:<8 拦截)与软建议(≥15 越多越准)。
-export const DISTILL_MIN_SAMPLES = 8
-export const DISTILL_RECOMMEND_SAMPLES = 15
-// 笔记池按内容模态分组展示的顺序。
-// 已录入详情按模态排;未录入详情(列表级)单独一组、垫底。
 export const NOTE_GROUP_ORDER = ['image_text', 'talking_video', 'visual_video', 'unknown', '__list__'] as const
-// 采集拉取范围:image=图文,video=视频。
-export const collectContentTypes = ref<string[]>(['image', 'video'])
-// 采集选材:排序(高赞/最新)+ 数量(false=N 条,true=全部到上限)。
-export const collectOrder = ref<'top_liked' | 'latest'>('top_liked')
-export const collectFetchAll = ref(false)
-// 兜底:粘贴链接定向采集的输入(一行一个)。
-export const urlCollectInput = ref('')
-// 蒸馏勾选的模态(空=全选=通用)。
-export const distillSelectedSubtypes = ref<string[]>([])
-
-// 蒸馏模式：A=拆解对标博主（默认），B=诊断我的账号。
-export const xhsDistillMode = ref<'A' | 'B'>('A')
-
 export const xhsPackageForm = reactive({
   skill_id: 0,
   content_type: 'text_note' as XhsPublishContentType,
@@ -390,17 +361,7 @@ export const workspaceTitle = computed(() => profile.value?.workspace_title || '
 export const publicationName = computed(() => profile.value?.publication_name || workspaceTitle.value)
 export const isAdmin = computed(() => Boolean(currentUser.value?.is_admin))
 export const currentTenantName = computed(() => tenants.value.find((tenant) => String(tenant.id) === selectedTenantId.value)?.name || publicationName.value)
-export const canSwitchTenant = computed(() => isAdmin.value && tenants.value.length > 1)
 export const currentUsername = computed(() => currentUser.value?.username || '当前用户')
-export const activePlatformLabel = computed(() => {
-  const labels: Record<MainTab, string> = {
-    wechat: '公众号',
-    xhs: '小红书',
-    douyin: '抖音',
-    admin: '后台管理'
-  }
-  return labels[activeMainTab.value] || '工作台'
-})
 export const isSocialPlatform = computed(() => activeMainTab.value === 'xhs' || activeMainTab.value === 'douyin')
 export const currentSocialPlatform = computed<SocialPlatform>(() => (activeMainTab.value === 'douyin' ? 'douyin' : 'xhs'))
 export const currentSocialPlatformName = computed(() => (currentSocialPlatform.value === 'douyin' ? '抖音' : '小红书'))
@@ -409,10 +370,6 @@ export const currentSocialTab = computed<SocialTab>(() => (activeMainTab.value =
 export const activeSubTab = computed<string>(() =>
   activeMainTab.value === 'wechat' ? activeWechatTab.value : currentSocialTab.value
 )
-// 当前平台是否已录入「我的账号」(概览页据此二选一显示引导/已录入卡)。
-export const currentMyAccount = computed(() => myAccounts.value.find((a) => a.platform === currentSocialPlatform.value) || null)
-export const hasMyAccount = computed(() => Boolean(currentMyAccount.value))
-// 当前平台下的「我的账号」列表(创作目标选择 + 效果看板账号切换共用)。
 export const myAccountsOnPlatform = computed(() => myAccounts.value.filter((a) => a.platform === currentSocialPlatform.value))
 
 // —— 效果看板 ——
@@ -509,159 +466,15 @@ export const pagedNews = computed(() => {
 })
 export const selectedBlogger = computed(() => bloggers.value.find((item) => item.id === selectedBloggerId.value) || null)
 export const editingBlogger = computed(() => bloggers.value.find((item) => item.id === editingBloggerId.value) || null)
-export const selectedCollectionRun = computed(() => bloggerCollectionRuns.value.find((run) => run.id === selectedCollectionRunId.value) || null)
-// 当前采集批次各模态样本数(来自 summary_json.stats.subtype_counts;旧批次可能为空)。
-export const collectionSubtypeCounts = computed<Record<string, number>>(() => {
-  try {
-    const summary = JSON.parse(selectedCollectionRun.value?.summary_json || '{}')
-    return (summary?.stats?.subtype_counts as Record<string, number>) || {}
-  } catch {
-    return {}
-  }
-})
-
-// 采集实时面板:逐条抓取的高频事件折叠成进度条,只把里程碑事件列进时间线。
-const COLLECT_SPAM_STEPS = new Set(['笔记详情', '样本入库', '视频 ASR', '视频字幕', '评论采集'])
-export const collectTimeline = computed(() =>
-  taskEventsAction.value === 'collect' ? taskEvents.value.filter((event) => !COLLECT_SPAM_STEPS.has(event.step_name)) : []
-)
-export const collectProgress = computed(() => {
-  if (taskEventsAction.value !== 'collect') return { current: 0, total: 0, pct: 0 }
-  for (let index = taskEvents.value.length - 1; index >= 0; index -= 1) {
-    const payload = parseEventPayload(taskEvents.value[index])
-    const current = Number(payload?.current)
-    const total = Number(payload?.total)
-    if (current && total) {
-      return { current, total, pct: Math.round((current / total) * 100) }
-    }
-  }
-  return { current: 0, total: 0, pct: 0 }
-})
-export const collectLatestMessage = computed(() => {
-  if (taskEventsAction.value !== 'collect') return ''
-  const event = taskEvents.value[taskEvents.value.length - 1]
-  return event ? event.message : ''
-})
-// 采集完成后的「本批摘要」(读最新一条采集批次的 summary_json)。
-export const lastCollectSummary = computed(() => {
-  const run = bloggerCollectionRuns.value[0]
-  if (!run || run.status !== 'succeeded') return null
-  try {
-    const summary = JSON.parse(run.summary_json || '{}')
-    const meta = summary.collect_meta || {}
-    return {
-      runId: run.id,
-      postCount: run.post_count,
-      newCount: typeof meta.new_count === 'number' ? meta.new_count : null,
-      refreshedCount: typeof meta.refreshed_count === 'number' ? meta.refreshed_count : null,
-      delistedCount: meta.delisted_count || 0,
-      hotCount: run.hot_post_count,
-      commentCount: run.comment_count,
-      subtypeCounts: (summary?.stats?.subtype_counts as Record<string, number>) || {}
-    }
-  } catch {
-    return null
-  }
-})
-export const resultCollectionFilter = computed(() => bloggerCollectionRuns.value.find((run) => run.id === resultCollectionFilterId.value) || null)
-export const selectedBloggerRun = computed(() => bloggerRuns.value.find((run) => run.id === selectedBloggerRunId.value) || null)
-export const selectedBloggerSkill = computed(() => bloggerSkills.value.find((skill) => skill.run_id === selectedBloggerRunId.value) || null)
 export const selectedXhsSkill = computed(() => bloggerSkills.value.find((skill) => skill.id === xhsPackageForm.skill_id) || null)
 export const visibleXhsPackages = computed(() => {
   const bloggerIds = new Set(bloggers.value.map((blogger) => blogger.id))
   return xhsPackages.value.filter((item) => bloggerIds.has(item.blogger_id))
 })
 export const selectedXhsPackage = computed(() => visibleXhsPackages.value.find((item) => item.id === selectedXhsPackageId.value) || visibleXhsPackages.value[0] || null)
-export const selectedBloggerRunCount = computed(() => bloggerRuns.value.length)
-export const visibleBloggerRuns = computed(() =>
-  resultCollectionFilterId.value ? bloggerRuns.value.filter((run) => run.collection_run_id === resultCollectionFilterId.value) : bloggerRuns.value
-)
-export const visibleBloggerRunCount = computed(() => visibleBloggerRuns.value.length)
-
-// ── 阶段B:笔记池(按模态分组)/ 勾选 / 单篇详情抽屉 ──────────────────────────
-// 仅展示未下架的笔记参与分组与选材;下架的单独提示但不进蒸馏。
 export const activeNotePool = computed(() => bloggerPosts.value.filter((p) => p.status !== 'delisted'))
 export const delistedNoteCount = computed(() => bloggerPosts.value.filter((p) => p.status === 'delisted').length)
 
-export interface NoteGroup {
-  subtype: string
-  label: string
-  posts: BloggerPost[]
-}
-export const bloggerNoteGroups = computed<NoteGroup[]>(() => {
-  const buckets = new Map<string, BloggerPost[]>()
-  for (const post of activeNotePool.value) {
-    // 未录入详情(列表级)只有标题/互动,还没判模态——单独归「未采详情」,别混进模态分类;
-    // 已录入详情(full)才按 口播/图文/非口播 分。
-    const key = post.detail_level === 'full' ? (post.content_subtype || 'unknown') : '__list__'
-    if (!buckets.has(key)) buckets.set(key, [])
-    buckets.get(key)!.push(post)
-  }
-  const order = NOTE_GROUP_ORDER as readonly string[]
-  const keys = [...buckets.keys()].sort((a, b) => {
-    const ia = order.indexOf(a)
-    const ib = order.indexOf(b)
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
-  return keys.map((subtype) => ({
-    subtype,
-    label: subtype === '__list__' ? '未采详情' : subtypeLabel(subtype),
-    posts: buckets.get(subtype)!,
-  }))
-})
-
-export const selectedPostCount = computed(() => selectedPostIds.value.length)
-// 已勾选的笔记对象(保持勾选顺序),供存快照弹框列出。
-export const selectedPosts = computed(() =>
-  selectedPostIds.value
-    .map((id) => bloggerPosts.value.find((p) => p.id === id))
-    .filter((p): p is BloggerPost => Boolean(p))
-)
-export function isPostSelected(id: number) {
-  return selectedPostIds.value.includes(id)
-}
-export function togglePostSelection(id: number) {
-  const idx = selectedPostIds.value.indexOf(id)
-  if (idx >= 0) selectedPostIds.value.splice(idx, 1)
-  else selectedPostIds.value.push(id)
-}
-export function clearPostSelection() {
-  selectedPostIds.value = []
-}
-export function selectGroupPosts(subtype: string) {
-  const group = bloggerNoteGroups.value.find((g) => g.subtype === subtype)
-  if (!group) return
-  const ids = new Set(selectedPostIds.value)
-  for (const post of group.posts) ids.add(post.id)
-  selectedPostIds.value = [...ids]
-}
-
-// —— 笔记池:选择/删除模式(软删,排除后采集不再翻回) ——
-// 复用 selectedPostIds:进入模式时清空,退出时清空;删除 = 批量或单条(选一条)。
-export const manageMode = ref(false)
-export function enterManageMode() {
-  clearPostSelection()
-  manageMode.value = true
-}
-export function exitManageMode() {
-  clearPostSelection()
-  manageMode.value = false
-}
-export async function handleDeleteSelectedPosts() {
-  const bloggerId = selectedBloggerId.value
-  const ids = [...selectedPostIds.value]
-  if (!bloggerId || !ids.length) return
-  if (!window.confirm(`删除选中的 ${ids.length} 篇笔记？将从笔记池移除，相关快照会同步剔除。`)) return
-  try {
-    await deleteBloggerPosts(bloggerId, ids)
-    showMessage(`已删除 ${ids.length} 篇笔记`)
-    await refreshSelectedBlogger()
-    exitManageMode()
-  } catch (err) {
-    showMessage(err instanceof Error ? err.message : '删除失败', true)
-  }
-}
-// 抽屉里的单条删除:从对标博主笔记池本地剔除。
 export async function handleDeleteNote(post: BloggerPost) {
   if (!window.confirm('删除这条笔记？将从笔记池移除。')) return
   try {
@@ -786,8 +599,6 @@ export const selectedXhsTopicIdea = computed(() =>
 )
 // 顶部紧凑步骤条用的简短标签，按步骤顺序排列（取代原先居中的大标题）。
 export const xhsCreationStepLabels = ['选择博主', '选择 Skill', '生成选题', '生成正文', '封面配图', '确认发布']
-export const xhsCollectStepLabels = ['选择博主', '配置采集', '执行采集', '查看结果']
-export const xhsDistillStepLabels = ['选择博主', '选择批次', '执行蒸馏', '确认结果']
 export const wechatBriefStepLabels = ['选新闻', '生成文章', '预览/编辑', '发布草稿箱']
 export const canGoNextWechatBriefStep = computed(() => {
   // 第 1 步「选新闻」不强制勾选(允许用已有勾选直接生成);第 2 步要先生成出文章才能进预览。
@@ -798,30 +609,6 @@ export const canGoNextWechatBriefStep = computed(() => {
     return hasArticle.value
   }
   return wechatBriefStep.value === 1
-})
-export const canGoNextXhsCollectStep = computed(() => {
-  if (xhsCollectStep.value === 1) {
-    return Boolean(selectedBlogger.value)
-  }
-  if (xhsCollectStep.value === 2) {
-    return Boolean(selectedBlogger.value)
-  }
-  if (xhsCollectStep.value === 3) {
-    return Boolean(selectedBlogger.value)
-  }
-  return false
-})
-export const canGoNextXhsDistillStep = computed(() => {
-  if (xhsDistillStep.value === 1) {
-    return Boolean(selectedBlogger.value)
-  }
-  if (xhsDistillStep.value === 2) {
-    return Boolean(selectedCollectionRun.value)
-  }
-  if (xhsDistillStep.value === 3) {
-    return Boolean(selectedCollectionRun.value)
-  }
-  return false
 })
 export const canGoNextXhsCreationStep = computed(() => {
   if (xhsCreationStep.value === 1) {
@@ -841,9 +628,6 @@ export const canGoNextXhsCreationStep = computed(() => {
   }
   return false
 })
-export function collectionDistillationCount(collectionRunId: number) {
-  return bloggerRuns.value.filter((run) => run.collection_run_id === collectionRunId).length
-}
 export const visibleTaskEvents = computed(() => {
   if (!taskEventsAction.value) {
     return []
@@ -870,9 +654,6 @@ export const latestEventAny = computed(() => taskEvents.value[taskEvents.value.l
 export const miniTaskStep = computed(() =>
   latestEventAny.value ? humanizeStepName(latestEventAny.value.step_name) : '进行中'
 )
-// 是否有「需要展示进度」的任务在执行(全局顶部进度卡片用)。涵盖所有会跑一会儿的动作。
-export const PROGRESS_ACTIONS = ['fetch', 'generate', 'collect', 'distill', 'xhs-package', 'xhs-package-save', 'xhs-topic', 'audit', 'dossier', 'pool-sync'] as const
-export const isProgressTaskRunning = computed(() => PROGRESS_ACTIONS.includes(pendingAction.value as (typeof PROGRESS_ACTIONS)[number]))
 const TASK_NAME_MAP: Record<string, string> = {
   fetch: '抓取新闻',
   generate: '生成文章',
@@ -886,29 +667,6 @@ const TASK_NAME_MAP: Record<string, string> = {
   'pool-sync': '同步笔记池',
 }
 export const runningTaskName = computed(() => TASK_NAME_MAP[pendingAction.value || ''] || '处理中')
-export const hasTaskEvents = computed(() => visibleTaskEvents.value.length > 0 || isVisibleTaskRunning.value)
-export const taskSummaryStep = computed(() => {
-  if (latestTaskEvent.value) {
-    return latestTaskEvent.value.step_name
-  }
-  return runningTaskName.value
-})
-export const taskSummaryMessage = computed(() => {
-  if (latestTaskEvent.value) {
-    return compactTaskMessage(latestTaskEvent.value)
-  }
-  return '等待任务事件同步'
-})
-export const taskSummaryStatus = computed(() => {
-  if (isVisibleTaskRunning.value) {
-    return 'running'
-  }
-  return latestTaskEvent.value?.status || 'running'
-})
-export const taskSummaryPayload = computed(() => (latestTaskEvent.value ? eventPayloadSummary(latestTaskEvent.value) : ''))
-
-// ===== 统一实时进度(全站任务通用) =====
-// 步骤名通俗化:内部术语 → 用户能看懂的话。命中映射就替换,否则原样(如「{对标账号}准备」这类动态名)。
 const STEP_LABEL_MAP: Record<string, string> = {
   样本采集: '准备采集',
   增量分流: '整理笔记池',
@@ -987,61 +745,6 @@ export const taskCountProgress = computed(() => {
   return { current: 0, total: 0, pct: 0 }
 })
 
-// 采集分流明细:从「增量分流」事件读 新增/补采,用于诚实展示进度——避免用户只看到被回填撑大的总数(如"10 条"变 74)。
-export const collectBreakdown = computed(() => {
-  for (let index = visibleTaskEvents.value.length - 1; index >= 0; index -= 1) {
-    const ev = visibleTaskEvents.value[index]
-    if (ev.step_name === '增量分流') {
-      const payload = parseEventPayload(ev)
-      const backfill = Number(payload?.backfill)
-      if (payload && !Number.isNaN(backfill)) {
-        return { new: Number(payload.new) || 0, backfill: backfill || 0, refresh: Number(payload.refresh) || 0 }
-      }
-    }
-  }
-  return null
-})
-
-// 采集中断/失败后的"已采成果":从「样本入库」事件聚合(每条带 post_id/asr/vision),配合笔记池取标题与图数。
-// 中断时 run 未定稿(post_count=0),但笔记已增量入库、事件也在,故用事件重建成果供前端展示(见 #20)。
-export const collectPartialResult = computed(() => {
-  const saved: Array<{ postId: number; asr: string; vision: string }> = []
-  for (const ev of visibleTaskEvents.value) {
-    if (ev.step_name === '样本入库' && ev.status === 'succeeded') {
-      const p = parseEventPayload(ev)
-      if (p?.post_id) saved.push({ postId: Number(p.post_id), asr: String(p.asr || ''), vision: String(p.vision || '') })
-    }
-  }
-  if (!saved.length) return null
-  const byId = new Map(bloggerPosts.value.map((p) => [p.id, p]))
-  const items = saved.map((s) => {
-    const post = byId.get(s.postId)
-    const isVideo = post ? post.content_type === 'video' : s.asr !== 'not_required' && s.asr !== ''
-    let capture: string
-    let ok: boolean
-    if (isVideo) {
-      ok = s.asr === 'subtitle' || s.asr === 'succeeded'
-      capture = s.asr === 'subtitle' ? '字幕已采' : s.asr === 'succeeded' ? '语音转写成功' : '文字未采到'
-    } else {
-      const n = post?.vision_image_count || 0
-      ok = s.vision === 'succeeded'
-      capture = ok ? (n ? `图片理解 · ${n} 张` : '图片理解成功') : '图片未识别'
-    }
-    return { title: post?.title || '(已保存笔记)', isVideo, capture, ok }
-  })
-  const videoNotes = items.filter((i) => i.isVideo).length
-  return {
-    total: items.length,
-    imageNotes: items.length - videoNotes,
-    videoNotes,
-    visionOk: saved.filter((s) => s.vision === 'succeeded').length,
-    subtitleOk: saved.filter((s) => s.asr === 'subtitle').length,
-    asrOk: saved.filter((s) => s.asr === 'succeeded').length,
-    items
-  }
-})
-
-// 逐条高频事件(采集那几个)折叠进进度条,不进时间线,避免刷屏。
 const TIMELINE_SPAM_STEPS = new Set(['笔记详情', '样本入库', '视频 ASR', '视频字幕', '评论采集'])
 // 统一时间线:通俗步骤名 + 原始文案,最新在上。
 export const liveTimeline = computed(() =>
@@ -1109,29 +812,6 @@ export function handleGlobalKeydown(event: KeyboardEvent) {
   }
 }
 
-export function compactTaskMessage(event: OperationTaskEvent) {
-  const payload = parseEventPayload(event)
-  const progress = payload?.current && payload?.total ? `${payload.current}/${payload.total}` : ''
-  if (taskEventsAction.value === 'collect' && progress) {
-    return progress
-  }
-  if (taskEventsAction.value === 'collect') {
-    return latestCollectionProgressText() || '采集中'
-  }
-  const message = progress ? `${event.message} ${progress}` : event.message
-  return message.length > 42 ? `${message.slice(0, 42)}...` : message
-}
-
-export function latestCollectionProgressText() {
-  for (let index = taskEvents.value.length - 1; index >= 0; index -= 1) {
-    const payload = parseEventPayload(taskEvents.value[index])
-    if (payload?.current && payload?.total) {
-      return `${payload.current}/${payload.total}`
-    }
-  }
-  return ''
-}
-
 export async function runAction(name: string, label: string, action: () => Promise<void>) {
   pendingAction.value = name
   showMessage(label)
@@ -1172,26 +852,6 @@ export function resetFakeProgress(name: TaskActionName) {
   taskProgress[name] = 0
 }
 
-export function taskButtonStyle(name: TaskActionName) {
-  return { '--progress': `${taskProgress[name]}%` }
-}
-
-export function eventPayloadSummary(event: OperationTaskEvent) {
-  const payload = parseEventPayload(event)
-  if (!payload) {
-    return ''
-  }
-  const entries = Object.entries(payload)
-    .filter(([key]) => !['current', 'total'].includes(key))
-    .filter(() => taskEventsAction.value !== 'collect')
-    .filter(([, value]) => value !== null && value !== '' && value !== undefined)
-    .slice(0, 3)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
-  return entries.join(' · ')
-}
-
-// 进行中任务持久化:后台任务(RQ/Redis)本身持久,但前端轮询循环和 pendingAction 是内存态,
-// 刷新即丢 → 任务从界面消失、还能重复发起。这里把 runningTaskId 落 localStorage,刷新后重挂轮询。
 const RUNNING_TASK_KEY = 'pubsync_running_task'
 type PersistedTask = { id: string; name: TaskActionName; mainTab: MainTab; subTab?: string | null }
 const TERMINAL_TASK_STATUS: string[] = ['succeeded', 'cancelled', 'failed']
@@ -1482,22 +1142,6 @@ export function toggleUserMenu() {
   showUserMenu.value = !showUserMenu.value
 }
 
-export async function handleTenantChange() {
-  if (!selectedTenantId.value) {
-    return
-  }
-  setTenantId(selectedTenantId.value)
-  taskEvents.value = []
-  taskEventsAction.value = null
-  showMessage('正在切换工作空间')
-  try {
-    await loadAll()
-    showMessage('工作空间已切换')
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : '切换工作空间失败', true)
-  }
-}
-
 export async function refreshArticle() {
   const nextArticle = await getLatestArticle()
   setArticle(nextArticle)
@@ -1579,30 +1223,6 @@ export function goNextXhsCreationStep() {
     return
   }
   xhsCreationStep.value = Math.min(6, xhsCreationStep.value + 1)
-}
-
-export function goPreviousXhsCollectStep() {
-  xhsCollectStep.value = Math.max(1, xhsCollectStep.value - 1)
-}
-
-export function goNextXhsCollectStep() {
-  if (!canGoNextXhsCollectStep.value) {
-    showMessage(xhsCollectStep.value === 1 ? '请先选择博主' : '当前步骤还没有完成', true)
-    return
-  }
-  xhsCollectStep.value = Math.min(4, xhsCollectStep.value + 1)
-}
-
-export function goPreviousXhsDistillStep() {
-  xhsDistillStep.value = Math.max(1, xhsDistillStep.value - 1)
-}
-
-export function goNextXhsDistillStep() {
-  if (!canGoNextXhsDistillStep.value) {
-    showMessage(xhsDistillStep.value === 1 ? '请先选择博主' : '请先选择已完成的采集批次', true)
-    return
-  }
-  xhsDistillStep.value = Math.min(4, xhsDistillStep.value + 1)
 }
 
 export function goPreviousWechatBriefStep() {
@@ -1935,44 +1555,6 @@ export async function handleDeleteBlogger(blogger: BloggerProfile) {
   })
 }
 
-// 从蒸馏 run 的 report_json 里解析模式与质量分，供前端清晰展示（不改后端 schema）。
-export interface DistillRunMeta {
-  mode: 'A' | 'B'
-  qualityScore: number | null
-  qualityGrade: string
-  qualityIssues: string[]
-  revisions: number
-}
-
-export function distillRunMeta(run: BloggerDistillationRun | null | undefined): DistillRunMeta {
-  const empty: DistillRunMeta = { mode: 'A', qualityScore: null, qualityGrade: '', qualityIssues: [], revisions: 0 }
-  if (!run?.report_json) return empty
-  try {
-    const parsed = JSON.parse(run.report_json) as {
-      mode?: string
-      quality?: { score?: number; grade?: string; issues?: string[]; revisions?: number }
-    }
-    const quality = parsed.quality || {}
-    return {
-      mode: parsed.mode === 'B' ? 'B' : 'A',
-      qualityScore: typeof quality.score === 'number' ? quality.score : null,
-      qualityGrade: typeof quality.grade === 'string' ? quality.grade : '',
-      qualityIssues: Array.isArray(quality.issues) ? quality.issues : [],
-      revisions: typeof quality.revisions === 'number' ? quality.revisions : 0
-    }
-  } catch {
-    return empty
-  }
-}
-
-// 质量评分对应的语义色调（复用 StatusChip 的色片样式）。
-export function qualityTone(grade: string): string {
-  if (grade === '优') return 'success'
-  if (grade === '良') return 'info'
-  if (grade === '待改进') return 'warn'
-  return 'neutral'
-}
-
 export function openCreateMyAccountModal() {
   openCreateBloggerModal()
   bloggerModalAccountType.value = 'mine'
@@ -2289,84 +1871,6 @@ export async function selectBlogger(id: number) {
   await refreshSelectedBlogger()
 }
 
-// 「采集 / 更新笔记」轻入口:切到数据采集向导并预选该博主。
-// collect tab 下 selectBlogger 会自动进第 2 步「配置采集」;博主资产 / 我的账号共用这一个采集入口,
-// 不再各搞一套语义含糊的"刷新"。
-export async function goCollectForBlogger(id: number) {
-  setCurrentSocialTab('collect')
-  await selectBlogger(id)
-}
-
-export async function selectCollectionRun(id: number) {
-  if (selectedCollectionRunId.value === id) {
-    selectedCollectionRunId.value = null
-    selectedBloggerRunId.value = null
-    bloggerPosts.value = []
-    return
-  }
-  selectedCollectionRunId.value = id
-  selectedBloggerRunId.value = null
-  if (selectedBloggerId.value) {
-    bloggerPosts.value = await listBloggerCollectionPosts(selectedBloggerId.value, id)
-  }
-  selectLatestRunForCollection()
-}
-
-export function selectBloggerRun(id: number) {
-  selectedBloggerRunId.value = id
-}
-
-export async function handleConfirmBloggerRun() {
-  if (!selectedBloggerId.value || !selectedBloggerRun.value) {
-    showMessage('请先选择待确认的蒸馏结果', true)
-    return
-  }
-  await runAction('distill-confirm', '正在保存蒸馏结果', async () => {
-    const run = await confirmBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
-    await refreshSelectedBlogger()
-    selectedBloggerRunId.value = run.id
-    setCurrentSocialTab('dossier')
-    showMessage('蒸馏结果已保存，Skill 已进入 AI 创作')
-  })
-}
-
-export async function handleAbandonBloggerRun() {
-  if (!selectedBloggerId.value || !selectedBloggerRun.value) {
-    showMessage('请先选择待确认的蒸馏结果', true)
-    return
-  }
-  await runAction('distill-abandon', '正在放弃本次蒸馏结果', async () => {
-    const run = await abandonBloggerRun(selectedBloggerId.value!, selectedBloggerRun.value!.id)
-    await refreshSelectedBlogger()
-    selectedBloggerRunId.value = run.id
-    setCurrentSocialTab('dossier')
-    showMessage('已放弃本次蒸馏结果')
-  })
-}
-
-export function selectLatestRunForCollection(collectionRunId = selectedCollectionRunId.value) {
-  if (!collectionRunId) {
-    selectedBloggerRunId.value = null
-    return
-  }
-  const latestRun = bloggerRuns.value.find((run) => run.collection_run_id === collectionRunId)
-  selectedBloggerRunId.value = latestRun?.id || null
-}
-
-export function showCollectionResults(collectionRunId: number | null) {
-  resultCollectionFilterId.value = collectionRunId
-  setCurrentSocialTab('dossier')
-  if (collectionRunId) {
-    selectLatestRunForCollection(collectionRunId)
-  } else {
-    selectedBloggerRunId.value = bloggerRuns.value[0]?.id || null
-  }
-}
-
-export function showAllBloggerRuns() {
-  showCollectionResults(null)
-}
-
 export async function handleFetchNews() {
   await runTaskAction(
     'fetch',
@@ -2540,28 +2044,6 @@ export function friendlyTime(value: string) {
   if (sameDay(d, yesterday)) return `昨天 ${hm}`
   const yearPrefix = d.getFullYear() === now.getFullYear() ? '' : `${d.getFullYear()}年`
   return `${yearPrefix}${d.getMonth() + 1}月${d.getDate()}日 ${hm}`
-}
-
-// 「第 N 次」序号:按 created_at 升序(同刻按 id)给每条 run 排名,N=1 最早。
-function buildOrdinalMap(runs: { id: number; created_at: string }[]) {
-  const sorted = [...runs].sort((a, b) => {
-    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    return diff !== 0 ? diff : a.id - b.id
-  })
-  const map = new Map<number, number>()
-  sorted.forEach((run, index) => map.set(run.id, index + 1))
-  return map
-}
-
-export const collectionRunOrdinals = computed(() => buildOrdinalMap(bloggerCollectionRuns.value))
-export const distillRunOrdinals = computed(() => buildOrdinalMap(bloggerRuns.value))
-
-export function collectionRunOrdinal(id: number | null | undefined): number | null {
-  return id == null ? null : collectionRunOrdinals.value.get(id) ?? null
-}
-
-export function distillRunOrdinal(id: number | null | undefined): number | null {
-  return id == null ? null : distillRunOrdinals.value.get(id) ?? null
 }
 
 export function formatScheduleTime(hour: number, minute: number) {

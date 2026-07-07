@@ -15,7 +15,6 @@ import type {
   BenchmarkIntent,
   BenchmarkRecommendationRun,
   BloggerDistillationRun,
-  BloggerDistillRequest,
   BloggerDossier,
   DossierAudience,
   BloggerPost,
@@ -26,7 +25,6 @@ import type {
   BloggerSkill,
   EvaluateResult,
   ConfigView,
-  ContentProfile,
   CostEvent,
   CostSummary,
   CurrentUser,
@@ -45,12 +43,10 @@ import type {
   DashboardOverview,
   XhsPublishPackage,
   XhsPublishPackageCreate,
-  XhsPublishPackageDraft,
   XhsPublishPackageSave,
   XhsTopicIdeaRequest,
   XhsTopicIdeaResponse
 } from './types'
-
 const API_BASE = `${import.meta.env.BASE_URL}api`
 const TOKEN_KEY = 'pubsync_token'
 const TENANT_KEY = 'pubsync_tenant_id'
@@ -239,10 +235,6 @@ export function upsertAppSetting(key: string, value: string) {
   })
 }
 
-export function getProfile() {
-  return request<ContentProfile>('/profile')
-}
-
 export function getWorkspaceConfig() {
   return request<WorkspaceConfig>('/workspace/config')
 }
@@ -369,27 +361,8 @@ export function listBloggerCollectionRuns(id: number) {
   return request<BloggerCollectionRun[]>(`/bloggers/${id}/collection-runs`)
 }
 
-export function listBloggerCollectionPosts(id: number, collectionRunId: number) {
-  return request<BloggerPost[]>(`/bloggers/${id}/collection-runs/${collectionRunId}/posts`)
-}
-
-export function distillBlogger(id: number, payload: BloggerDistillRequest) {
-  return request<OperationTask>(`/bloggers/${id}/distill`, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
 export function listBloggerRuns(id: number) {
   return request<BloggerDistillationRun[]>(`/bloggers/${id}/distillation-runs`)
-}
-
-export function confirmBloggerRun(bloggerId: number, runId: number) {
-  return request<BloggerDistillationRun>(`/bloggers/${bloggerId}/distillation-runs/${runId}/confirm`, { method: 'POST' })
-}
-
-export function abandonBloggerRun(bloggerId: number, runId: number) {
-  return request<BloggerDistillationRun>(`/bloggers/${bloggerId}/distillation-runs/${runId}/abandon`, { method: 'POST' })
 }
 
 export function listBloggerSkills(platform: SocialPlatform = 'xhs') {
@@ -418,17 +391,6 @@ export function getAccountDashboard(accountId: number, range = '30d') {
 
 export function getAccountGrowth(accountId: number, range = '30d') {
   return request<DashboardGrowth>(`/dashboard/account/${accountId}/growth?range=${range}`)
-}
-
-export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {
-  return generateXhsPublishPackageDraft(payload)
-}
-
-export function generateXhsPublishPackageDraft(payload: XhsPublishPackageCreate) {
-  return request<XhsPublishPackageDraft>('/xhs/package-drafts', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
 }
 
 export function startXhsPublishPackageDraftTask(payload: XhsPublishPackageCreate) {
@@ -489,12 +451,6 @@ export function listAccountAuditRuns(platform: SocialPlatform = 'xhs', kind?: 'b
   return request<AccountAuditRun[]>(`/account-audit/runs?platform=${encodeURIComponent(platform)}${qs}`)
 }
 
-export function getAccountAuditRun(runId: number) {
-  return request<AccountAuditRun>(`/account-audit/runs/${runId}`)
-}
-
-// 博主诊断(对标分析):诊断一个号(对标库博主或我的账号)→ 硬/软/合规 三区报告。
-// 诊断前后端会自动确保 ≥N 条笔记(不够补采)。结果落 AccountAuditRun,用 getAccountAuditRun 读。
 export function appraiseBlogger(payload: {
   blogger_id: number
   kind: 'benchmark' | 'self'
