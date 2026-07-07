@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import LoginView from './components/LoginView.vue'
 import NavIcon from './components/NavIcon.vue'
+import AppShell from './components/shell/AppShell.vue'
 import { clearAuthToken, clearTenantId } from './api'
 import { DEFAULT_TAB, readLastPlatform } from './router'
 import type { PlatformParam } from './router'
@@ -221,6 +222,9 @@ onUnmounted(() => {
   <div v-else-if="route.name === 'select'" class="select-shell">
     <router-view />
   </div>
+
+  <!-- 对象驱动新架构:自带新外壳(顶栏 + 内容区,无侧栏),与下方旧 sh-shell 并存。 -->
+  <AppShell v-else-if="route.meta.shell === 'new'" />
 
   <div v-else class="sh-shell">
     <!-- 顶栏 -->
