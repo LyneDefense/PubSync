@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 找对标(精确搜索):知道名字/关键词直接搜 → 「采用」加入对标库 → 去「对标分析」诊断值不值得学。
 // 搜索 Hero + 试试建议 + 结果卡 + 采用态 + idle/nomatch 空态。逻辑沿用 searchBloggers / adoptBenchmarkCandidate。
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { searchBloggers } from '../api'
 import type { BloggerSearchResult } from '../api/types'
 import {
@@ -12,6 +13,13 @@ import {
   isSocialPlatform,
   showMessage
 } from '../composables/useWorkspaceStore'
+
+// embedded = 对象驱动新架构下的 /find(无平台门,自带平台切换);默认沿用当前平台。
+const props = defineProps<{ embedded?: boolean }>()
+const router = useRouter()
+const platform = ref<'xhs' | 'douyin'>(currentSocialPlatform.value)
+const activePlatform = computed(() => (props.embedded ? platform.value : currentSocialPlatform.value))
+const activePlatformName = computed(() => (activePlatform.value === 'douyin' ? '抖音' : '小红书'))
 
 const keyword = ref('')
 const searching = ref(false)
@@ -48,7 +56,7 @@ async function doSearch() {
   }
   searching.value = true
   try {
-    results.value = await searchBloggers(currentSocialPlatform.value, kw)
+    results.value = await searchBloggers(activePlatform.value, kw)
     lastKeyword.value = kw
     searched.value = true
   } catch (error) {
@@ -64,8 +72,16 @@ function adopt(r: BloggerSearchResult) {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'find'" class="find-benchmark">
-    <header class="fb-head">
+  <section v-if="embedded || (isSocialPlatform && currentSocialTab === 'find')" class="find-benchmark" :class="{ 'is-embedded': embedded }">
+    <!-- 新架构 /find:面包屑 + 平台切换(无平台门,搜哪个平台自己选)。 -->
+    <div v-if="embedded" class="fb-crumbrow">
+      <button type="button" class="fb-crumb" @click="router.push({ name: 'home' })">← 首页 / 加对标博主</button>
+      <div class="fb-plat" role="tablist" aria-label="选择平台">
+        <button type="button" role="tab" :class="{ 'is-on': platform === 'xhs' }" @click="platform = 'xhs'">小红书</button>
+        <button type="button" role="tab" :class="{ 'is-on': platform === 'douyin' }" @click="platform = 'douyin'">抖音</button>
+      </div>
+    </div>
+    <header v-else class="fb-head">
       <h1>查找博主</h1>
       <p>知道名字或关键词直接搜,「采用」即加入{{ currentSocialPlatformName }}对标库;再去「对标分析」诊断它值不值得学。</p>
     </header>
@@ -87,7 +103,7 @@ function adopt(r: BloggerSearchResult) {
           {{ searching ? '搜索中' : '搜索' }}
         </button>
       </div>
-      <p class="search-hint">如果找不到博主,可以点开博主主页复制 Ta 的小红书号进行精确搜索喔。</p>
+      <p class="search-hint">如果找不到博主,可以点开博主主页复制 Ta 的{{ activePlatformName }}号进行精确搜索喔。</p>
     </div>
 
     <!-- 结果 / 空态 -->
@@ -132,6 +148,26 @@ function adopt(r: BloggerSearchResult) {
   max-width: 760px;
   margin: 0 auto;
 }
+/* 嵌入 /find 时:宽度交给外壳容器,顶部换面包屑 + 平台切换。 */
+.find-benchmark.is-embedded { max-width: none; margin: 0; }
+.fb-crumbrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.fb-crumb { border: 0; background: none; cursor: pointer; font-size: 12.5px; color: var(--color-ink-3); padding: 0; }
+.fb-crumb:hover { color: var(--color-accent-ink); }
+.fb-plat {
+  display: inline-flex; gap: 2px; padding: 3px;
+  border: 1px solid var(--color-field-border); border-radius: 10px; background: var(--color-paper-3);
+}
+.fb-plat button {
+  height: 28px; padding: 0 14px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--color-ink-2); font-size: 12.5px; font-weight: 560; cursor: pointer;
+}
+.fb-plat button.is-on { background: var(--color-surface); color: var(--color-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
 .fb-head {
   margin-bottom: 18px;
 }

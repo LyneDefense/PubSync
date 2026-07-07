@@ -4,6 +4,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { currentUsername, currentTenantName, handleLogout, showMessage } from '../../composables/useWorkspaceStore'
+import BloggerFormModal from '../BloggerFormModal.vue'
 
 const router = useRouter()
 const showMenu = ref(false)
@@ -56,6 +57,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocDown))
         <router-view />
       </div>
     </main>
+
+    <!-- 共享博主表单弹窗:采用对标 / 添加我的账号 / 编辑博主(store 驱动,新旧外壳各挂一份)。 -->
+    <BloggerFormModal />
   </div>
 </template>
 

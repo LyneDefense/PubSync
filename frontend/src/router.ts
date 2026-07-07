@@ -47,7 +47,7 @@ const routes = [
   { path: '/account/:id', name: 'account', meta: { shell: 'new', title: '我的账号' }, component: () => import('./views/AccountObjectView.vue') },
   { path: '/create', name: 'create', meta: { shell: 'new', title: '创作' }, component: () => import('./views/SocialPackagesView.vue'), props: (route: RouteLocationNormalized) => ({ embedded: true, bloggerId: Number(route.query.blogger) || undefined }) },
   { path: '/drafts', name: 'drafts', meta: { shell: 'new', title: '发布草稿' }, component: () => import('./views/SocialHistoryView.vue'), props: { embedded: true } },
-  { path: '/find', name: 'find', meta: { shell: 'new', title: '加对标博主' }, component: () => import('./views/NewShellPlaceholder.vue') },
+  { path: '/find', name: 'find', meta: { shell: 'new', title: '加对标博主' }, component: () => import('./views/FindBenchmarkView.vue'), props: { embedded: true } },
   { path: '/settings-new', name: 'settings-new', meta: { shell: 'new', title: '设置' }, component: () => import('./views/NewShellPlaceholder.vue') },
   { path: '/:platform/:tab?', name: 'workspace', component: () => import('./views/WorkspaceView.vue') },
   // 兜底:任何未匹配路径(含从落地页进来的 /login.html 初始 URL)先归到登录,守卫再分流。
