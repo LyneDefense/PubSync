@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.blogger_distillation.providers import validate_platform
 from app.models import (
     AccountAuditRun,
-    BenchmarkDiscoverySession,
     BloggerCollectionPost,
     BloggerCollectionRun,
     BloggerDistillationRun,
@@ -229,7 +228,6 @@ def delete_blogger(db: Session, tenant_id: int, blogger_id: int) -> None:
     db.execute(delete(BloggerDistillationRun).where(BloggerDistillationRun.blogger_id == blogger_id))
     db.execute(delete(BloggerCollectionRun).where(BloggerCollectionRun.blogger_id == blogger_id))
     db.execute(delete(BloggerSnapshot).where(BloggerSnapshot.blogger_id == blogger_id))
-    db.execute(delete(BenchmarkDiscoverySession).where(BenchmarkDiscoverySession.my_account_id == blogger_id))
     db.execute(delete(AccountAuditRun).where(or_(AccountAuditRun.my_blogger_id == blogger_id, AccountAuditRun.benchmark_blogger_id == blogger_id)))
     db.execute(delete(BloggerPost).where(BloggerPost.blogger_id == blogger_id))
     db.delete(blogger)

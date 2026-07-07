@@ -29,7 +29,6 @@ from app.models.workspace import (
     PublishingSettings,
     WeChatAccount,
 )
-from app.models.benchmark_discovery import BenchmarkDiscoverySession
 from app.models.xhs import XhsPublishPackage
 
 __all__ = [
@@ -63,5 +62,4 @@ __all__ = [
     "BloggerSnapshot",
     "XhsPublishPackage",
     "AccountAuditRun",
-    "BenchmarkDiscoverySession",
 ]

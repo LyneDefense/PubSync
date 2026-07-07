@@ -1,6 +1,5 @@
 """调度器周期调用的入口:定时发布(``scheduled_workspace_publish``)+ 僵死任务看门狗
-(``reap_stale_tasks``)+ 发现会话清理(``reap_discovery_sessions``)。都自建 session、自吞异常,
-不让单次失败影响调度器。
+(``reap_stale_tasks``)。都自建 session、自吞异常,不让单次失败影响调度器。
 """
 
 import logging
