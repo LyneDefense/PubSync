@@ -3,7 +3,7 @@
 // 纯展示重构:状态/方法全部沿用 useWorkspaceStore;第 3/4 步「生成后才出现下一步」;三处进度沿用内嵌进度规范。
 import { computed } from 'vue'
 import HashtagCloud from '../components/HashtagCloud.vue'
-import ImageOutputGrid from '../components/ImageOutputGrid.vue'
+import ImagePlanList from '../components/ImagePlanList.vue'
 import LiveProgress from '../components/LiveProgress.vue'
 import { parseJsonObject, xhsContentTypeLabel, xhsPackageCopyText } from '../utils/format'
 import {
@@ -23,7 +23,6 @@ import {
   handleXhsCreatorSkillChange,
   isSocialPlatform,
   myAccountsOnPlatform,
-  openImagePreview,
   pendingAction,
   selectXhsTopicIdea,
   selectedXhsSkill,
@@ -37,7 +36,6 @@ import {
   xhsDraftCompliance,
   xhsDraftHashtags,
   xhsDraftImagePlan,
-  xhsDraftImageUrls,
   xhsDraftProcess,
   xhsDraftScriptSegments,
   xhsPackageForm,
@@ -236,7 +234,7 @@ function avatarStyle(id: number) {
         </label>
         <label class="type" :class="{ sel: xhsPackageForm.content_type === 'image_note' }">
           <input v-model="xhsPackageForm.content_type" type="radio" value="image_note" />
-          <strong>图文配图</strong><span>额外规划并生成配图</span>
+          <strong>图文配图</strong><span>额外给出配图方案(含生图 prompt,不代生成图)</span>
         </label>
         <label class="type" :class="{ sel: xhsPackageForm.content_type === 'spoken_script' }">
           <input v-model="xhsPackageForm.content_type" type="radio" value="spoken_script" />
@@ -268,18 +266,12 @@ function avatarStyle(id: number) {
         <div class="metric-grid">
           <article class="metric"><span>封面文案</span><b class="metric-text">{{ currentXhsDraft.cover_text || '暂无' }}</b></article>
           <article class="metric"><span>标签</span><b>{{ xhsDraftHashtags.length }} 个</b></article>
-          <article class="metric"><span>配图</span><b>{{ xhsDraftImageUrls.length || xhsDraftImagePlan.length }} 张</b></article>
+          <article class="metric"><span>配图方案</span><b>{{ xhsDraftImagePlan.length }} 张</b></article>
         </div>
         <HashtagCloud :tags="xhsDraftHashtags" @copy="copyText($event, '标签')" />
-        <ImageOutputGrid
-          v-if="xhsDraftImageUrls.length"
-          :urls="xhsDraftImageUrls"
-          :plan="xhsDraftImagePlan"
-          :alt-text="`${currentSocialPlatformName}发布包配图`"
-          @preview="openImagePreview($event.url, $event.caption)"
-        />
+        <ImagePlanList v-if="xhsDraftImagePlan.length" :plan="xhsDraftImagePlan" />
       </template>
-      <p v-else class="empty-region pad">生成内容后，这里会展示封面、标签和配图输出。</p>
+      <p v-else class="empty-region pad">生成内容后，这里会展示封面、标签和配图方案。</p>
     </section>
 
     <!-- 第 6 步:最终发布包 -->
@@ -331,13 +323,10 @@ function avatarStyle(id: number) {
           <pre>{{ currentXhsDraft.body_text }}</pre>
         </section>
 
-        <ImageOutputGrid
-          v-if="xhsDraftImageUrls.length"
-          :urls="xhsDraftImageUrls"
-          :plan="xhsDraftImagePlan"
-          :alt-text="`${currentSocialPlatformName}发布包配图`"
-          @preview="openImagePreview($event.url, $event.caption)"
-        />
+        <section v-if="xhsDraftImagePlan.length" class="copy-block">
+          <div class="cb-head"><h4>配图方案</h4></div>
+          <ImagePlanList :plan="xhsDraftImagePlan" />
+        </section>
 
         <section v-if="xhsDraftScriptSegments.length" class="copy-block">
           <div class="cb-head"><h4>脚本预览</h4><button type="button" class="btn btn--ghost slim" @click="copyText(JSON.stringify(parseJsonObject(currentXhsDraft.script_json), null, 2), '脚本')">复制脚本</button></div>

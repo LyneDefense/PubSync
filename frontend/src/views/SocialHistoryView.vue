@@ -3,7 +3,7 @@
 // 纯展示重构:store 状态/方法全部沿用;仅新增本地的搜索/状态筛选 UI 态。
 import { computed, ref } from 'vue'
 import HashtagCloud from '../components/HashtagCloud.vue'
-import ImageOutputGrid from '../components/ImageOutputGrid.vue'
+import ImagePlanList from '../components/ImagePlanList.vue'
 import { parseJsonObject, xhsContentTypeLabel, xhsPackageCopyText } from '../utils/format'
 import {
   copyText,
@@ -12,14 +12,12 @@ import {
   formatDate,
   handleMarkPublished,
   isSocialPlatform,
-  openImagePreview,
   selectedXhsPackage,
   selectedXhsPackageBloggerName,
   selectedXhsPackageId,
   visibleXhsPackages,
   xhsPackageHashtags,
   xhsPackageImagePlan,
-  xhsPackageImageUrls,
   xhsPackageScriptSegments
 } from '../composables/useWorkspaceStore'
 
@@ -123,7 +121,7 @@ function typeKind(ct: string): 'video' | 'image' {
         <section class="card snapshot">
           <article class="snap"><span>主题</span><strong>{{ selectedXhsPackage.topic || '暂无' }}</strong></article>
           <article class="snap"><span>封面文案</span><strong>{{ selectedXhsPackage.cover_text || '暂无' }}</strong></article>
-          <article class="snap"><span>配图</span><strong>{{ xhsPackageImageUrls.length || xhsPackageImagePlan.length }} 张</strong></article>
+          <article class="snap"><span>配图方案</span><strong>{{ xhsPackageImagePlan.length }} 张</strong></article>
         </section>
 
         <!-- 正文 -->
@@ -138,21 +136,10 @@ function typeKind(ct: string): 'video' | 'image' {
           <HashtagCloud :tags="xhsPackageHashtags" @copy="copyText($event, '标签')" />
         </section>
 
-        <!-- 配图 -->
-        <section v-if="xhsPackageImageUrls.length || xhsPackageImagePlan.length" class="card">
-          <div class="cb-head plain"><h3>配图</h3><span class="cb-note">{{ xhsPackageImageUrls.length || xhsPackageImagePlan.length }} 张</span></div>
-          <ImageOutputGrid
-            :urls="xhsPackageImageUrls"
-            :plan="xhsPackageImagePlan"
-            :alt-text="`${currentSocialPlatformName}发布包配图`"
-            @preview="openImagePreview($event.url, $event.caption)"
-          />
-          <div v-if="!xhsPackageImageUrls.length" class="plan-list">
-            <div v-for="item in xhsPackageImagePlan" :key="String(item.slot)" class="plan-item">
-              <strong>{{ item.caption || `配图 ${item.slot}` }}</strong>
-              <span>{{ item.purpose }}</span>
-            </div>
-          </div>
+        <!-- 配图方案 -->
+        <section v-if="xhsPackageImagePlan.length" class="card">
+          <div class="cb-head plain"><h3>配图方案</h3><span class="cb-note">{{ xhsPackageImagePlan.length }} 张</span></div>
+          <ImagePlanList :plan="xhsPackageImagePlan" />
           <p v-if="selectedXhsPackage.error_message" class="run-error">{{ selectedXhsPackage.error_message }}</p>
         </section>
 
@@ -553,27 +540,6 @@ function typeKind(ct: string): 'video' | 'image' {
   padding: 0 16px 16px;
 }
 
-/* 配图 plan 回退 */
-.plan-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 16px;
-}
-.plan-item {
-  padding: 10px 12px;
-  border: 1px solid var(--color-rule);
-  border-radius: 10px;
-}
-.plan-item strong {
-  display: block;
-  font-size: 13px;
-  color: var(--color-ink);
-}
-.plan-item span {
-  font-size: 12px;
-  color: var(--color-ink-3);
-}
 .run-error {
   margin: 0 16px 14px;
   font-size: 12.5px;

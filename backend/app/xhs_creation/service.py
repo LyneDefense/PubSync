@@ -9,7 +9,7 @@ from app.compliance import scan_creation
 from app.config import Settings
 from app.models import AppSetting, BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
 from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
-from app.services.ai_service import AIServiceError, create_json_response, generate_image, is_ai_enabled
+from app.services.ai_service import AIServiceError, create_json_response, is_ai_enabled
 from app.synthesis import humanize_event, run_agent
 from app.xhs_creation.agent import (
     CreationContext,
@@ -55,27 +55,18 @@ def generate_xhs_publish_package_draft(
         db, settings, tenant_id, blogger, skill, payload, task_id=task_id
     )
     image_plan = normalize_image_plan(generated.get("image_plan"))
-    image_urls: list[str] = []
+    image_urls: list[str] = []  # 不再替用户自动生图,保留空列表兼容下游/存量。
     error_message: str | None = None
 
     if payload.content_type == "image_note":
+        # 只出「配图方案」(张数 + 每张:用途/图上文案/版式/英文生图 prompt),不代生成图片
+        # —— 省图像模型成本,用户拿 prompt 去自己的 AI 工具生成。
         target_count = resolve_image_count(payload.image_count_mode, payload.requested_image_count, generated, image_plan)
         image_plan = image_plan[:target_count]
         if target_count and not image_plan:
             image_plan = build_fallback_image_plan(generated, target_count)
         if task_id and image_plan:
-            record_task_event(db, tenant_id, task_id, "配图", "running", f"正在生成 {len(image_plan)} 张配图…")
-        for index, item in enumerate(image_plan, start=1):
-            prompt = str(item.get("prompt") or "").strip()
-            if not prompt:
-                continue
-            try:
-                image_url = generate_image(settings, prompt, f"{blogger.platform}-package-{skill.id}-{index}")
-                if image_url:
-                    image_urls.append(image_url)
-            except Exception as exc:  # noqa: BLE001 - keep the package usable if image generation fails.
-                logger.warning("%s发布包配图生成失败：skill_id=%s，序号=%s，错误=%s", platform_name, skill.id, index, exc)
-                error_message = f"部分配图生成失败：{exc}"
+            record_task_event(db, tenant_id, task_id, "配图方案", "succeeded", f"已给出 {len(image_plan)} 张配图方案(含生图 prompt)")
 
     draft = {
         "tenant_id": tenant_id,
@@ -104,10 +95,10 @@ def generate_xhs_publish_package_draft(
         "compliance": compliance,
     }
     logger.info(
-        "%s发布包草稿生成完成：skill_id=%s，图片=%s，自我修订=%s，质量=%s",
+        "%s发布包草稿生成完成：skill_id=%s，配图方案=%s 张，自我修订=%s，质量=%s",
         platform_name,
         skill.id,
-        len(image_urls),
+        len(image_plan),
         trace.revisions,
         quality.get("score"),
     )

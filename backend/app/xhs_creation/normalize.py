@@ -50,6 +50,7 @@ def normalize_image_plan(value: Any) -> list[dict[str, Any]]:
                 "slot": clamp_int(item.get("slot") or index, 1, 9),
                 "purpose": str(item.get("purpose") or "").strip(),
                 "caption": str(item.get("caption") or "").strip(),
+                "format": str(item.get("format") or "").strip(),  # 版式/画幅建议(竖版3:4·封面/步骤图…)
                 "prompt": str(item.get("prompt") or "").strip(),
             }
         )
@@ -88,6 +89,7 @@ def build_fallback_image_plan(generated: dict[str, Any], target_count: int) -> l
             "slot": index,
             "purpose": "补充正文视觉层次",
             "caption": title[:18],
+            "format": "竖版 3:4" + ("（封面）" if index == 1 else ""),
             "prompt": (
                 "Clean social media lifestyle editorial image, soft natural light, practical knowledge sharing scene, "
                 "warm composition, no human face, no celebrity, no logo, no brand mark, no UI screenshot, no text"
