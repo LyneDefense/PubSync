@@ -37,6 +37,7 @@ import {
   openEditBloggerModal,
   parseAppraisalReport,
   pendingAction,
+  refreshSelectedBlogger,
   refreshSelfAppraisalHistory,
   selectedBlogger,
   selectedBloggerId,
@@ -71,6 +72,7 @@ watch(
     showUpgrade.value = false
     view.value = route.query.view === 'audit' ? 'audit' : 'dossier'
     void loadDossier()
+    void refreshSelectedBlogger() // 笔记池(bloggerPosts)靠它加载
     void refreshSelfAppraisalHistory()
   },
   { immediate: true }

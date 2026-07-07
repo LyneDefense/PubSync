@@ -36,6 +36,7 @@ import {
   handleToggleBloggerFavorite,
   openEditBloggerModal,
   pendingAction,
+  refreshSelectedBlogger,
   selectedBlogger,
   selectedBloggerId
 } from '../composables/useWorkspaceStore'
@@ -58,6 +59,7 @@ watch(
     selectedBloggerId.value = id
     showUpgrade.value = false
     void loadDossier()
+    void refreshSelectedBlogger() // 笔记池(bloggerPosts)/蒸馏记录靠它加载,漏了列表就空
   },
   { immediate: true }
 )
