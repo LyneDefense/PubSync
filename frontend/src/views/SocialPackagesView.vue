@@ -2,7 +2,8 @@
 // 社媒·对标博主创作(发布包):五步向导 —— 选对标博主 → 选题 → 生成正文/脚本 → 素材 → 发布包。
 // 选博主即自动带出其创作画像(去多画像后一博主一画像),无需再单选 Skill。
 // 纯展示重构:状态/方法全部沿用 useWorkspaceStore;第 2/3 步「生成后才出现下一步」;三处进度沿用内嵌进度规范。
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImagePlanList from '../components/ImagePlanList.vue'
 import LiveProgress from '../components/LiveProgress.vue'
@@ -41,6 +42,20 @@ import {
   xhsTopicIdeas
 } from '../composables/useWorkspaceStore'
 
+// 嵌入 /create(对象驱动新架构):从博主页「用它创作」进来时,预选该博主并直接跳到第 2 步(选题)。
+const props = defineProps<{ embedded?: boolean; bloggerId?: number }>()
+const router = useRouter()
+watch(
+  () => props.bloggerId,
+  (id) => {
+    if (!props.embedded || !id || xhsCreatorBloggerId.value === id) return
+    xhsCreatorBloggerId.value = id
+    handleXhsCreatorBloggerChange() // 自动带出创作画像 + 复位到第 1 步
+    xhsCreationStep.value = 2 // 博主已定,直接到选题
+  },
+  { immediate: true }
+)
+
 // 第 2/3 步「生成」与「下一步」不并存:必须先生成出结果才显示下一步。
 const showNext = computed(() => {
   const s = xhsCreationStep.value
@@ -71,8 +86,9 @@ function avatarStyle(id: number) {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'packages'" class="packages">
-    <header class="page-head">
+  <section v-if="embedded || (isSocialPlatform && currentSocialTab === 'packages')" class="packages" :class="{ 'is-embedded': embedded }">
+    <button v-if="embedded" type="button" class="pk-crumb" @click="router.push({ name: 'home' })">← 首页 / 创作</button>
+    <header v-else class="page-head">
       <h1>{{ currentSocialPlatformName }}对标博主创作</h1>
       <p>借鉴对标博主的创作画像，按步骤生成一条新内容；历史结果请到「发布草稿」查看。</p>
     </header>
@@ -371,6 +387,18 @@ function avatarStyle(id: number) {
   max-width: 880px;
   margin: 0 auto;
 }
+/* 嵌入 /create 时:宽度交给对象页容器;顶部用面包屑代替页头。 */
+.packages.is-embedded { max-width: none; margin: 0; }
+.pk-crumb {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  padding: 0;
+  margin-bottom: 14px;
+}
+.pk-crumb:hover { color: var(--color-accent-ink); }
 .page-head {
   margin-bottom: 18px;
 }

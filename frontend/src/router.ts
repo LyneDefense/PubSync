@@ -45,7 +45,7 @@ const routes = [
   { path: '/home', name: 'home', meta: { shell: 'new' }, component: () => import('./views/HomeView.vue') },
   { path: '/blogger/:id', name: 'blogger', meta: { shell: 'new', title: '博主档案' }, component: () => import('./views/BloggerObjectView.vue') },
   { path: '/account/:id', name: 'account', meta: { shell: 'new', title: '我的账号' }, component: () => import('./views/AccountObjectView.vue') },
-  { path: '/create', name: 'create', meta: { shell: 'new', title: '创作' }, component: () => import('./views/NewShellPlaceholder.vue') },
+  { path: '/create', name: 'create', meta: { shell: 'new', title: '创作' }, component: () => import('./views/SocialPackagesView.vue'), props: (route: RouteLocationNormalized) => ({ embedded: true, bloggerId: Number(route.query.blogger) || undefined }) },
   { path: '/drafts', name: 'drafts', meta: { shell: 'new', title: '发布草稿' }, component: () => import('./views/NewShellPlaceholder.vue') },
   { path: '/find', name: 'find', meta: { shell: 'new', title: '加对标博主' }, component: () => import('./views/NewShellPlaceholder.vue') },
   { path: '/settings-new', name: 'settings-new', meta: { shell: 'new', title: '设置' }, component: () => import('./views/NewShellPlaceholder.vue') },
