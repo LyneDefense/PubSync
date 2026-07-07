@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0022_drop_account_metric_snapshots"
+revision = "0022_drop_account_metrics"
 down_revision = "0021_drop_skill_training_runs"
 branch_labels = None
 depends_on = None
