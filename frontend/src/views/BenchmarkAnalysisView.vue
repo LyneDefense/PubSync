@@ -2,7 +2,7 @@
 // 对标分析(诊断别人):三步向导 —— ① 选对标博主 ② 明确意图 ③ 诊断报告。
 // 第 2 步是「意图录入 → 内嵌进度卡 → 答题打卡」三小阶段的状态机(intentPhase),一次只问一道题;
 // 进度卡由两次真实后端往返(读笔记 / 模型出题)点亮,不按时间假装分阶段完成。
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toPng } from 'html-to-image'
 import AppraisalCard from '../components/AppraisalCard.vue'
 import LiveProgress from '../components/LiveProgress.vue'
@@ -33,6 +33,9 @@ import {
 } from '../composables/useWorkspaceStore'
 
 const STEP_LABELS = ['选择对标博主', '明确意图', '诊断报告']
+
+// 嵌入模式:被博主对象页 /blogger/:id 的「分析」段复用时,博主由外部指定,跳过第 1 步选博主。
+const props = defineProps<{ embedded?: boolean; bloggerId?: number }>()
 
 const report = computed(() => parseAppraisalReport(appraisalRun.value))
 const step = ref<1 | 2 | 3>(report.value ? 3 : 1)
@@ -229,7 +232,7 @@ async function startDiagnose() {
 function restart() {
   resetIntentGuide()
   resetIntentFlow()
-  step.value = 1
+  step.value = props.embedded ? 2 : 1 // 嵌入模式没有第 1 步(博主已定),重来回到「明确意图」
 }
 // 查看一条历史报告:弹框展示(不动向导当前步、不覆盖当前 appraisalRun)。
 const historyModalRun = ref<AccountAuditRun | null>(null)
@@ -262,6 +265,20 @@ async function exportImage() {
   }
 }
 
+// 嵌入模式:博主由外部 bloggerId 指定 → 预选、复位、跳过第 1 步(有该博主已诊断的当前报告则直接看报告)。
+watch(
+  () => props.bloggerId,
+  (id) => {
+    if (!props.embedded || !id) return
+    appraiseForm.blogger_id = id
+    resetIntentGuide()
+    resetIntentFlow()
+    const hasReportForThis = appraisalRun.value?.benchmark_blogger_id === id && !!report.value
+    step.value = hasReportForThis ? 3 : 2
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   refreshAppraisalHistory()
 })
@@ -271,14 +288,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'analysis'" class="analysis">
-    <header class="page-head">
+  <section v-if="embedded || (isSocialPlatform && currentSocialTab === 'analysis')" class="analysis" :class="{ 'is-embedded': embedded }">
+    <header v-if="!embedded" class="page-head">
       <h1>{{ currentSocialPlatformName }}对标分析</h1>
       <p>诊断一个号到底值不值得对标 —— 硬实力 × 软实力 × 合规。诊断前会自动确保 ≥ 20 篇笔记样本。</p>
     </header>
 
-    <!-- Stepper -->
-    <div class="stepper">
+    <!-- Stepper(嵌入模式隐藏:博主对象页已有面包屑/身份行) -->
+    <div v-if="!embedded" class="stepper">
       <template v-for="(label, i) in STEP_LABELS" :key="i">
         <div v-if="i > 0" class="step-line" :class="{ done: i < step }"></div>
         <div class="step-node">
@@ -387,7 +404,8 @@ onUnmounted(() => {
           </label>
         </div>
         <div class="card-foot split">
-          <button type="button" class="btn-ghost" @click="step = 1">← 上一步</button>
+          <button v-if="!embedded" type="button" class="btn-ghost" @click="step = 1">← 上一步</button>
+          <span v-else></span>
           <button type="button" class="btn-primary" @click="checkIntent">下一步:明确意图 →</button>
         </div>
       </template>
@@ -539,6 +557,22 @@ onUnmounted(() => {
       </div>
     </template>
 
+    <!-- 嵌入模式:本博主的历史诊断平铺在底部(第 1 步被跳过,历史列表挪到这里),点开看报告。 -->
+    <section v-if="embedded && selectedBlogger && selectedHistory.length" class="card history embedded-history">
+      <div class="card-head"><h2>历史诊断</h2><span class="head-hint">点一条查看历史报告</span></div>
+      <div class="hist-list">
+        <button v-for="it in selectedHistory" :key="it.run.id" type="button" class="hist-row" @click="openHistoryRun(it.run)">
+          <span class="hist-name">{{ it.name }}</span>
+          <span class="hist-scores">
+            <em :class="scoreBand(it.report!.hard_score)">硬 {{ it.report!.hard_score }}</em>
+            <em v-if="it.report!.soft_score != null" :class="scoreBand(it.report!.soft_score ?? 0)">软 {{ it.report!.soft_score }}</em>
+            <em :class="scoreBand(it.report!.compliance.score)">合规 {{ it.report!.compliance.score }}</em>
+          </span>
+          <span class="hist-date">{{ it.date }}</span>
+        </button>
+      </div>
+    </section>
+
     <!-- 历史诊断弹框:点历史条目在此查看,不跳向导步骤、也不覆盖当前诊断 -->
     <div v-if="historyModalRun && historyModalReport" class="hist-modal-overlay" @click.self="closeHistoryModal">
       <div class="hist-modal">
@@ -562,6 +596,9 @@ onUnmounted(() => {
   max-width: 1040px;
   margin: 0 auto;
 }
+/* 嵌入博主对象页时:不自己撑宽/居中,交给对象页容器;历史列表留点上间距。 */
+.analysis.is-embedded { max-width: none; margin: 0; }
+.embedded-history { margin-top: 16px; }
 .page-head {
   margin-bottom: 18px;
 }

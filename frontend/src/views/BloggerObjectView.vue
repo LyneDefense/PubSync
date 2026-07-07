@@ -16,6 +16,7 @@ import DossierStatsPanel from '../components/dossier/DossierStatsPanel.vue'
 import DossierTrajectory from '../components/dossier/DossierTrajectory.vue'
 import DossierUpgradeCard from '../components/dossier/DossierUpgradeCard.vue'
 import LiveProgress from '../components/LiveProgress.vue'
+import BenchmarkAnalysisView from './BenchmarkAnalysisView.vue'
 import {
   audienceRunning,
   dossier,
@@ -68,9 +69,6 @@ function setView(v: 'dossier' | 'analysis') {
 }
 function createWith() {
   if (selectedBlogger.value) router.push({ name: 'create', query: { blogger: selectedBlogger.value.id } })
-}
-function platMeta(p: string) {
-  return p === 'douyin' ? { name: '抖音', dot: '#1c2024' } : { name: '小红书', dot: '#e24b4a' }
 }
 async function rebuild() {
   const ok = window.confirm('重建画像会重新拉取该博主全部笔记、重升详情并重蒸创作画像,约 10–20 分钟(后台执行,有 TikHub + AI 成本)。确定?')
@@ -169,11 +167,8 @@ function onUpgradeUrls(urls: string[]) {
         </span>
       </template>
 
-      <!-- 对标分析视图(UI·4 接入) -->
-      <div v-else-if="view === 'analysis'" class="bo-analysis-ph">
-        <span class="bo-plat-tag"><span class="bo-dot" :style="{ background: platMeta(selectedBlogger.platform).dot }"></span>{{ platMeta(selectedBlogger.platform).name }}</span>
-        对标分析即将接入这里(按你的意图给这个博主打分)。—— UI·4
-      </div>
+      <!-- 对标分析视图:复用 BenchmarkAnalysisView 的嵌入模式(博主已定,跳过选博主步)。 -->
+      <BenchmarkAnalysisView v-else-if="view === 'analysis'" embedded :blogger-id="selectedBlogger.id" />
     </template>
 
     <p v-else class="bo-hint">没找到这个博主(可能不在当前平台;跨平台合并在后续步骤)。<button type="button" class="bo-link" @click="router.push({ name: 'home' })">回首页</button></p>
