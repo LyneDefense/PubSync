@@ -5,7 +5,14 @@ import { computed } from 'vue'
 
 import type { BloggerDossier, BloggerProfile } from '../../api/types'
 
-const props = defineProps<{ dossier: BloggerDossier; blogger: BloggerProfile; busy: boolean }>()
+const props = defineProps<{
+  dossier: BloggerDossier
+  blogger: BloggerProfile
+  busy: boolean
+  showAudit?: boolean // 我的账号才显示「账号体检」行(对标博主不显示)
+  auditScore?: number | null // 最近一次体检的硬实力分(null=未体检)
+  auditAt?: string | null // 最近一次体检时间(已格式化)
+}>()
 const emit = defineEmits<{
   (e: 'build'): void
   (e: 'rebuild'): void
@@ -13,6 +20,7 @@ const emit = defineEmits<{
   (e: 'upgrade'): void
   (e: 'sync', mode: 'incremental' | 'full'): void
   (e: 'audience'): void
+  (e: 'diagnose'): void
   (e: 'refresh'): void
 }>()
 
@@ -22,6 +30,7 @@ const hasProfile = computed(() => props.blogger.follower_count != null)
 const distilled = computed(() => props.dossier.portraits.length > 0)
 const stale = computed(() => props.dossier.portraits.some((p) => p.stale))
 const canDistill = computed(() => pool.value.full_count >= 8)
+const auditReady = computed(() => pool.value.total >= 5) // 体检门:池 ≥5 篇(MIN_DIAGNOSABLE)
 const locked = computed(() => props.busy) // busy 已含「构建中」→ 一次一操作
 
 function fmt(n: number): string {
@@ -119,6 +128,28 @@ function fmt(n: number): string {
           @click="emit('redistill')"
         >
           蒸馏画像
+        </button>
+      </li>
+
+      <!-- ⑥ 账号体检(仅我的账号;门:池 ≥5 篇,与 ④⑤ 平行、不依赖详情/蒸馏) -->
+      <li v-if="showAudit" class="ck__row">
+        <span class="ck__mark" :class="auditScore != null ? 'is-done' : 'is-pending'" />
+        <div class="ck__main">
+          <span class="ck__label">账号体检</span>
+          <span class="ck__status">
+            <template v-if="auditScore != null">已体检 · 实力 {{ auditScore }}<em v-if="auditAt" class="ck__muted">{{ auditAt }}</em></template>
+            <template v-else-if="auditReady">未体检</template>
+            <template v-else>笔记池不足 5 篇,先入池</template>
+          </span>
+        </div>
+        <button
+          type="button"
+          class="ck__btn"
+          :disabled="locked || !auditReady"
+          :title="auditReady ? '' : '笔记池需 ≥5 篇'"
+          @click="emit('diagnose')"
+        >
+          {{ auditScore != null ? '重新体检' : '体检' }}
         </button>
       </li>
     </ol>

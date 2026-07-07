@@ -128,13 +128,6 @@ const SOCIAL_NAV: NavConfig = {
         { tab: 'freecreate', label: '自由创作', icon: 'edit' },
         { tab: 'history', label: '发布草稿', icon: 'send' }
       ]
-    },
-    {
-      title: '评估与提升',
-      icon: 'pulse',
-      items: [
-        { tab: 'self-diagnosis', label: '诊断我的账号', icon: 'pulse' }
-      ]
     }
   ],
   bottom: [{ tab: 'settings', label: '设置', icon: 'settings' }]

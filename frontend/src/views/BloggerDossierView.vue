@@ -5,6 +5,7 @@
 import { computed, ref, watch } from 'vue'
 
 import DossierAudience from '../components/dossier/DossierAudience.vue'
+import DossierAudit from '../components/dossier/DossierAudit.vue'
 import DossierBloggerPicker from '../components/dossier/DossierBloggerPicker.vue'
 import DossierBuildChecklist from '../components/dossier/DossierBuildChecklist.vue'
 import DossierUpgradeCard from '../components/dossier/DossierUpgradeCard.vue'
@@ -32,6 +33,7 @@ import {
 import {
   benchmarkAccounts,
   currentSocialTab,
+  formatDate,
   handleDeleteBlogger,
   handleRefreshBlogger,
   handleToggleBloggerFavorite,
@@ -39,10 +41,13 @@ import {
   myAccountsOnPlatform,
   openCreateMyAccountModal,
   openEditBloggerModal,
+  parseAppraisalReport,
   pendingAction,
+  refreshSelfAppraisalHistory,
   selectBlogger,
   selectedBlogger,
-  selectedBloggerId
+  selectedBloggerId,
+  selfAppraisalHistory
 } from '../composables/useWorkspaceStore'
 
 // 旧「博主资产」tab 并入本页:assets 作为别名仍然渲染这里,老链接/收藏不失效。
@@ -54,6 +59,26 @@ const built = computed(() => (dossier.value?.portraits.length || 0) > 0)
 // mine(我的账号)/ benchmark(对标博主)同一套档案组件,只按 account_type 换账号列表。
 const mode = computed<'mine' | 'benchmark'>(() => (currentSocialTab.value === 'my-accounts' ? 'mine' : 'benchmark'))
 const accounts = computed(() => (mode.value === 'mine' ? myAccountsOnPlatform.value : benchmarkAccounts.value))
+
+// 我的账号页:档案(事实)| 体检(评分)段控;对标博主页只有档案。
+const view = ref<'dossier' | 'audit'>('dossier')
+// 本账号最近一次体检 → 喂给清单第⑥步的状态(实力分 + 时间)。
+const latestAudit = computed(() =>
+  mode.value === 'mine' && selectedBlogger.value
+    ? (selfAppraisalHistory.value.find((r) => r.my_blogger_id === selectedBlogger.value!.id && parseAppraisalReport(r)) ?? null)
+    : null
+)
+const auditScore = computed(() => parseAppraisalReport(latestAudit.value)?.hard_score ?? null)
+const auditAt = computed(() => (latestAudit.value ? formatDate(latestAudit.value.created_at) : null))
+// 切账号 / 换 tab:回到档案视图;进我的账号则拉体检历史(喂清单状态 + 体检视图)。
+watch(
+  [mode, selectedBloggerId],
+  () => {
+    view.value = 'dossier'
+    if (mode.value === 'mine') void refreshSelfAppraisalHistory()
+  },
+  { immediate: true }
+)
 
 // 选中态始终对齐当前 tab 的账号类型(两类共用 selectedBloggerId):失效则自动选第一个。
 watch(
@@ -123,45 +148,67 @@ function onUpgradeUrls(urls: string[]) {
         @delete="onDelete"
       />
 
+      <!-- 我的账号:档案(事实)| 体检(评分)段控;对标博主页无此段控。 -->
+      <div v-if="mode === 'mine' && dossier" class="dossier-view__seg" role="tablist">
+        <button type="button" role="tab" :class="{ 'is-on': view === 'dossier' }" @click="view = 'dossier'">档案</button>
+        <button type="button" role="tab" :class="{ 'is-on': view === 'audit' }" @click="view = 'audit'">体检</button>
+      </div>
+
+      <!-- 升详情弹卡:档案/体检两视图都可触发,放段控外。 -->
+      <DossierUpgradeCard
+        v-if="showUpgrade && selectedBlogger"
+        :blogger-id="selectedBlogger.id"
+        @close="showUpgrade = false"
+        @batch="onUpgradeBatch"
+        @urls="onUpgradeUrls"
+      />
+
       <p v-if="dossierLoading && !dossier" class="dossier-view__hint">档案加载中…</p>
 
       <template v-else-if="dossier">
-        <!-- 建档状态清单:每步状态 + 就地入口 + 就地进度(不跳 tab) -->
-        <DossierBuildChecklist
-          :dossier="dossier"
+        <!-- 体检视图(仅我的账号) -->
+        <DossierAudit
+          v-if="view === 'audit' && mode === 'mine'"
           :blogger="selectedBlogger"
+          :pool-total="dossier.pool.total"
           :busy="busy"
-          @build="handleBuildDossier"
-          @rebuild="rebuild"
-          @redistill="handleRedistill"
-          @upgrade="showUpgrade = true"
-          @sync="handleSyncPool"
-          @audience="handleRunAudience"
-          @refresh="refreshProfile"
         />
 
-        <LiveProgress v-if="pendingAction === 'dossier' || pendingAction === 'pool-sync'" />
+        <!-- 档案视图 -->
+        <template v-else>
+          <!-- 建档状态清单:每步状态 + 就地入口 + 就地进度(不跳 tab);我的账号多一步「账号体检」 -->
+          <DossierBuildChecklist
+            :dossier="dossier"
+            :blogger="selectedBlogger"
+            :busy="busy"
+            :show-audit="mode === 'mine'"
+            :audit-score="auditScore"
+            :audit-at="auditAt"
+            @build="handleBuildDossier"
+            @rebuild="rebuild"
+            @redistill="handleRedistill"
+            @upgrade="showUpgrade = true"
+            @sync="handleSyncPool"
+            @audience="handleRunAudience"
+            @diagnose="view = 'audit'"
+            @refresh="refreshProfile"
+          />
 
-        <DossierUpgradeCard
-          v-if="showUpgrade && selectedBlogger"
-          :blogger-id="selectedBlogger.id"
-          @close="showUpgrade = false"
-          @batch="onUpgradeBatch"
-          @urls="onUpgradeUrls"
-        />
+          <LiveProgress v-if="pendingAction === 'dossier' || pendingAction === 'pool-sync'" />
 
-        <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
-        <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
-        <DossierAudience :audience="dossier.audience" :audience-running="audienceRunning" :busy="busy" @run-audience="handleRunAudience" />
-        <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
-        <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
+          <DossierStatsPanel v-if="dossier.stats" :stats="dossier.stats" />
+          <DossierTrajectory v-if="dossier.trajectory" :trajectory="dossier.trajectory" :reached-end="dossier.pool.reached_end" />
+          <DossierAudience :audience="dossier.audience" :audience-running="audienceRunning" :busy="busy" @run-audience="handleRunAudience" />
+          <DossierHabits v-if="dossier.habits" :habits="dossier.habits" />
+          <DossierCompliance v-if="dossier.compliance" :compliance="dossier.compliance" />
 
-        <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="handleRedistill" @rebuild="rebuild" />
-        <DossierNotePool />
+          <DossierPortraits :portraits="dossier.portraits" :busy="busy" @redistill="handleRedistill" @rebuild="rebuild" />
+          <DossierNotePool />
 
-        <span v-if="!dossier.pool.reached_end && hasPool" class="dossier-view__sync-hint">
-          提示:列表未翻到底,早期笔记可能缺失,可用上方清单的「全量校准」补齐。
-        </span>
+          <span v-if="!dossier.pool.reached_end && hasPool" class="dossier-view__sync-hint">
+            提示:列表未翻到底,早期笔记可能缺失,可用上方清单的「全量校准」补齐。
+          </span>
+        </template>
       </template>
     </div>
   </section>
@@ -184,6 +231,33 @@ function onUpgradeUrls(urls: string[]) {
 .dossier-view__add:hover { border-color: var(--color-accent); color: var(--color-accent-ink); }
 .dossier-view__hint { font-size: 13px; color: var(--color-ink-3); }
 .dossier-view__content { display: flex; flex-direction: column; gap: 14px; }
+
+/* 档案 | 体检 段控 */
+.dossier-view__seg {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-field-border);
+  border-radius: 10px;
+  background: var(--color-paper-3);
+}
+.dossier-view__seg button {
+  height: 30px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-2);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.dossier-view__seg button.is-on {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
 
 .dossier-view__two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 

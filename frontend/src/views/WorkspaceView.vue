@@ -10,7 +10,6 @@ import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
 import BloggerDossierView from './BloggerDossierView.vue'
-import SelfDiagnosisView from './SelfDiagnosisView.vue'
 import BenchmarkAnalysisView from './BenchmarkAnalysisView.vue'
 import SocialPackagesView from './SocialPackagesView.vue'
 import SocialHistoryView from './SocialHistoryView.vue'
@@ -62,8 +61,6 @@ import {
   <WechatAiView />
 
   <WechatRecordsView />
-
-  <SelfDiagnosisView />
 
   <BenchmarkAnalysisView />
 

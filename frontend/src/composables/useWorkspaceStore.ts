@@ -103,7 +103,7 @@ export type MainTab = 'wechat' | 'xhs' | 'douyin' | 'admin'
 // 已实现的阶段对应具体 view；未实现的（公众号的 distill/ai、社媒的 freecreate/records/settings）走统一占位。
 export type WeChatTab = 'brief' | 'distill' | 'ai' | 'drafts' | 'records' | 'settings'
 // 小红书与抖音结构完全相同，共用 SocialTab；XhsTab/DouyinTab 保留为别名，避免大面积改名。
-export type SocialTab = 'overview' | 'find' | 'dossier' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'self-diagnosis' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
+export type SocialTab = 'overview' | 'find' | 'dossier' | 'collect' | 'distill' | 'assets' | 'my-accounts' | 'analysis' | 'packages' | 'history' | 'freecreate' | 'records' | 'settings'
 export type XhsTab = SocialTab
 export type DouyinTab = SocialTab
 export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'generation' | 'layout'
@@ -154,12 +154,6 @@ export const intentLoading = ref(false)
 export const selfAppraiseForm = reactive<{ blogger_id: number; intent: string }>({ blogger_id: 0, intent: '' })
 export const selfAppraisalRun = ref<AccountAuditRun | null>(null)
 export const selfAppraisalHistory = ref<AccountAuditRun[]>([]) // 我的诊断记录(kind=self,成功且可解析)
-export const selfIntentQuestions = ref<AppraisalIntentQuestion[]>([])
-export const selfIntentSelections = reactive<Record<number, string[]>>({})
-export const selfIntentOthers = reactive<Record<number, string>>({})
-export const selfIntentChecked = ref(false) // 已跑过意图引导(跑过才显示「开始诊断」)
-export const selfIntentClear = ref(false) // 用户填的目标已够具体,无需出题
-export const selfIntentLoading = ref(false)
 // 我的账号(account_type=mine)与对标账号拆分。
 export const myAccounts = computed(() => bloggers.value.filter((b) => b.account_type === 'mine'))
 export const benchmarkAccounts = computed(() => bloggers.value.filter((b) => b.account_type !== 'mine'))
@@ -1451,47 +1445,6 @@ export function resetIntentGuide() {
   for (const k of Object.keys(intentOthers)) delete intentOthers[Number(k)]
 }
 
-// —— 意图引导(诊断我的账号:目标 / 痛点 / 阶段)——
-export function resetSelfIntentGuide() {
-  selfIntentQuestions.value = []
-  selfIntentChecked.value = false
-  selfIntentClear.value = false
-  for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
-  for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
-}
-
-// 选我的账号后(可选已填目标)→ 看我自己在做什么,出几道「目标/痛点/阶段」多选题(够清晰则不出题)。
-// 失败会抛出:由答题打卡进度卡展示「重试 / 跳过直接诊断」,不再静默放行。
-export async function fetchSelfIntentSuggestions() {
-  if (!selfAppraiseForm.blogger_id) {
-    throw new Error('请先选择我的账号')
-  }
-  selfIntentLoading.value = true
-  try {
-    const res = await suggestAppraisalIntent({ blogger_id: selfAppraiseForm.blogger_id, intent: selfAppraiseForm.intent, kind: 'self' })
-    selfIntentClear.value = res.clear
-    selfIntentQuestions.value = res.questions || []
-    for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
-    for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
-    selfIntentQuestions.value.forEach((_, i) => {
-      selfIntentSelections[i] = []
-      selfIntentOthers[i] = ''
-    })
-    selfIntentChecked.value = true
-  } finally {
-    selfIntentLoading.value = false
-  }
-}
-
-// 自诊断引导失败时「跳过,直接诊断」:清空问题、视为目标已明确,放行诊断。
-export function markSelfIntentSkipped() {
-  selfIntentClear.value = true
-  selfIntentQuestions.value = []
-  for (const k of Object.keys(selfIntentSelections)) delete selfIntentSelections[Number(k)]
-  for (const k of Object.keys(selfIntentOthers)) delete selfIntentOthers[Number(k)]
-  selfIntentChecked.value = true
-}
-
 // 答题打卡第一段「读取最近笔记」的真实事件:返回将喂给模型的近期笔记数(真实,≤30)。对标 / 自诊共用。
 export async function fetchIntentContext(bloggerId: number) {
   return await fetchAppraisalIntentContext({ blogger_id: bloggerId })
@@ -1551,7 +1504,8 @@ function buildBenchmarkIntent(): string {
   return composeIntent(appraiseForm.intent, intentQuestions.value, intentSelections, intentOthers)
 }
 function buildSelfIntent(): string {
-  return composeIntent(selfAppraiseForm.intent, selfIntentQuestions.value, selfIntentSelections, selfIntentOthers)
+  // 账号体检只用一个可选自由输入(目标/痛点),没有多选引导。
+  return (selfAppraiseForm.intent || '').trim()
 }
 
 export async function handleRunAppraisal() {
