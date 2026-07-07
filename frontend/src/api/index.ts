@@ -35,11 +35,9 @@ import type {
   Tenant,
   WorkspaceConfig,
   WorkspaceConfigUpdate,
-  DashboardAccount,
-  DashboardGrowth,
-  DashboardOverview,
   XhsPublishPackage,
   XhsPublishPackageCreate,
+  XhsPublishPackageDraft,
   XhsPublishPackageSave,
   XhsTopicIdeaRequest,
   XhsTopicIdeaResponse
@@ -377,17 +375,15 @@ export function markXhsPackagePublished(packageId: number, published: boolean) {
   })
 }
 
-// —— 效果看板 ——
-export function getDashboardOverview(range = '30d') {
-  return request<DashboardOverview>(`/dashboard/overview?range=${range}`)
+export function createXhsPublishPackage(payload: XhsPublishPackageCreate) {
+  return generateXhsPublishPackageDraft(payload)
 }
 
-export function getAccountDashboard(accountId: number, range = '30d') {
-  return request<DashboardAccount>(`/dashboard/account/${accountId}?range=${range}`)
-}
-
-export function getAccountGrowth(accountId: number, range = '30d') {
-  return request<DashboardGrowth>(`/dashboard/account/${accountId}/growth?range=${range}`)
+export function generateXhsPublishPackageDraft(payload: XhsPublishPackageCreate) {
+  return request<XhsPublishPackageDraft>('/xhs/package-drafts', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
 }
 
 export function startXhsPublishPackageDraftTask(payload: XhsPublishPackageCreate) {

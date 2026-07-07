@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -42,27 +42,4 @@ class XhsPublishPackage(Base):
     blogger: Mapped[BloggerProfile] = relationship(foreign_keys=[blogger_id])
     skill: Mapped[BloggerSkill] = relationship()
     my_account: Mapped[BloggerProfile | None] = relationship(foreign_keys=[my_account_id])
-    tenant: Mapped[Tenant] = relationship()
-
-
-class AccountMetricSnapshot(Base):
-    """「我的账号」每日指标快照,用于画涨粉/互动趋势(BloggerProfile 只存当前值会被覆盖)。
-
-    每账号每天一行(account_id + captured_on 唯一);同日重跑覆盖(幂等 upsert)。
-    """
-
-    __tablename__ = "account_metric_snapshots"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("blogger_profiles.id"), nullable=False, index=True)
-    captured_on: Mapped[date] = mapped_column(Date, nullable=False)
-    follower_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    note_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_interactions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-
-    __table_args__ = (UniqueConstraint("account_id", "captured_on", name="uq_account_metric_day"),)
-
-    account: Mapped[BloggerProfile] = relationship()
     tenant: Mapped[Tenant] = relationship()

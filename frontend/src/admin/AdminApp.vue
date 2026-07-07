@@ -12,13 +12,12 @@ import ModelSettingsPanel from './panels/ModelSettingsPanel.vue'
 import SystemSettingsPanel from './panels/SystemSettingsPanel.vue'
 import TaskQueuePanel from './panels/TaskQueuePanel.vue'
 
-type Section = 'accounts' | 'models' | 'collect' | 'dashboard' | 'tasks' | 'costs' | 'settings'
+type Section = 'accounts' | 'models' | 'collect' | 'tasks' | 'costs' | 'settings'
 
 const NAV: { key: Section; label: string }[] = [
   { key: 'accounts', label: '账号与工作空间' },
   { key: 'models', label: '模型与生成' },
   { key: 'collect', label: '采集 / ASR' },
-  { key: 'dashboard', label: '效果看板' },
   { key: 'tasks', label: '任务队列' },
   { key: 'costs', label: '费用记录' },
   { key: 'settings', label: '系统设置' }
@@ -109,7 +108,6 @@ function logout() {
       <AccountsPanel v-if="section === 'accounts'" />
       <ModelSettingsPanel v-else-if="section === 'models'" />
       <ConfigPanel v-else-if="section === 'collect'" title="采集 / ASR" :group-keys="['tikhub', 'asr']" />
-      <ConfigPanel v-else-if="section === 'dashboard'" title="效果看板" subtitle="省时估算与爆款判定参数" :group-keys="['dashboard']" />
       <TaskQueuePanel v-else-if="section === 'tasks'" />
       <CostsPanel v-else-if="section === 'costs'" />
       <SystemSettingsPanel v-else-if="section === 'settings'" />

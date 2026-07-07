@@ -1,10 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import LimitQuery, OffsetQuery, apply_pagination, current_tenant, settings
-from app.dashboard.service import mark_package_published
 from app.database import get_db
 from app.models import OperationTask, Tenant, XhsPublishPackage
 from app.queue import submit_background
@@ -30,6 +31,22 @@ router = APIRouter()
 
 class PublishMark(BaseModel):
     published: bool = True
+
+
+def mark_package_published(db: Session, tenant_id: int, package_id: int, published: bool) -> XhsPublishPackage:
+    """把发布包标记为「已发布 / 撤回为草稿」—— 驱动发布记录的草稿/已发布状态。"""
+    pkg = db.get(XhsPublishPackage, package_id)
+    if not pkg or pkg.tenant_id != tenant_id:
+        raise ValueError("发布包不存在")
+    if published:
+        pkg.published_at = datetime.now(timezone.utc)
+        pkg.status = "published"
+    else:
+        pkg.published_at = None
+        pkg.status = "generated"
+    db.commit()
+    db.refresh(pkg)
+    return pkg
 
 
 @router.get("/xhs/publish-packages", response_model=list[XhsPublishPackageRead])

@@ -31,7 +31,7 @@ from app.models.workspace import (
     WeChatAccount,
 )
 from app.models.benchmark_discovery import BenchmarkDiscoverySession
-from app.models.xhs import AccountMetricSnapshot, XhsPublishPackage
+from app.models.xhs import XhsPublishPackage
 
 __all__ = [
     "utc_now",
@@ -63,7 +63,6 @@ __all__ = [
     "BloggerSkill",
     "BloggerSnapshot",
     "XhsPublishPackage",
-    "AccountMetricSnapshot",
     "AccountAuditRun",
     "BenchmarkRecommendationRun",
     "BenchmarkDiscoverySession",

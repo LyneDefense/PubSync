@@ -6,7 +6,6 @@ import ImagePreviewModal from '../components/ImagePreviewModal.vue'
 import MiniProgressBanner from '../components/MiniProgressBanner.vue'
 import OverviewView from './OverviewView.vue'
 import FindBenchmarkView from './FindBenchmarkView.vue'
-import EffectsDashboardView from './EffectsDashboardView.vue'
 import WechatBriefView from './WechatBriefView.vue'
 import WechatAiView from './WechatAiView.vue'
 import WechatRecordsView from './WechatRecordsView.vue'
@@ -77,8 +76,6 @@ import {
     :title="`${currentSocialPlatformName}自由创作`"
     description="未来支持不依赖对标博主、直接输入主题由 AI 自主创作内容。"
   />
-
-  <EffectsDashboardView />
 
   <XhsRecordsView />
 

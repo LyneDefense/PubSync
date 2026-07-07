@@ -124,11 +124,6 @@ class Settings(BaseSettings):
     # 僵死任务看门狗：running/cancel_requested 任务若超过这么多分钟没有新进展事件
     # （多半是 worker 进程被 OOM/强杀），自动标记为失败并告知前端。设大于最长合理静默期。
     task_stale_minutes: int = 20
-    # 效果看板：省时估算常量（后台可调）+ 爆款判定倍数。
-    dashboard_minutes_write_per_post: int = 40   # 手写一篇估时（分钟）
-    dashboard_minutes_ai_draft_per_post: int = 8  # 用 AI 起草一篇估时（分钟）
-    dashboard_minutes_research_per_distill: int = 30  # 一次蒸馏省下的研究对标估时（分钟）
-    dashboard_viral_multiplier: float = 2.0  # 互动高于自身均值多少倍算「爆款」
     # 账号体检/对标的合成循环参数（偏诊断，阈值略低）。
     audit_max_revise_iterations: int = 1
     audit_min_quality_score: int = 75

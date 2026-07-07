@@ -116,7 +116,7 @@ function typeKind(ct: string): 'video' | 'image' {
             >我已发布</button>
             <button v-else type="button" class="btn btn--ghost" @click="handleMarkPublished(selectedXhsPackage, false)">已发布 ✓ · 点此撤销</button>
           </div>
-          <p v-if="!selectedXhsPackage.published_at" class="head-hint">复制内容去{{ currentSocialPlatformName }}发布后，回来点「我已发布」—— 效果看板才能统计真实发布数与转化。</p>
+          <p v-if="!selectedXhsPackage.published_at" class="head-hint">复制内容去{{ currentSocialPlatformName }}发布后，回来点「我已发布」，把这篇标记为已发布。</p>
         </section>
 
         <!-- 快照三栏 -->

@@ -1,17 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_tenant, settings
+from app.api.deps import current_tenant
 from app.database import get_db
-from app.dashboard.service import build_account_dashboard, build_account_growth, build_overview
 from app.models import AppSetting, Article, NewsItem, Tenant
 from app.schemas import DashboardRead
 from app.services.tenant_service import get_publishing_settings
 
 router = APIRouter()
-
-RangeQuery = Query(default="30d", pattern="^(7d|30d|all)$")
 
 
 @router.get("/dashboard", response_model=DashboardRead)
@@ -40,39 +37,3 @@ def get_dashboard(tenant: Tenant = Depends(current_tenant), db: Session = Depend
         last_fetch_at=last_fetch_at.value if last_fetch_at else None,
         scheduled_publish_time=f"{schedule_label} {publishing.publish_time_hour:02d}:{publishing.publish_time_minute:02d}",
     )
-
-
-# —— 效果看板 ——
-@router.get("/dashboard/overview")
-def dashboard_overview_endpoint(
-    range: str = RangeQuery,
-    tenant: Tenant = Depends(current_tenant),
-    db: Session = Depends(get_db),
-) -> dict:
-    return build_overview(db, settings, tenant.id, range)
-
-
-@router.get("/dashboard/account/{account_id}")
-def dashboard_account_endpoint(
-    account_id: int,
-    range: str = RangeQuery,
-    tenant: Tenant = Depends(current_tenant),
-    db: Session = Depends(get_db),
-) -> dict:
-    try:
-        return build_account_dashboard(db, settings, tenant.id, account_id, range)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get("/dashboard/account/{account_id}/growth")
-def dashboard_account_growth_endpoint(
-    account_id: int,
-    range: str = RangeQuery,
-    tenant: Tenant = Depends(current_tenant),
-    db: Session = Depends(get_db),
-) -> dict:
-    try:
-        return build_account_growth(db, tenant.id, account_id, range)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc

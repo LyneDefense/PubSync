@@ -310,7 +310,7 @@ function avatarStyle(id: number) {
       </div>
 
       <p v-if="!myAccountsOnPlatform.length && currentXhsDraft" class="card-foot">
-        还没有自己的{{ currentSocialPlatformName }}账号？到「我的账号」添加后，保存时可归到该账号，便于在效果看板按账号统计。
+        还没有自己的{{ currentSocialPlatformName }}账号？到「我的账号」添加后，保存时可归到该账号。
       </p>
       <p v-if="!currentXhsDraft" class="empty-region pad">生成内容后，这里会显示本次创作的最终预览。保存后才会进入「发布草稿」。</p>
 
