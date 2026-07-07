@@ -2,6 +2,7 @@
 // 社媒·发布草稿:已保存发布包的查看、复制与发布状态管理(主从工作台)。
 // 纯展示重构:store 状态/方法全部沿用;仅新增本地的搜索/状态筛选 UI 态。
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImagePlanList from '../components/ImagePlanList.vue'
 import { parseJsonObject, xhsContentTypeLabel, xhsPackageCopyText } from '../utils/format'
@@ -20,6 +21,10 @@ import {
   xhsPackageImagePlan,
   xhsPackageScriptSegments
 } from '../composables/useWorkspaceStore'
+
+// 嵌入 /drafts(对象驱动新架构):守卫放行 + 页头换面包屑。
+const props = defineProps<{ embedded?: boolean }>()
+const router = useRouter()
 
 // 本地筛选态(纯 UI,不入 store)。
 const keyword = ref('')
@@ -44,8 +49,8 @@ function typeKind(ct: string): 'video' | 'image' {
 </script>
 
 <template>
-  <section v-if="isSocialPlatform && currentSocialTab === 'history'" class="history">
-    <header class="page-head">
+  <section v-if="embedded || (isSocialPlatform && currentSocialTab === 'history')" class="history" :class="{ 'is-embedded': embedded }">
+    <header v-if="!embedded" class="page-head">
       <div class="ph-l">
         <h1>{{ currentSocialPlatformName }}发布草稿</h1>
         <p>查看、复制、管理 AI 创作生成的发布包 —— 这里只浏览成品，不进入生成流程。</p>
@@ -55,6 +60,13 @@ function typeKind(ct: string): 'video' | 'image' {
         <span class="stat"><b>{{ publishedCount }}</b><small>已发布</small></span>
       </div>
     </header>
+    <div v-else class="dr-top">
+      <button type="button" class="dr-crumb" @click="router.push({ name: 'home' })">← 首页 / 发布草稿</button>
+      <div class="ph-stats">
+        <span class="stat"><b>{{ visibleXhsPackages.length }}</b><small>发布包</small></span>
+        <span class="stat"><b>{{ publishedCount }}</b><small>已发布</small></span>
+      </div>
+    </div>
 
     <div class="md-grid">
       <!-- 左:列表 -->
@@ -167,6 +179,17 @@ function typeKind(ct: string): 'video' | 'image' {
   max-width: 1080px;
   margin: 0 auto;
 }
+/* 嵌入 /drafts 时:宽度交给对象页容器;页头换成面包屑 + 统计。 */
+.history.is-embedded { max-width: none; margin: 0; }
+.dr-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dr-crumb { border: 0; background: none; cursor: pointer; font-size: 12.5px; color: var(--color-ink-3); padding: 0; }
+.dr-crumb:hover { color: var(--color-accent-ink); }
 .page-head {
   display: flex;
   align-items: flex-start;
