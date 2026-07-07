@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cadence · UI 重构设计定稿(对象驱动)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root { color-scheme: light; }
+  body { margin:0; background:#edeef0; color:#1c2024;
+    font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 20px 80px; }
+  h1 { font-size:22px; font-weight:600; margin:0 0 4px; }
+  .sub { color:#565d66; font-size:14px; margin:0 0 22px; }
+  h2 { font-size:16px; font-weight:600; margin:34px 0 4px; }
+  .note { color:#878f99; font-size:13px; margin:0 0 12px; }
+  .doc { background:#fff; border:1px solid #e8eaed; border-radius:14px; padding:16px 18px; margin-bottom:14px; font-size:13.5px; line-height:1.75; color:#3a4048; }
+  .doc b { color:#1c2024; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid #f0f1f3; vertical-align:top; }
+  th { color:#878f99; font-weight:600; }
+  code { background:#eef0f2; border-radius:4px; padding:1px 6px; font-size:12.5px; font-family:"SFMono-Regular",Consolas,monospace; }
+  .screen-label { display:flex; align-items:baseline; gap:9px; margin:30px 0 10px; }
+  .screen-label .n { width:24px; height:24px; border-radius:7px; background:#0d7361; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex:0 0 auto; }
+  .screen-label .t { font-size:15px; font-weight:600; }
+  .screen-label .d { font-size:12.5px; color:#878f99; }
+  .screen { box-shadow:0 1px 2px rgba(20,30,40,.05), 0 6px 18px rgba(20,30,40,.04); border-radius:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Cadence · UI 重构设计定稿</h1>
+  <p class="sub">对象驱动、无侧栏导航 —— 前端重构的设计源文件。分阶段实现(UI·1–UI·12),此文件为对照基准。</p>
+
+  <h2>核心理念</h2>
+  <div class="doc">
+    导航单位是<b>「你的东西(对象)」,不是「功能」</b>。对象只有三类:<b>对标博主 · 我的账号 · 草稿</b>。<br>
+    移动方式:<b>首页 Hub(选一个对象)→ 对象页(它的功能都在里面)→ 面包屑返回首页</b>。没有常驻左侧功能栏。<br>
+    原来侧栏里的「档案 / 对标分析 / 对标创作」本质都是「针对某个博主做的事」,收进<b>博主页</b>(段控「档案 | 对标分析」+「用它创作」按钮);我的账号同构(段控「档案 | 体检」)。
+  </div>
+
+  <h2>已定决策</h2>
+  <div class="doc">
+    · <b>公众号</b>(每日早报)本轮独立保留、不动(异类工作流,不进对象驱动工作台)。<br>
+    · <b>小红书 / 抖音合并</b>:平台从「进门二选一的门」降成<b>对象的属性</b>,去掉选平台页;平台只靠<b>对象卡片上的标签</b>区分,本轮不做顶栏平台筛选(以后博主多了再按需加筛选/分区)。<br>
+    · <b>⌘K 快速跳转</b>:本轮只留占位,后面再做。<br>
+    · <b>品牌</b> = Cadence(层叠菱形 logo);主色青绿 <code>#0d7361</code>,标题字体 Space Grotesk + PingFang SC。
+  </div>
+
+  <h2>路由表</h2>
+  <div class="doc" style="padding:6px 10px;">
+    <table>
+      <tr><th>路由</th><th>页面</th><th>说明</th></tr>
+      <tr><td><code>/login</code></td><td>登录</td><td>不变</td></tr>
+      <tr><td><code>/</code></td><td>→ <code>/home</code></td><td>去掉选平台门</td></tr>
+      <tr><td><code>/home</code></td><td>首页 Hub</td><td>接下来 + 账号/草稿 + 博主档案卡片墙;小红书+抖音混排</td></tr>
+      <tr><td><code>/blogger/:id</code></td><td>博主页</td><td>段控 <code>?view=dossier</code>(档案)/ <code>?view=analysis</code>(对标分析)</td></tr>
+      <tr><td><code>/account/:id</code></td><td>我的账号页</td><td>段控 档案 | 体检</td></tr>
+      <tr><td><code>/create</code></td><td>创作向导</td><td><code>?blogger=:id</code> 从博主进则预选</td></tr>
+      <tr><td><code>/drafts</code> · <code>/drafts/:id</code></td><td>草稿</td><td>列表 + 详情(=发布包预览)</td></tr>
+      <tr><td><code>/find</code></td><td>查找对标博主</td><td>首页「加对标博主」落地</td></tr>
+      <tr><td><code>/settings</code></td><td>设置</td><td></td></tr>
+      <tr><td><code>/wechat/…</code></td><td>公众号</td><td>沿用现有路由,本轮不动</td></tr>
+    </table>
+  </div>
+
+  <h2>增量策略</h2>
+  <div class="doc">
+    新页面走新路由,与现有 <code>WorkspaceView</code> 并存;一屏一屏迁,每步本地验证。<b>阶段 4(UI·9)才</b>把默认入口切到 <code>/home</code>、下线旧侧栏与选平台门、删占位与遗留。公众号整段不碰。<br>
+    <span style="color:#878f99;font-size:12.5px;">未单独出图、实现时照现有产品 + 新骨架:创作向导第 3/4/5 步(正文脚本 / 配图方案 / 发布包预览)、草稿详情(=发布包预览)、空状态与长任务进度(UI·11)。</span>
+  </div>
+
+  <!-- ============ 屏 1:首页 Hub ============ -->
+  <div class="screen-label"><span class="n">1</span><span class="t">首页 Hub</span><span class="d">/home · 接下来 + 账号/草稿 + 博主档案卡片墙</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#ffffff;border-bottom:1px solid #e8eaed">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+        <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Cadence</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#878f99;border:1px solid #e8eaed;border-radius:8px;padding:5px 10px"><i class="ti ti-search" style="font-size:14px"></i>跳转 ⌘K</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:6px 13px"><i class="ti ti-plus" style="font-size:15px"></i>创作</span>
+        <span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600">我</span>
+      </div>
+    </div>
+    <div style="padding:16px">
+      <div style="display:flex;align-items:center;gap:12px;background:#f1f8f4;border:1px solid #cfe6db;border-radius:12px;padding:12px 14px;margin-bottom:16px">
+        <i class="ti ti-arrow-right" style="font-size:20px;color:#0d7361"></i>
+        <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#0d5a4a">接下来</div><div style="font-size:13px;color:#0d5a4a">2 个博主已出画像 · 1 篇草稿待发布</div></div>
+        <span style="font-size:13px;color:#0d5a4a;border:1px solid #cfe6db;background:#fff;border-radius:8px;padding:6px 13px">开始创作</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px 15px"><i class="ti ti-user" style="font-size:19px;color:#565d66"></i><span style="font-size:13.5px;font-weight:600">我的账号</span><span style="margin-left:auto;font-size:12px;color:#878f99">2 个</span></div>
+        <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px 15px"><i class="ti ti-send" style="font-size:19px;color:#565d66"></i><span style="font-size:13.5px;font-weight:600">发布草稿</span><span style="margin-left:auto;font-size:12px;color:#878f99">1 篇</span></div>
+      </div>
+      <div style="font-size:13px;color:#878f99;margin:2px 2px 9px">博主档案</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(188px,1fr));gap:10px">
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:#eaf3ee;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#0d5a4a;flex:0 0 auto">猫</div>
+            <div style="min-width:0;flex:1"><div style="font-size:14px;font-weight:600">猫小姐的日常</div><div style="font-size:12px;color:#878f99">宠物 · 已出画像</div></div>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#f4f5f6;border-radius:999px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span>
+          </div>
+          <div style="display:flex;gap:6px"><span style="font-size:12px;color:#565d66;background:#f4f5f6;border-radius:7px;padding:3px 10px">档案</span><span style="font-size:12px;color:#565d66;background:#f4f5f6;border-radius:7px;padding:3px 10px">分析</span><span style="font-size:12px;color:#0d5a4a;background:#eaf3ee;border-radius:7px;padding:3px 10px">用它创作</span></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#565d66;flex:0 0 auto">吃</div>
+            <div style="min-width:0;flex:1"><div style="font-size:14px;font-weight:600">今天吃什么</div><div style="font-size:12px;color:#878f99">美食 · 已出画像</div></div>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#f4f5f6;border-radius:999px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#1c2024"></span>抖音</span>
+          </div>
+          <div style="display:flex;gap:6px"><span style="font-size:12px;color:#565d66;background:#f4f5f6;border-radius:7px;padding:3px 10px">档案</span><span style="font-size:12px;color:#565d66;background:#f4f5f6;border-radius:7px;padding:3px 10px">分析</span><span style="font-size:12px;color:#0d5a4a;background:#eaf3ee;border-radius:7px;padding:3px 10px">用它创作</span></div>
+        </div>
+        <div style="border:1px dashed #cfd4d9;border-radius:14px;padding:13px;display:flex;align-items:center;justify-content:center;gap:7px;color:#565d66;background:#fbfbfc"><i class="ti ti-plus" style="font-size:16px"></i><span style="font-size:13px">加对标博主</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 2:博主页 · 档案 ============ -->
+  <div class="screen-label"><span class="n">2</span><span class="t">博主页 · 档案</span><span class="d">/blogger/:id · 身份行 + 段控 + 画像/建档清单/数据</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:6px 13px"><i class="ti ti-plus" style="font-size:15px"></i>创作</span><span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600">我</span></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:14px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">猫小姐的日常</span></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:46px;height:46px;border-radius:50%;background:#eaf3ee;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#0d5a4a;flex:0 0 auto">猫</div>
+        <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:17px;font-weight:600">猫小姐的日常</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span></div><div style="font-size:13px;color:#878f99;margin-top:2px">宠物 · 粉丝 1.2w · 已出画像</div></div>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:7px 13px"><i class="ti ti-sparkles" style="font-size:15px"></i>用它创作</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#565d66;border:1px solid #e8eaed;background:#fff;border-radius:8px;padding:7px 11px"><i class="ti ti-refresh" style="font-size:14px"></i>重建画像</span>
+      </div>
+      <div style="display:inline-flex;gap:2px;background:#eef0f2;border-radius:8px;padding:3px;margin-bottom:14px"><span style="font-size:13px;padding:5px 16px;border-radius:6px;background:#fff;border:1px solid #e8eaed;color:#1c2024">档案</span><span style="font-size:13px;padding:5px 16px;border-radius:6px;color:#565d66">对标分析</span></div>
+      <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px 15px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:14px;font-weight:600">创作画像</span><span style="font-size:12px;color:#0d7361">查看完整画像 →</span></div><div style="font-size:13px;color:#565d66;line-height:1.6">口语化避坑向 · 标题爱用"别再…了" · 开头先抛一个反常识结论 · 图文车道为主</div></div>
+      <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 15px 4px;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:2px">建档清单</div>
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f1f3"><span style="width:8px;height:8px;border-radius:50%;background:#1f7a45;flex:0 0 auto"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">账号资料</div><div style="font-size:12px;color:#878f99">粉丝 1.2w · 平台 320 篇</div></div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 11px">刷新</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f1f3"><span style="width:8px;height:8px;border-radius:50%;background:#1f7a45;flex:0 0 auto"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">笔记池</div><div style="font-size:12px;color:#878f99">已采 120 篇</div></div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 11px">增量补采</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f1f3"><span style="width:8px;height:8px;border-radius:50%;background:#1f7a45;flex:0 0 auto"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">数据 · 轨迹 · 受众 · 合规</div><div style="font-size:12px;color:#878f99">已生成</div></div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 11px">重算受众</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f1f3"><span style="width:8px;height:8px;border-radius:50%;background:#1f7a45;flex:0 0 auto"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">详情级笔记</div><div style="font-size:12px;color:#878f99">已详情 86 篇</div></div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 11px">升级详情</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f1f3"><span style="width:8px;height:8px;border-radius:50%;background:#1f7a45;flex:0 0 auto"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">创作画像</div><div style="font-size:12px;color:#878f99">已蒸馏</div></div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 11px">更新画像</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="font-size:12px;color:#878f99">笔记</div><div style="font-size:19px;font-weight:600;margin-top:2px">86</div></div>
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="font-size:12px;color:#878f99">中位赞</div><div style="font-size:19px;font-weight:600;margin-top:2px">320</div></div>
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="font-size:12px;color:#878f99">爆文率</div><div style="font-size:19px;font-weight:600;margin-top:2px">8%</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 3:博主页 · 对标分析 ============ -->
+  <div class="screen-label"><span class="n">3</span><span class="t">博主页 · 对标分析</span><span class="d">同页段控切换 · 按我的意图打分 + 差距</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:6px 13px"><i class="ti ti-plus" style="font-size:15px"></i>创作</span><span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600">我</span></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:14px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">猫小姐的日常</span></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:46px;height:46px;border-radius:50%;background:#eaf3ee;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#0d5a4a;flex:0 0 auto">猫</div>
+        <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:17px;font-weight:600">猫小姐的日常</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span></div><div style="font-size:13px;color:#878f99;margin-top:2px">宠物 · 粉丝 1.2w · 已出画像</div></div>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:7px 13px"><i class="ti ti-sparkles" style="font-size:15px"></i>用它创作</span>
+      </div>
+      <div style="display:inline-flex;gap:2px;background:#eef0f2;border-radius:8px;padding:3px;margin-bottom:14px"><span style="font-size:13px;padding:5px 16px;border-radius:6px;color:#565d66">档案</span><span style="font-size:13px;padding:5px 16px;border-radius:6px;background:#fff;border:1px solid #e8eaed;color:#1c2024">对标分析</span></div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#565d66;margin-bottom:12px"><span style="color:#878f99">分析意图:</span><span>想做猫粮测评带货</span><span style="color:#0d7361;border:1px solid #e8eaed;border-radius:7px;padding:2px 9px;font-size:12px">换意图</span></div>
+      <div style="display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:14px 16px;margin-bottom:10px"><div style="text-align:center;flex:0 0 auto"><div style="font-size:34px;font-weight:700;color:#0d7361;line-height:1">78</div><div style="font-size:12px;color:#878f99;margin-top:2px">对标契合度</div></div><div style="font-size:13px;color:#565d66;line-height:1.6;border-left:1px solid #e8eaed;padding-left:16px">选题角度和你的意图很贴,但标题的钩子和它差一截;正文结构可以直接借鉴。</div></div>
+      <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px 15px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="width:52px;font-size:12.5px;color:#565d66">标题</span><span style="flex:1;height:6px;background:#eef0f2;border-radius:999px;overflow:hidden"><span style="display:block;width:82%;height:100%;background:#0d7361"></span></span><span style="width:26px;text-align:right;font-size:12.5px;color:#1c2024">82</span></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="width:52px;font-size:12.5px;color:#565d66">语言</span><span style="flex:1;height:6px;background:#eef0f2;border-radius:999px;overflow:hidden"><span style="display:block;width:75%;height:100%;background:#0d7361"></span></span><span style="width:26px;text-align:right;font-size:12.5px;color:#1c2024">75</span></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="width:52px;font-size:12.5px;color:#565d66">套路</span><span style="flex:1;height:6px;background:#eef0f2;border-radius:999px;overflow:hidden"><span style="display:block;width:80%;height:100%;background:#0d7361"></span></span><span style="width:26px;text-align:right;font-size:12.5px;color:#1c2024">80</span></div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:52px;font-size:12.5px;color:#565d66">选题</span><span style="flex:1;height:6px;background:#eef0f2;border-radius:999px;overflow:hidden"><span style="display:block;width:70%;height:100%;background:#b7791f"></span></span><span style="width:26px;text-align:right;font-size:12.5px;color:#1c2024">70</span></div>
+      </div>
+      <div style="background:#fdf9f1;border:1px solid #f0e3d2;border-radius:14px;padding:13px 15px"><div style="font-size:13px;font-weight:600;color:#b7791f;margin-bottom:6px">还差哪些</div><div style="font-size:12.5px;color:#565d66;line-height:1.7">· 标题少了它那种"制造焦虑再解决"的钩子<br>· 你的选题偏泛,它更聚焦到具体单品</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 4:我的账号页 ============ -->
+  <div class="screen-label"><span class="n">4</span><span class="t">我的账号页</span><span class="d">/account/:id · 段控 档案 | 体检 · 硬实力 + 受众需求</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:6px 13px"><i class="ti ti-plus" style="font-size:15px"></i>创作</span><span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600">我</span></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:14px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">我的猫窝</span></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:46px;height:46px;border-radius:50%;background:#eaf3ee;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#0d5a4a;flex:0 0 auto">窝</div>
+        <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:17px;font-weight:600">我的猫窝</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span><span style="font-size:11px;color:#0d5a4a;background:#eaf3ee;border-radius:999px;padding:2px 8px">我的账号</span></div><div style="font-size:13px;color:#878f99;margin-top:2px">粉丝 3200 · 已出画像</div></div>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#565d66;border:1px solid #e8eaed;background:#fff;border-radius:8px;padding:7px 11px"><i class="ti ti-pencil" style="font-size:14px"></i>编辑资料</span>
+      </div>
+      <div style="display:inline-flex;gap:2px;background:#eef0f2;border-radius:8px;padding:3px;margin-bottom:14px"><span style="font-size:13px;padding:5px 16px;border-radius:6px;color:#565d66">档案</span><span style="font-size:13px;padding:5px 16px;border-radius:6px;background:#fff;border:1px solid #e8eaed;color:#1c2024">体检</span></div>
+      <div style="display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:14px 16px;margin-bottom:10px"><div style="text-align:center;flex:0 0 auto"><div style="font-size:34px;font-weight:700;color:#0d7361;line-height:1">72</div><div style="font-size:12px;color:#878f99;margin-top:2px">账号硬实力</div></div><div style="flex:1;font-size:13px;color:#565d66;line-height:1.6;border-left:1px solid #e8eaed;padding-left:16px">更新稳定、垂直度高;但爆文率偏低,标题的钩子还能更抓人。</div><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:6px 11px;flex:0 0 auto">重新体检</span></div>
+      <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:13px 15px">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:14px;font-weight:600">读者最常问</span><span style="font-size:11.5px;color:#878f99">— 会用于创作选题</span></div>
+        <div style="font-size:13px;color:#565d66;line-height:1.9">· 猫粮到底怎么选、看配料表哪几项<br>· 新手养猫第一个月要备什么<br>· 绝育前后要注意什么</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><span style="font-size:11.5px;color:#0d5a4a;background:#eaf3ee;border-radius:999px;padding:3px 10px">价格</span><span style="font-size:11.5px;color:#0d5a4a;background:#eaf3ee;border-radius:999px;padding:3px 10px">避坑</span><span style="font-size:11.5px;color:#0d5a4a;background:#eaf3ee;border-radius:999px;padding:3px 10px">新手</span><span style="font-size:11.5px;color:#0d5a4a;background:#eaf3ee;border-radius:999px;padding:3px 10px">健康</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 5:创作向导 ============ -->
+  <div class="screen-label"><span class="n">5</span><span class="t">创作向导</span><span class="d">/create · 5 步步条(选题步;从博主进第 1 步已完成)</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600;margin-left:auto">我</span>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:12px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">创作</span></div>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:20px;height:20px;border-radius:50%;background:#0d7361;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="ti ti-check" style="font-size:12px"></i></span><span style="font-size:12.5px;color:#565d66">选对标博主</span></span>
+        <i class="ti ti-chevron-right" style="font-size:14px;color:#cfd4d9"></i>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:20px;height:20px;border-radius:50%;background:#0d7361;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">2</span><span style="font-size:12.5px;color:#1c2024;font-weight:600">选题</span></span>
+        <i class="ti ti-chevron-right" style="font-size:14px;color:#cfd4d9"></i>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:20px;height:20px;border-radius:50%;background:#eef0f2;color:#878f99;display:flex;align-items:center;justify-content:center;font-size:12px">3</span><span style="font-size:12.5px;color:#878f99">正文/脚本</span></span>
+        <i class="ti ti-chevron-right" style="font-size:14px;color:#cfd4d9"></i>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:20px;height:20px;border-radius:50%;background:#eef0f2;color:#878f99;display:flex;align-items:center;justify-content:center;font-size:12px">4</span><span style="font-size:12.5px;color:#878f99">配图</span></span>
+        <i class="ti ti-chevron-right" style="font-size:14px;color:#cfd4d9"></i>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:20px;height:20px;border-radius:50%;background:#eef0f2;color:#878f99;display:flex;align-items:center;justify-content:center;font-size:12px">5</span><span style="font-size:12.5px;color:#878f99">发布包</span></span>
+      </div>
+      <div style="background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:14px 16px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#565d66;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f0f1f3"><span style="color:#878f99">对标博主</span><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:20px;height:20px;border-radius:50%;background:#eaf3ee;color:#0d5a4a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">猫</span>猫小姐的日常</span><span style="color:#0d7361;border:1px solid #e8eaed;border-radius:7px;padding:2px 9px;font-size:12px;margin-left:auto">换一个</span></div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">为哪个「我的账号」创作</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid #c8ced4;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:4px"><span>我的猫窝</span><i class="ti ti-chevron-down" style="font-size:15px;color:#878f99"></i></div>
+        <div style="font-size:11.5px;color:#878f99;margin-bottom:14px">选题会结合这个账号读者最关心的问题</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">种子主题 <span style="font-weight:400;color:#878f99">(可留空)</span></div>
+        <div style="display:flex;gap:8px"><div style="flex:1;border:1px solid #c8ced4;border-radius:8px;padding:9px 12px;font-size:13px;color:#9aa2ac">想写点关于猫粮的</div><span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:0 15px"><i class="ti ti-sparkles" style="font-size:15px"></i>生成选题</span></div>
+      </div>
+      <div style="font-size:13px;color:#878f99;margin:2px 2px 8px">选题方案 · 点一个</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="background:#f1f8f4;border:1px solid #0d7361;border-radius:12px;padding:12px 14px"><div style="font-size:14px;font-weight:600;margin-bottom:3px">新手别乱买!3 步看懂猫粮配料表</div><div style="font-size:12.5px;color:#0d5a4a;margin-bottom:4px">切角:把"看配料表"拆成可照做的三步</div><div style="font-size:12.5px;color:#565d66;line-height:1.55">正好回应你读者最常问的"猫粮怎么选、看哪几项"。</div></div>
+        <div style="background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px"><div style="font-size:14px;font-weight:600;margin-bottom:3px">养猫第一个月,这些钱别省</div><div style="font-size:12.5px;color:#565d66;margin-bottom:4px">切角:新手避坑清单</div><div style="font-size:12.5px;color:#878f99;line-height:1.55">对准"新手第一个月备什么"的高频疑问。</div></div>
+      </div>
+      <div style="display:flex;align-items:center;margin-top:16px"><span style="font-size:13px;color:#565d66;border:1px solid #e8eaed;background:#fff;border-radius:8px;padding:8px 14px">← 上一步</span><span style="flex:1"></span><span style="font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:8px 16px">下一步 →</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 6:草稿页 ============ -->
+  <div class="screen-label"><span class="n">6</span><span class="t">发布草稿</span><span class="d">/drafts · 类型 + 归属 + 状态 · 点开=发布包详情</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:6px 13px"><i class="ti ti-plus" style="font-size:15px"></i>创作</span><span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600">我</span></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:14px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">发布草稿</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><span style="font-size:11.5px;color:#565d66;background:#eef0f2;border-radius:6px;padding:3px 9px;flex:0 0 auto">图文</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">新手别乱买!3 步看懂猫粮配料表</div><div style="font-size:12px;color:#878f99;margin-top:1px">我的猫窝 · 小红书 · 07-05</div></div><span style="font-size:11.5px;color:#b7791f;background:#fdf9f1;border:1px solid #f0e3d2;border-radius:999px;padding:2px 9px;flex:0 0 auto">待发布</span><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 10px;flex:0 0 auto">复制文案</span></div>
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><span style="font-size:11.5px;color:#565d66;background:#eef0f2;border-radius:6px;padding:3px 9px;flex:0 0 auto">口播</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">养猫第一个月,这些钱别省</div><div style="font-size:12px;color:#878f99;margin-top:1px">我的猫窝 · 小红书 · 07-03</div></div><span style="font-size:11.5px;color:#1f7a45;background:#eef7f1;border:1px solid #d7ebe1;border-radius:999px;padding:2px 9px;flex:0 0 auto">已发布</span><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 10px;flex:0 0 auto">复制文案</span></div>
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><span style="font-size:11.5px;color:#565d66;background:#eef0f2;border-radius:6px;padding:3px 9px;flex:0 0 auto">视频</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">3 个信号,说明你家猫其实很爱你</div><div style="font-size:12px;color:#878f99;margin-top:1px">未指定账号 · 抖音 · 07-01</div></div><span style="font-size:11.5px;color:#b7791f;background:#fdf9f1;border:1px solid #f0e3d2;border-radius:999px;padding:2px 9px;flex:0 0 auto">待发布</span><span style="font-size:12px;color:#565d66;border:1px solid #e8eaed;border-radius:8px;padding:5px 10px;flex:0 0 auto">复制文案</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 屏 7:查找对标博主 ============ -->
+  <div class="screen-label"><span class="n">7</span><span class="t">查找对标博主</span><span class="d">/find · 首页「加对标博主」落地 · 搜索 + 采用 + 粘链兜底</span></div>
+  <div class="screen" style="border:1px solid #e8eaed;border-radius:14px;overflow:hidden;background:#f4f5f6;color:#1c2024">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e8eaed">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0d7361" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16.5l8 4 8-4"/></svg>
+      <span style="font-size:15px;font-weight:600">Cadence</span>
+      <span style="width:28px;height:28px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#565d66;font-weight:600;margin-left:auto">我</span>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#878f99;margin-bottom:14px"><i class="ti ti-arrow-left" style="font-size:15px"></i><span>首页</span><span style="color:#cfd4d9">/</span><span style="color:#565d66">加对标博主</span></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px"><div style="flex:1;display:flex;align-items:center;gap:8px;border:1px solid #c8ced4;border-radius:8px;padding:9px 12px;background:#fff"><i class="ti ti-search" style="font-size:15px;color:#878f99"></i><span style="font-size:13px;color:#9aa2ac">输入博主昵称或关键词</span></div><span style="display:inline-flex;align-items:center;font-size:13px;color:#fff;background:#0d7361;border-radius:8px;padding:0 18px">搜索</span></div>
+      <div style="font-size:13px;color:#878f99;margin:2px 2px 8px">搜索结果</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="width:40px;height:40px;border-radius:50%;background:#eaf3ee;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#0d5a4a;flex:0 0 auto">猫</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600">猫小姐的日常</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:1px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span></div><div style="font-size:12px;color:#878f99;margin-top:1px">粉丝 1.2w · 宠物</div></div><span style="font-size:12.5px;color:#0d5a4a;border:1px solid #cfe6db;background:#fff;border-radius:8px;padding:6px 14px;flex:0 0 auto">采用</span></div>
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="width:40px;height:40px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#565d66;flex:0 0 auto">铲</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600">铲屎官日记</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:1px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#1c2024"></span>抖音</span></div><div style="font-size:12px;color:#878f99;margin-top:1px">粉丝 5.6w · 宠物</div></div><span style="font-size:12.5px;color:#0d5a4a;border:1px solid #cfe6db;background:#fff;border-radius:8px;padding:6px 14px;flex:0 0 auto">采用</span></div>
+        <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:12px 14px"><div style="width:40px;height:40px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#565d66;flex:0 0 auto">橘</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600">一只大橘</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#565d66;background:#eef0f2;border-radius:999px;padding:1px 8px"><span style="width:6px;height:6px;border-radius:50%;background:#e24b4a"></span>小红书</span></div><div style="font-size:12px;color:#878f99;margin-top:1px">粉丝 8900 · 宠物 · 好物</div></div><span style="font-size:12.5px;color:#0d5a4a;border:1px solid #cfe6db;background:#fff;border-radius:8px;padding:6px 14px;flex:0 0 auto">采用</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid #e8eaed;font-size:12px;color:#878f99"><i class="ti ti-link" style="font-size:14px"></i>找不到?<span style="color:#0d7361">粘贴博主主页链接直接添加</span></div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:34px;">Cadence UI 重构设计定稿 · 对象驱动无侧栏 · 与任务 UI·1–UI·12 对照使用。图标依赖 Tabler webfont(离线时不显示图标,不影响版式)。</p>
+
+</div>
+</body>
+</html>
