@@ -198,16 +198,6 @@ export const activeWechatTab = ref<WeChatTab>('brief')
 export const activeXhsTab = ref<XhsTab>('overview')
 export const activeDouyinTab = ref<DouyinTab>('overview')
 
-// 只记录「最近平台」,供登录后跳回工作台(router.readLastPlatform 读同一 key)。admin 不计。
-const LAST_PLATFORM_KEY = 'pubsync_last_platform'
-watch(activeMainTab, (tab) => {
-  if (tab === 'admin') return
-  try {
-    window.localStorage.setItem(LAST_PLATFORM_KEY, tab)
-  } catch {
-    /* localStorage 不可用时静默忽略,不影响功能 */
-  }
-})
 export const xhsCollectStep = ref(1)
 export const xhsDistillStep = ref(1)
 export const wechatBriefStep = ref(1)
