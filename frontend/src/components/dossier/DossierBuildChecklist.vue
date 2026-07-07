@@ -49,6 +49,17 @@ function fmt(n: number): string {
       <button v-if="!hasPool && !busy" type="button" class="ck__cta" :disabled="busy" @click="emit('build')">
         一键构建画像
       </button>
+      <!-- 重建画像(贵而少用):从⑤行拆出,单独放右上,与高频「更新画像」分开、防误点。 -->
+      <button
+        v-else-if="distilled"
+        type="button"
+        class="ck__rebuild"
+        :disabled="locked"
+        title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记),约 10–20 分钟"
+        @click="emit('rebuild')"
+      >
+        ↻ 重建画像
+      </button>
     </div>
     <p v-if="!hasPool && !busy" class="ck__intro">
       依次:拉资料 → 全量列表入池 → 数据/成长/运营/合规 → 相关样本升详情 → 蒸馏创作画像。约 10–20 分钟,后台执行。
@@ -115,10 +126,16 @@ function fmt(n: number): string {
           <span class="ck__label">创作画像</span>
           <span class="ck__status">{{ distilled ? (stale ? '已蒸馏 · 可能过时' : '已蒸馏') : '未蒸馏' }}</span>
         </div>
-        <template v-if="distilled">
-          <button type="button" class="ck__btn" :disabled="locked" @click="emit('redistill')">更新画像</button>
-          <button type="button" class="ck__btn" :disabled="locked" @click="emit('rebuild')">彻底重建</button>
-        </template>
+        <button
+          v-if="distilled"
+          type="button"
+          class="ck__btn"
+          :disabled="locked"
+          title="用现有已采详情笔记重新蒸馏(便宜,不重新联网);「重建画像」在清单右上角"
+          @click="emit('redistill')"
+        >
+          更新画像
+        </button>
         <button
           v-else
           type="button"
@@ -187,6 +204,27 @@ function fmt(n: number): string {
 }
 .ck__cta:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+/* 重建画像:右上角次要按钮,幽灵样式(贵而少用,刻意低调、和高频「更新画像」区分)。 */
+.ck__rebuild {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--color-field-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink-3);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.ck__rebuild:hover:not(:disabled) {
+  border-color: var(--color-accent-soft-bd);
+  color: var(--color-ink);
+}
+.ck__rebuild:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .ck__intro {

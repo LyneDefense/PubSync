@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 档案页·创作画像区(去多画像:一份画像,可展开看蒸馏本体)。
-// 查看完整报告→ 主按钮;更新画像=用现有详情池重蒸(便宜);彻底重建=拉最新+重升详情+重蒸(纳入新笔记)。
+// 查看完整报告→ 主按钮;更新画像=用现有详情池重蒸(便宜);重建画像=拉最新+重升详情+重蒸(纳入新笔记)。
 import { ref } from 'vue'
 import type { DossierPortrait } from '../../api/types'
 import DossierPortraitContent from './DossierPortraitContent.vue'
@@ -44,7 +44,7 @@ const detailPortrait = ref<DossierPortrait | null>(null)
           <b>{{ p.snapshot_name || p.name }}</b>
           <span class="cp__row-meta">蒸馏于 {{ p.distilled_at ? friendlyTime(p.distilled_at) : '未知' }} · 样本 {{ p.sample_count }} 篇 · 覆盖 {{ laneLabel(p.lanes) }}</span>
         </span>
-        <span v-if="p.stale" class="cp__pill cp__pill--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇,彻底重建可纳入`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
+        <span v-if="p.stale" class="cp__pill cp__pill--warn" :title="`蒸馏后笔记池新增 ${p.new_posts_since} 篇,重建画像可纳入`">可能过时 · 新增 {{ p.new_posts_since }} 篇</span>
         <span v-else class="cp__pill cp__pill--ok">最新</span>
       </button>
 
@@ -53,7 +53,7 @@ const detailPortrait = ref<DossierPortrait | null>(null)
         <div class="cp__actions">
           <button type="button" class="cp__btn cp__btn--accent" @click="detailPortrait = p">查看详情</button>
           <button type="button" class="cp__btn" :disabled="busy" title="用现有笔记重新蒸馏(便宜)" @click="$emit('redistill')">更新画像</button>
-          <button type="button" class="cp__btn" :disabled="busy" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)" @click="$emit('rebuild')">彻底重建</button>
+          <button type="button" class="cp__btn" :disabled="busy" title="重新拉取全部笔记 + 重升详情 + 重蒸(纳入新笔记)" @click="$emit('rebuild')">重建画像</button>
         </div>
       </div>
     </div>

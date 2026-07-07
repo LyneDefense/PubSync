@@ -92,9 +92,9 @@ watch(
   { immediate: true }
 )
 
-// 彻底重建 = 重跑一键建档(重拉全部笔记 + 重升详情 + 重蒸)。信息确认告知耗时,不劝退。
+// 重建画像 = 重跑一键建档(重拉全部笔记 + 重升详情 + 重蒸)。信息确认告知耗时,不劝退。
 async function rebuild() {
-  const ok = window.confirm('彻底重建会重新拉取该博主全部笔记、重升详情并重蒸创作画像,约 10–20 分钟(后台执行,有 TikHub + AI 成本)。确定?')
+  const ok = window.confirm('重建画像会重新拉取该博主全部笔记、重升详情并重蒸创作画像,约 10–20 分钟(后台执行,有 TikHub + AI 成本)。确定?')
   if (!ok) return
   await handleBuildDossier()
 }
