@@ -62,7 +62,8 @@ export const router = createRouter({
 // 守卫：未登录 → 登录；已登录访问登录页 → 跳回工作台；工作台缺/错平台或缺页签 → 规整。
 router.beforeEach((to: RouteLocationNormalized) => {
   if (!isAuthenticated.value) {
-    return to.name === 'login' ? true : { name: 'login' }
+    // 未登录访问任意页 → 登录页,但把原目标记进 ?redirect,登录成功后跳回去(否则深链/新架构页永远到不了)。
+    return to.name === 'login' ? true : { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.name === 'login') {
     return landingTarget()

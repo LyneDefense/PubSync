@@ -60,12 +60,17 @@ watch(
   { immediate: true }
 )
 
-// 登录态变化驱动跳转:登录成功→跳回最近平台/选平台页;退出→回登录页。
+// 登录态变化驱动跳转:登录成功→优先跳回登录前想去的页(?redirect),否则最近平台/选平台页;退出→回登录页。
 watch(isAuthenticated, (authed) => {
   if (authed) {
     if (route.name === 'login' || !route.name) {
-      const last = readLastPlatform()
-      router.replace(last ? { name: 'workspace', params: { platform: last, tab: DEFAULT_TAB[last] } } : { name: 'select' })
+      const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+      if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+        router.replace(redirect) // 深链/新架构页:登录后跳回原目标
+      } else {
+        const last = readLastPlatform()
+        router.replace(last ? { name: 'workspace', params: { platform: last, tab: DEFAULT_TAB[last] } } : { name: 'select' })
+      }
     }
   } else if (route.name !== 'login') {
     router.replace({ name: 'login' })
