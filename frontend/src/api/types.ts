@@ -434,6 +434,8 @@ export interface BloggerPost {
   visual_digest?: string
   vision_status?: string
   vision_image_count?: number
+  video_profile?: string
+  video_tags?: string
   published_at: string | null
   like_count: number
   favorite_count: number

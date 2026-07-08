@@ -98,6 +98,10 @@ class BloggerPost(Base):
     vision_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_required", server_default="not_required")
     vision_error: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     vision_image_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # 视频档案(分层结构化 JSON):L0 采集免费(时长/口播浓度/封面)、L1 镜头切分、L2 代表帧;取代 content_subtype 作为「门」。
+    video_profile: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # 从 video_profile 派生的展示/筛选标签 JSON:{narration_level,on_camera,pace,video_kind}。可重算,不重采。
+    video_tags: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     like_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     favorite_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

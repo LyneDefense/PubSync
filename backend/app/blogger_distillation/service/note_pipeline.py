@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.asr import ASRError, build_asr_provider
-from app.blogger_distillation.modality import classify_subtype
+from app.blogger_distillation.modality import assemble_video_profile_l0, classify_subtype, derive_video_tags
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.quality import evaluate_post_quality
 from app.blogger_distillation.service.asr_step import handle_video_asr
@@ -163,6 +163,18 @@ def _finalize_post(db, tenant_id, task_id, blogger, settings, candidate, normali
     )
     normalized["content_subtype"] = subtype
     normalized["content_subtype_confidence"] = confidence
+    # 视频档案 L0(免费:现成字段)+ 派生标签。L1/L2(镜头/拍法)在 P1 补。content_subtype 仅作旧统计兼容,不再门控蒸馏。
+    profile = assemble_video_profile_l0(
+        normalized["content_type"],
+        normalized.get("transcript_text", ""),
+        normalized.get("duration_seconds"),
+        density_high_cps=settings.modality_density_high_cps,
+        density_low_cps=settings.modality_density_low_cps,
+        min_transcript_chars=settings.talking_video_min_transcript_chars,
+    )
+    normalized["video_profile"] = json.dumps(profile, ensure_ascii=False) if profile else ""
+    tags = derive_video_tags(profile)
+    normalized["video_tags"] = json.dumps(tags, ensure_ascii=False) if tags else ""
     post_quality = evaluate_post_quality(normalized)
     if post_quality.level == "failed":
         logger.warning("笔记质量不合格，跳过：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))

@@ -80,6 +80,31 @@ const noteVisual = computed(() => {
   return { hook, layout, style, images: imgs, fallbackText }
 })
 
+// 视频档案(video_profile/tags):L0 口播浓度 + 时长恒有;L1/L2(镜头/节奏/出镜)建档后才有。
+const NARRATION_LABEL: Record<string, string> = { none: '无口播', low: '少量口播', mid: '半口播', high: '口播为主' }
+const PACE_LABEL: Record<string, string> = { slow: '慢节奏', medium: '中等节奏', fast: '快节奏' }
+const noteVideo = computed(() => {
+  const post = activeNotePost.value
+  if (!post || post.content_type !== 'video') return null
+  let profile: Record<string, unknown> = {}
+  let tags: Record<string, unknown> = {}
+  try { profile = post.video_profile ? JSON.parse(post.video_profile) : {} } catch { profile = {} }
+  try { tags = post.video_tags ? JSON.parse(post.video_tags) : {} } catch { tags = {} }
+  const chips: string[] = []
+  const nl = String(tags.narration_level || '')
+  if (NARRATION_LABEL[nl]) chips.push(NARRATION_LABEL[nl])
+  const pace = String(tags.pace || '')
+  if (PACE_LABEL[pace]) chips.push(PACE_LABEL[pace])
+  if (tags.on_camera === true) chips.push('出镜')
+  else if (tags.on_camera === false) chips.push('画外音')
+  const facts: string[] = []
+  if (typeof profile.duration_s === 'number') facts.push(`时长 ${Math.round(profile.duration_s)}s`)
+  if (typeof profile.shot_count === 'number') facts.push(`${profile.shot_count} 个镜头`)
+  if (typeof profile.cuts_per_min === 'number') facts.push(`${profile.cuts_per_min} cuts/min`)
+  if (!chips.length && !facts.length) return null
+  return { chips, facts, deep: profile.layer === 'L1' || profile.layer === 'L2' }
+})
+
 // 点「第N张」跳到画廊对应图(vision 的 index 与画廊顺序一致:封面在前)。
 function focusImage(index: number) {
   const i = index - 1
@@ -131,6 +156,13 @@ function focusImage(index: number) {
             {{ subtypeLabel(activeNotePost.content_subtype) }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
           </p>
           <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="nm-link">打开原帖 <TIcon name="external-link" /></a>
+
+          <!-- 视频档案:口播浓度/时长恒有;镜头/节奏/出镜建档后补(没有则提示待采)。 -->
+          <div v-if="noteVideo" class="nm-vprofile">
+            <span v-for="c in noteVideo.chips" :key="c" class="nm-vchip">{{ c }}</span>
+            <span v-if="noteVideo.facts.length" class="nm-vfacts">{{ noteVideo.facts.join(' · ') }}</span>
+            <span v-if="!noteVideo.deep" class="nm-vhint">画面/节奏待采</span>
+          </div>
 
           <div class="nm-section">
             <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
@@ -339,6 +371,10 @@ function focusImage(index: number) {
 .nm-title { margin: 0 0 6px; font-size: 17px; font-weight: 650; line-height: 1.4; }
 .nm-meta { margin: 0 0 10px; font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
 .nm-link { font-size: 13px; color: var(--color-accent); font-weight: 600; }
+.nm-vprofile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; }
+.nm-vchip { font-size: 11.5px; color: var(--color-accent-ink); background: var(--color-accent-soft); border-radius: 999px; padding: 2px 9px; }
+.nm-vfacts { font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
+.nm-vhint { font-size: 11px; color: var(--color-ink-3); border: 1px dashed var(--color-rule-strong); border-radius: 999px; padding: 1px 8px; }
 .nm-section { margin-top: 16px; }
 .nm-section h4 { margin: 0 0 8px; font-size: 13px; font-weight: 650; }
 .nm-text { white-space: pre-wrap; font-size: 13px; line-height: 1.7; color: var(--color-ink-2); margin: 0 0 4px; }

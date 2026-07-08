@@ -12,8 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation import analysis
-from app.blogger_distillation.modality import CONF_AMBIGUOUS, CONF_LLM, candidate_modality
-from app.blogger_distillation.modality_adjudicator import adjudicate_modality
+from app.blogger_distillation.modality import candidate_modality
 from app.blogger_distillation.providers import ensure_collection_provider_available
 from app.blogger_distillation.quality import quality_report
 from app.blogger_distillation.service.note_pipeline import build_collect_providers, process_one_note
@@ -612,7 +611,6 @@ def collect_posts(
     ids = [pid for pid in post_ids if pid is not None]
     posts = list(db.scalars(select(BloggerPost).where(BloggerPost.id.in_(ids)))) if ids else []
     _retry_failed_vision(db, tenant_id, task_id, posts, providers.vision, settings)
-    _adjudicate_ambiguous_modality(db, tenant_id, task_id, posts, settings)
     return posts
 
 
@@ -633,32 +631,3 @@ def _retry_failed_vision(db: Session, tenant_id: int, task_id: str, posts: list[
     record_task_event(db, tenant_id, task_id, "图片理解", "succeeded", f"收尾补采完成:{fixed}/{len(failed)} 条补齐")
 
 
-def _adjudicate_ambiguous_modality(
-    db: Session, tenant_id: int, task_id: str, posts: list[BloggerPost], settings: Settings
-) -> None:
-    """T2 语义裁决:密度判不清的模糊视频(半口播/剧情/卡点),批量交大模型判口播/非口播;
-    仅少数、成本有界,失败则保留 T1 密度猜测,绝不阻断采集。"""
-    if not settings.modality_llm_adjudicate_enabled:
-        return
-    ambiguous = [p for p in posts if p.content_subtype_confidence == CONF_AMBIGUOUS]
-    if not ambiguous:
-        return
-    record_task_event(db, tenant_id, task_id, "模态裁决", "running", f"{len(ambiguous)} 条视频密度判不清,语义裁决中…")
-    verdicts = adjudicate_modality(
-        [{"id": p.id, "title": p.title, "transcript": p.transcript_text, "duration": p.duration_seconds} for p in ambiguous],
-        settings,
-    )
-    changed = 0
-    for p in ambiguous:
-        verdict = verdicts.get(p.id)
-        if not verdict:
-            continue
-        if verdict != p.content_subtype:
-            changed += 1
-        p.content_subtype = verdict
-        p.content_subtype_confidence = CONF_LLM
-    db.commit()
-    record_task_event(
-        db, tenant_id, task_id, "模态裁决", "succeeded",
-        f"语义裁决完成:{len(verdicts)}/{len(ambiguous)} 条判定,{changed} 条修正",
-    )
