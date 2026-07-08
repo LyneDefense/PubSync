@@ -65,9 +65,45 @@ VISION_PROMPT = (
 )
 
 
+# L2「拍法解析」:看视频按时间顺序的代表帧(每镜头 1 张),给风格层面的判断(精确节奏由 L1 的 CPU 镜头切分给,不靠模型数)。
+MOTION_PROMPT = (
+    "下面是一条短视频**按时间顺序**抽出的若干代表帧(每个镜头一张)。请判断它的**拍法/呈现方式**。"
+    "**只输出一个 JSON 对象**,不要 Markdown、不要解释、不要 <think>:\n"
+    '{\n'
+    '  "on_camera": true/false,   // 是否有真人出镜、对着镜头讲(有脸且像在说话=true;纯画面/配音=false)\n'
+    '  "hook_3s": "开头怎么抓人(看首帧:怼脸提问/大字标题/强画面…),没有则空串",\n'
+    '  "shot_style": "景别与构图特点,一句话(如 近景怼脸为主/全景实拍/特写展示商品)",\n'
+    '  "on_screen_text": "字幕/花字风格(如 全程大字幕、关键词高亮、几乎无字),没有则空串",\n'
+    '  "transitions": "从帧变化看剪辑观感,一句话(如 硬切快剪/平稳少切)",\n'
+    '  "style_summary": "一句话概括这条视频的拍法与呈现"\n'
+    '}\n'
+    "只依据画面能看到的,判断不了的字段给空串;不要编造。"
+)
+
+
+def parse_motion_response(raw: str) -> dict[str, Any]:
+    """宽松解析 L2 拍法 JSON:剥 ```fence、取首个 { } 块;失败返回 {}。"""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
+        text = text[4:] if text.lstrip().lower().startswith("json") else text
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start : end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 class VisionProvider:
     def analyze_images(self, image_urls: list[str], *, source_id: str = "", on_progress: ProgressCallback | None = None) -> VisionResult:
         raise NotImplementedError
+
+    def describe_motion(self, frames: list[bytes], *, source_id: str = "") -> dict[str, Any]:
+        """看代表帧,返回拍法字段(on_camera/hook_3s/shot_style/on_screen_text/transitions/style_summary)。无能力返回 {}。"""
+        return {}
 
 
 class DisabledVisionProvider(VisionProvider):
@@ -104,6 +140,17 @@ class GlmVisionProvider(VisionProvider):
             raise VisionError(f"GLM 视觉调用失败：{exc}") from exc
         image_text, digest = parse_vision_response(raw)
         return VisionResult(image_text=image_text, visual_digest=digest, image_count=len(parts), provider="glm_vision")
+
+    def describe_motion(self, frames: list[bytes], *, source_id: str = "") -> dict[str, Any]:
+        """代表帧(已是 JPEG 字节)→ base64 → 一次 VLM 出拍法。帧数已在 video_frames 封顶,再兜一层 GLM 图数上限。"""
+        parts = ["data:image/jpeg;base64," + base64.b64encode(f).decode("ascii") for f in frames[:GLM_VISION_MAX_IMAGES] if f]
+        if not parts:
+            return {}
+        try:
+            raw = glm_vision_chat(self.settings, image_parts=parts, instruction=MOTION_PROMPT, model=self.settings.vision_model)
+        except AIServiceError as exc:
+            raise VisionError(f"GLM 拍法解析失败：{exc}") from exc
+        return parse_motion_response(raw)
 
     def _to_jpeg_base64(self, urls: list[str]) -> list[str]:
         """下载每张图并用 ffmpeg 转成 JPEG(视频取首帧);统一格式绕开 GLM 对 webp/mp4 的拒收。单张失败则跳过。"""

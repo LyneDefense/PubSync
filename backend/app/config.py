@@ -50,7 +50,13 @@ class Settings(BaseSettings):
     talking_video_min_transcript_chars: int = 200   # 无时长回退:转写字数 ≥ 此值判口播
     modality_density_high_cps: float = 3.0          # 字/秒 ≥ 此值 → 口播(高置信)
     modality_density_low_cps: float = 1.0           # 字/秒 ≤ 此值 → 非口播(高置信);之间=模糊带,交 LLM 裁决
-    modality_llm_adjudicate_enabled: bool = True    # 模糊带是否用大模型语义裁决(口播/剧情/卡点/vlog)
+    modality_llm_adjudicate_enabled: bool = True    # (已弃用:T2 裁决已删,视频档案化后 content_subtype 不再当门)
+    # 视频制作手法(video_profile L1/L2):采集详情时抽帧 + 镜头切分(CPU)+ 代表帧 VLM。默认关,后台可开。
+    video_motion_enabled: bool = False              # 总开关:L1 镜头/节奏(CPU)+ L2 代表帧 VLM
+    video_scene_threshold: float = 0.4              # ffmpeg 场景切换阈值(0~1,越大越不敏感)
+    video_shot_frame_cap: int = 16                  # 每条视频送 VLM 的代表帧上限(每镜头 1 张、封顶)
+    video_pace_fast_cpm: float = 20.0               # cuts/min ≥ 此值 → 快节奏
+    video_pace_slow_cpm: float = 6.0                # cuts/min ≤ 此值 → 慢节奏
     # 蒸馏时每个被选模态的最低样本数,不足则拒绝(避免样本太少蒸出垃圾)。
     distill_min_samples_per_subtype: int = 5
     # 蒸馏选材:最低样本硬下限(<此值拒绝)、软建议值(界面提示)、自动蒸馏取高赞 top-N。

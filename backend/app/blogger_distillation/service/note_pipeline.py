@@ -28,6 +28,7 @@ from app.blogger_distillation.service.extract import (
     supplement_video_detail_with_url,
     upsert_post,
 )
+from app.blogger_distillation.service.motion_step import handle_video_motion
 from app.blogger_distillation.service.vision_step import handle_note_vision
 from app.blogger_distillation.tikhub_client import (
     TikHubDouyinClient,
@@ -130,6 +131,9 @@ def _process_video_note(db, tenant_id, task_id, blogger, client, settings, candi
     ensure_distillation_not_cancelled(db, tenant_id, task_id)
     # 视频只解析封面(scope=cover):正文图基本没有,省 GLM 开销。
     handle_note_vision(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings, scope="cover")
+    ensure_distillation_not_cancelled(db, tenant_id, task_id)
+    # 拍法(video_profile L1/L2:镜头切分 + 代表帧 VLM);受 video_motion_enabled 控,默认关。趁直链新鲜、刚下过一次做掉。
+    handle_video_motion(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings)
     _collect_comments(db, tenant_id, task_id, client, candidate, normalized, comments_per_post)
     return _finalize_post(db, tenant_id, task_id, blogger, settings, candidate, normalized, current, total)
 
@@ -172,6 +176,10 @@ def _finalize_post(db, tenant_id, task_id, blogger, settings, candidate, normali
         density_low_cps=settings.modality_density_low_cps,
         min_transcript_chars=settings.talking_video_min_transcript_chars,
     )
+    # 叠加拍法层(L1/L2,若采集时 motion_step 跑过);_motion 是内部键,必须 pop 掉再 upsert(否则 **data 塞非列会崩)。
+    motion = normalized.pop("_motion", None)
+    if profile and isinstance(motion, dict):
+        profile.update(motion)
     normalized["video_profile"] = json.dumps(profile, ensure_ascii=False) if profile else ""
     tags = derive_video_tags(profile)
     normalized["video_tags"] = json.dumps(tags, ensure_ascii=False) if tags else ""
