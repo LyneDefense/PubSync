@@ -520,6 +520,8 @@ export interface XhsPublishPackageCreate {
   keywords: string
   image_count_mode: XhsImageCountMode
   requested_image_count: number | null
+  // 这篇给我的哪个账号用;视频脚本据此把对标拍法降维到我做得到的版本(可空)。
+  my_account_id?: number | null
 }
 
 export interface XhsPublishPackageDraft {

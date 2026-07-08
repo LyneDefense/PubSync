@@ -2,13 +2,15 @@ import json
 import logging
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation.service.events import record_task_event
 from app.blogger_dossier.audience import parse_audience
 from app.compliance import scan_creation
 from app.config import Settings
-from app.models import AppSetting, BloggerDistillationRun, BloggerProfile, BloggerSkill, XhsPublishPackage
+from app.models import AppSetting, BloggerDistillationRun, BloggerPost, BloggerProfile, BloggerSkill, XhsPublishPackage
+from app.xhs_creation.my_baseline import summarize_video_baseline
 from app.schemas import XhsPublishPackageCreate, XhsPublishPackageSave, XhsTopicIdeaRequest
 from app.services.ai_service import AIServiceError, create_json_response, is_ai_enabled
 from app.synthesis import humanize_event, run_agent
@@ -305,6 +307,7 @@ def generate_package_content(
         content_type=payload.content_type,
         benchmark_stats=benchmark_stats,
         distillation=distillation,
+        my_video_baseline=_load_my_video_baseline(db, tenant_id, getattr(payload, "my_account_id", None)),
         extra_block_words=_load_extra_block_words(db),
         compliance_enabled=settings.creation_compliance_enabled,
     )
@@ -338,6 +341,38 @@ def generate_package_content(
     benchmark = build_benchmark_comparison(settings, generated, ctx, model)
     quality = evaluate_creation_quality(generated, ctx)
     return generated, trace, benchmark, quality, compliance
+
+
+def _load_my_video_baseline(db: Session, tenant_id: int, my_account_id: int | None) -> dict[str, Any]:
+    """取「我的账号」视频笔记的拍法基线(video_profile 汇总),供视频创作把对标拍法降维到用户做得到的版本。
+
+    缺账号/越权/非「我的账号」/无视频档案 → 空(降级不挡路)。
+    """
+    if not my_account_id:
+        return {}
+    mine = db.get(BloggerProfile, my_account_id)
+    if not mine or mine.tenant_id != tenant_id or mine.account_type != "mine":
+        return {}
+    posts = db.scalars(
+        select(BloggerPost).where(
+            BloggerPost.tenant_id == tenant_id,
+            BloggerPost.blogger_id == my_account_id,
+            BloggerPost.content_type == "video",
+            BloggerPost.status == "active",
+        )
+    ).all()
+    profiles: list[dict[str, Any]] = []
+    for post in posts:
+        raw = (post.video_profile or "").strip()
+        if not raw:
+            continue
+        try:
+            prof = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(prof, dict) and prof:
+            profiles.append(prof)
+    return summarize_video_baseline(profiles)
 
 
 def _load_extra_block_words(db: Session) -> list[str]:

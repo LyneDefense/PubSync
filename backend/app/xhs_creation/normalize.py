@@ -57,19 +57,25 @@ def normalize_image_plan(value: Any) -> list[dict[str, Any]]:
     return result
 
 
+# 分镜片段保留的键(含拍法的景别/运镜 shot_type);其余噪声键丢弃,保证前端分镜表结构一致。
+_SCRIPT_SEGMENT_KEYS = ("start", "end", "shot_type", "scene", "voiceover", "subtitle")
+
+
+def _normalize_segment(seg: dict[str, Any]) -> dict[str, Any]:
+    return {k: str(seg.get(k) or "").strip() for k in _SCRIPT_SEGMENT_KEYS if str(seg.get(k) or "").strip()}
+
+
 def normalize_script(value: Any, content_type: str) -> dict[str, Any]:
-    if isinstance(value, dict):
-        script = dict(value)
-    else:
-        script = {}
+    script = dict(value) if isinstance(value, dict) else {}
     if content_type not in {"spoken_script", "video_script"}:
         return script if script.get("segments") else {}
     segments = script.get("segments")
-    if not isinstance(segments, list):
-        script["segments"] = []
+    script["segments"] = [_normalize_segment(s) for s in segments if isinstance(s, dict)] if isinstance(segments, list) else []
     notes = script.get("shooting_notes")
-    if not isinstance(notes, list):
-        script["shooting_notes"] = []
+    script["shooting_notes"] = [str(n).strip() for n in notes if str(n).strip()] if isinstance(notes, list) else []
+    # 拍法附加:开头 3 秒钩子(两种脚本都用)+ 整体节奏(视频脚本用)。
+    script["hook"] = str(script.get("hook") or "").strip()
+    script["pacing"] = str(script.get("pacing") or "").strip()
     return script
 
 

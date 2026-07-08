@@ -11,26 +11,31 @@ from typing import Any
 
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
-    TALKING_VIDEO,
-    VISUAL_VIDEO,
+    VIDEO,
     subtype_label,
 )
 
-# 创作内容类型 → 模态车道。图文/文字走图文车道,口播走口播,视频走非口播。
+# lane-collapse 之前的老 skill 车道键(口播/非口播),回落时兼容,不再作为映射目标。
+_LEGACY_VIDEO_LANES = ("talking_video", "visual_video")
+
+# 创作内容类型 → 蒸馏内容车道。蒸馏侧已把口播/非口播收敛成一条「视频」车道(话术+拍法),
+# 所以口播脚本和视频脚本都读同一份视频车道(拍法方法论);图文/纯文字读图文车道。
 _CT_TO_LANE: dict[str, str] = {
     "text_note": IMAGE_TEXT,
     "image_note": IMAGE_TEXT,
-    "spoken_script": TALKING_VIDEO,
-    "video_script": VISUAL_VIDEO,
+    "spoken_script": VIDEO,
+    "video_script": VIDEO,
 }
 
 
 def _pick_lane(lanes: dict[str, Any], content_type: str) -> tuple[str, dict[str, Any]]:
-    """选当前内容类型对应车道;缺则按 口播>图文>非口播 回落到任一有内容的车道。"""
+    """选当前内容类型对应车道;缺则按「同模态优先(含老 skill 的口播/非口播)」回落到任一有内容的车道。"""
     preferred = _CT_TO_LANE.get(content_type, IMAGE_TEXT)
-    if isinstance(lanes.get(preferred), dict) and lanes[preferred]:
-        return preferred, lanes[preferred]
-    for lane in (TALKING_VIDEO, IMAGE_TEXT, VISUAL_VIDEO):
+    if preferred == VIDEO:
+        order = (VIDEO, *_LEGACY_VIDEO_LANES, IMAGE_TEXT)
+    else:
+        order = (IMAGE_TEXT, VIDEO, *_LEGACY_VIDEO_LANES)
+    for lane in order:
         if isinstance(lanes.get(lane), dict) and lanes[lane]:
             return lane, lanes[lane]
     for lane, content in lanes.items():
@@ -82,14 +87,20 @@ def build_creation_kit(distillation: dict[str, Any] | None, content_type: str) -
     if topic_block:
         blocks.append(topic_block)
 
+    # 视频车道:把「结构骨架」显式呈现为拍法(分镜/节奏/开头),让创作照这个博主的拍法来,而不是通用模板。
+    is_video = lane_key in (VIDEO, *_LEGACY_VIDEO_LANES)
     write_block = "\n".join(
         x for x in (
             _sec("标题公式", lane.get("title_formulas"), 6),
-            _sec("开头模板", lane.get("opening_templates"), 4),
-            _sec("结构骨架", lane.get("body_structures") or lane.get("video_script_structures"), 4),
+            _sec("开头钩子（前 3 秒留人）" if is_video else "开头模板", lane.get("opening_templates"), 4),
+            _sec(
+                "拍法·分镜/节奏/开头结构" if is_video else "结构骨架",
+                lane.get("body_structures") or lane.get("video_script_structures"),
+                6 if is_video else 4,
+            ),
             _sec("情绪节奏/留人钩子", lane.get("emotional_rhythm"), 3),
-            _sec("封面文案", lane.get("cover_text_rules"), 4),
-            _sec("图内编排/版式", lane.get("visual_layout_patterns"), 4),
+            _sec("封面/首帧文案" if is_video else "封面文案", lane.get("cover_text_rules"), 4),
+            _sec("画面/版式" if is_video else "图内编排/版式", lane.get("visual_layout_patterns"), 4),
             _sec("语言 DNA", lane.get("language_dna"), 5),
             _sec("互动/CTA", lane.get("cta_strategy"), 3),
             _sec("标签策略", lane.get("hashtag_strategy"), 3),

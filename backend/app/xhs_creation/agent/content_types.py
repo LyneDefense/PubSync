@@ -50,11 +50,13 @@ CONTENT_TYPE_SPECS: dict[str, ContentTypeSpec] = {
     "spoken_script": ContentTypeSpec(
         label="口播脚本",
         instruction=(
-            "口播脚本:为一个人对着镜头讲话设计。script.segments 按时间轴给出每段的口播文案与字幕,"
-            "开头要有强钩子,中间信息密度高,结尾有引导。body_text 写一段发布说明。"
+            "口播脚本:为一个人对着镜头讲话设计。照上方对标博主的「开头钩子/拍法」来(不是通用模板)。"
+            "script.hook 单列开头 3 秒钩子;segments 按时间轴给每段口播文案与字幕,中间信息密度高,结尾有引导。"
+            "body_text 写一段发布说明。"
         ),
         schema_fragment="""  "script": {
     "duration_seconds": 0,
+    "hook": "开头 3 秒钩子:第一句话怎么抓住人",
     "segments": [
       {"start": "0s", "end": "5s", "voiceover": "口播原话", "subtitle": "屏幕字幕"}
     ],
@@ -65,15 +67,19 @@ CONTENT_TYPE_SPECS: dict[str, ContentTypeSpec] = {
     "video_script": ContentTypeSpec(
         label="视频脚本",
         instruction=(
-            "视频脚本:为成片设计分镜。script.segments 每段含画面/镜头建议(scene)、口播旁白、字幕;"
-            "开头钩子前置,注意节奏。body_text 写一段发布说明。"
+            "视频脚本:为成片设计分镜,照上方对标博主的「拍法·分镜/节奏/开头结构」来(不是通用模板)。"
+            "script.hook 单列开头 3 秒钩子;script.pacing 给整体节奏(镜头快慢/平均几秒一切);"
+            "segments 每段含景别/运镜(shot_type)、画面(scene)、口播旁白(voiceover)、字幕(subtitle)。"
+            "产出是用户可照着拍的分镜蓝图(不是成片):运镜给方向,拍摄细节靠人。body_text 写一段发布说明。"
         ),
         schema_fragment="""  "script": {
     "duration_seconds": 0,
+    "hook": "开头 3 秒钩子:第一句话/第一个画面怎么留住人",
+    "pacing": "整体节奏建议,如 镜头偏快·平均 3-4 秒一切 / 慢节奏叙事",
     "segments": [
-      {"start": "0s", "end": "5s", "scene": "画面/镜头建议", "voiceover": "口播/旁白", "subtitle": "屏幕字幕"}
+      {"start": "0s", "end": "5s", "shot_type": "景别/运镜,如 近景怼脸·固定 / 中景·手持跟拍", "scene": "画面/镜头建议", "voiceover": "口播/旁白", "subtitle": "屏幕字幕"}
     ],
-    "shooting_notes": ["拍摄建议"]
+    "shooting_notes": ["拍摄建议(器材/光线/剪辑)"]
   }""",
         required_fields=["title", "body_text", "hashtags", "script"],
     ),

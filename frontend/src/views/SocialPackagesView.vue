@@ -36,7 +36,9 @@ import {
   xhsDraftCompliance,
   xhsDraftHashtags,
   xhsDraftImagePlan,
+  xhsDraftIsVideoScript,
   xhsDraftProcess,
+  xhsDraftScriptMeta,
   xhsDraftScriptSegments,
   xhsPackageForm,
   xhsTopicIdeas
@@ -326,12 +328,42 @@ function avatarStyle(id: number) {
         </section>
 
         <section v-if="xhsDraftScriptSegments.length" class="copy-block">
-          <div class="cb-head"><h4>脚本预览</h4><button type="button" class="btn btn--ghost slim" @click="copyText(JSON.stringify(parseJsonObject(currentXhsDraft.script_json), null, 2), '脚本')">复制脚本</button></div>
-          <div class="segments">
+          <div class="cb-head">
+            <h4>{{ xhsDraftIsVideoScript ? '分镜脚本' : '口播脚本' }}</h4>
+            <button type="button" class="btn btn--ghost slim" @click="copyText(JSON.stringify(parseJsonObject(currentXhsDraft.script_json), null, 2), '脚本')">复制脚本</button>
+          </div>
+
+          <!-- 拍法附加:开头 3 秒钩子 + 整体节奏 -->
+          <div v-if="xhsDraftScriptMeta.hook || xhsDraftScriptMeta.pacing" class="shot-meta">
+            <div v-if="xhsDraftScriptMeta.hook" class="sm-card"><span class="sm-label">开头 3 秒钩子</span><p>{{ xhsDraftScriptMeta.hook }}</p></div>
+            <div v-if="xhsDraftScriptMeta.pacing" class="sm-card"><span class="sm-label">整体节奏</span><p>{{ xhsDraftScriptMeta.pacing }}</p></div>
+          </div>
+
+          <!-- 视频脚本:可照拍的分镜表(镜头/时长/景别/画面/口播/字幕) -->
+          <div v-if="xhsDraftIsVideoScript" class="shot-table-wrap">
+            <table class="shot-table">
+              <thead>
+                <tr><th>#</th><th>时长</th><th>景别 / 运镜</th><th>画面</th><th>口播 / 旁白</th><th>字幕</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(segment, index) in xhsDraftScriptSegments" :key="index">
+                  <td class="st-idx">{{ index + 1 }}</td>
+                  <td class="st-time">{{ segment.start || `${index * 5}s` }}<span v-if="segment.end"> - {{ segment.end }}</span></td>
+                  <td>{{ segment.shot_type || '—' }}</td>
+                  <td>{{ segment.scene || '—' }}</td>
+                  <td>{{ segment.voiceover || '—' }}</td>
+                  <td>{{ segment.subtitle || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 口播脚本:按时间段的口播卡片 -->
+          <div v-else class="segments">
             <article v-for="(segment, index) in xhsDraftScriptSegments" :key="index" class="segment">
               <span class="seg-time">{{ segment.start || `${index * 5}s` }} - {{ segment.end || '' }}</span>
-              <strong>{{ segment.subtitle || segment.scene || '脚本片段' }}</strong>
-              <p>{{ segment.voiceover || segment.scene }}</p>
+              <strong>{{ segment.subtitle || segment.voiceover || '脚本片段' }}</strong>
+              <p>{{ segment.voiceover }}</p>
             </article>
           </div>
         </section>
@@ -956,6 +988,74 @@ function avatarStyle(id: number) {
   margin: 0;
   font-size: 12.5px;
   color: var(--color-ink-2);
+}
+
+/* 拍法附加:开头钩子 + 节奏卡 */
+.shot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px 4px;
+}
+.sm-card {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md, 10px);
+  background: var(--color-paper-3);
+}
+.sm-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--color-accent);
+  margin-bottom: 3px;
+}
+.sm-card p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-ink);
+}
+
+/* 视频分镜表:可照拍的分镜(横向可滚,窄屏不撑破布局) */
+.shot-table-wrap {
+  padding: 12px 16px 14px;
+  overflow-x: auto;
+}
+.shot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 560px;
+}
+.shot-table th,
+.shot-table td {
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-rule);
+}
+.shot-table th {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--color-ink-3);
+  background: var(--color-paper-3);
+  white-space: nowrap;
+}
+.shot-table td {
+  color: var(--color-ink-2);
+  line-height: 1.5;
+}
+.st-idx {
+  font-weight: 650;
+  color: var(--color-ink);
+  width: 28px;
+}
+.st-time {
+  white-space: nowrap;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 平台合规限流词 */

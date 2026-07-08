@@ -9,10 +9,13 @@ from app.xhs_creation.agent.content_types import BASE_SCHEMA, CONTENT_TYPE_SPECS
 from app.xhs_creation.agent.context import CreationContext
 from app.xhs_creation.agent.creation_kit import build_creation_kit
 from app.xhs_creation.agent.platforms import PLATFORM_SPECS
+from app.xhs_creation.my_baseline import render_baseline_line
 from app.xhs_creation.normalize import normalize_image_plan, normalize_script, normalize_string_list
 
 # 创作内容类型 → 粗模态(image/video),用于挑同形态的对标爆文做示例。
 _CT_TO_COARSE = {"text_note": "image", "image_note": "image", "spoken_script": "video", "video_script": "video"}
+# 需要「可执行度对齐」的视频类创作(把对标拍法降维到用户做得到的版本)。
+_VIDEO_CONTENT_TYPES = {"spoken_script", "video_script"}
 
 
 def _compliance_block(ctx: CreationContext) -> str:
@@ -57,6 +60,28 @@ def _hot_examples_block(ctx: CreationContext, limit: int = 3) -> str:
         "\n对标博主真实爆文示例(只借鉴选题角度、标题结构、开头钩子、节奏；"
         "严禁照抄标题/正文/个人经历,也不要搬运其事实):\n" + "\n".join(lines) + "\n"
     )
+
+
+def _shooting_ability_block(ctx: CreationContext) -> str:
+    """可执行度对齐(仅视频):用「我的账号」拍法基线,把对标博主的高阶拍法降维到用户做得到的版本。
+
+    有基线 → 在基线上「进阶一步、但学得会」;无基线 → 按大众可执行条件兜底。图文/纯文字不出此段。
+    """
+    if ctx.content_type not in _VIDEO_CONTENT_TYPES:
+        return ""
+    line = render_baseline_line(ctx.my_video_baseline)
+    if line:
+        body = (
+            f"{line}\n"
+            "分镜要在这个基线上「进阶一步、但学得会」:别照搬对标博主的高难度运镜/复杂转场——"
+            "把对标的拍法降维成用户当前条件拍得出来的版本,并在 shooting_notes 里点明「比你现在多做的那一步」。"
+        )
+    else:
+        body = (
+            "(暂无该账号的拍法数据)按大众可执行条件设计:手机拍摄、固定机位或手持、基础剪辑;"
+            "分镜要能落地,别堆高难度运镜/复杂转场,把对标博主的拍法降维成新手也拍得出来的版本。"
+        )
+    return "\n落到我的拍摄条件(学得会的版本,别只给看着爽的):\n" + body + "\n"
 
 
 def build_creation_prompt(ctx: CreationContext) -> str:
@@ -110,7 +135,7 @@ def build_creation_prompt(ctx: CreationContext) -> str:
 {_compliance_block(ctx)}
 {skill_label}:
 {skill_block}
-{_hot_examples_block(ctx)}
+{_hot_examples_block(ctx)}{_shooting_ability_block(ctx)}
 创作输入:
 {json.dumps(creation_input, ensure_ascii=False, indent=2)}
 

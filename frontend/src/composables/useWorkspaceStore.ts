@@ -110,6 +110,7 @@ export type SettingsTab = 'general' | 'wechat' | 'automation' | 'sources' | 'gen
 export type XhsScriptSegment = {
   start?: string
   end?: string
+  shot_type?: string // 景别/运镜(拍法),视频脚本分镜表用
   scene?: string
   voiceover?: string
   subtitle?: string
@@ -458,6 +459,13 @@ export const xhsDraftScriptSegments = computed(() => {
   const script = parseJsonObject(currentXhsDraft.value?.script_json)
   return Array.isArray(script.segments) ? (script.segments as XhsScriptSegment[]) : []
 })
+// 拍法附加:开头 3 秒钩子 + 整体节奏(视频脚本用;口播只有 hook)。
+export const xhsDraftScriptMeta = computed(() => {
+  const script = parseJsonObject(currentXhsDraft.value?.script_json)
+  return { hook: String(script.hook || '').trim(), pacing: String(script.pacing || '').trim() }
+})
+// 视频脚本走分镜表(景别/画面);口播脚本走口播卡片。
+export const xhsDraftIsVideoScript = computed(() => currentXhsDraft.value?.content_type === 'video_script')
 export const xhsPackageScriptSegments = computed(() => {
   const script = parseJsonObject(selectedXhsPackage.value?.script_json)
   return Array.isArray(script.segments) ? script.segments : []
@@ -1609,7 +1617,9 @@ export async function handleCreateXhsPackage() {
         requested_image_count:
           xhsPackageForm.content_type === 'image_note' && xhsPackageForm.image_count_mode === 'manual'
             ? xhsPackageForm.requested_image_count
-            : null
+            : null,
+        // 视频脚本据「我的账号」拍法基线做可执行度对齐(降维到我做得到的版本);可空。
+        my_account_id: xhsPackageForm.my_account_id
       }),
     async () => {
       const draft = findXhsDraftFromEvents(taskEvents.value)
