@@ -12,8 +12,7 @@ import {
   formatDate,
   noteBodyText,
   noteHashtags,
-  noteTopComments,
-  subtypeLabel
+  noteTopComments
 } from '../composables/useWorkspaceStore'
 
 function isImageUrl(u: unknown): u is string {
@@ -101,8 +100,15 @@ const noteVideo = computed(() => {
   if (typeof profile.duration_s === 'number') facts.push(`时长 ${Math.round(profile.duration_s)}s`)
   if (typeof profile.shot_count === 'number') facts.push(`${profile.shot_count} 个镜头`)
   if (typeof profile.cuts_per_min === 'number') facts.push(`${profile.cuts_per_min} cuts/min`)
-  if (!chips.length && !facts.length) return null
-  return { chips, facts, deep: profile.layer === 'L1' || profile.layer === 'L2' }
+  // VLM 判的定性拍法(L2):开头手法/景别/字幕/转场/一句话风格。
+  const details: { label: string; text: string }[] = []
+  const QUAL: [string, string][] = [['开头', 'hook_3s'], ['景别', 'shot_style'], ['字幕', 'on_screen_text'], ['转场', 'transitions'], ['风格', 'style_summary']]
+  for (const [label, key] of QUAL) {
+    const text = String(profile[key] || '').trim()
+    if (text) details.push({ label, text })
+  }
+  if (!chips.length && !facts.length && !details.length) return null
+  return { chips, facts, details, deep: profile.layer === 'L1' || profile.layer === 'L2' }
 })
 
 // 点「第N张」跳到画廊对应图(vision 的 index 与画廊顺序一致:封面在前)。
@@ -153,15 +159,19 @@ function focusImage(index: number) {
         <div class="nm-content">
           <h3 class="nm-title">{{ activeNotePost.title || '(无标题)' }}</h3>
           <p class="nm-meta">
-            {{ subtypeLabel(activeNotePost.content_subtype) }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
+            {{ activeNotePost.content_type === 'video' ? '视频' : '图文' }} · 收藏 {{ activeNotePost.favorite_count }} · 点赞 {{ activeNotePost.like_count }} · {{ bloggerCommentLabel(activeNotePost) }}<template v-if="activeNotePost.published_at"> · {{ formatDate(activeNotePost.published_at) }}</template>
           </p>
           <a v-if="activeNotePost.url" :href="activeNotePost.url" target="_blank" rel="noopener noreferrer" class="nm-link">打开原帖 <TIcon name="external-link" /></a>
 
-          <!-- 视频档案:口播浓度/时长恒有;镜头/节奏/出镜建档后补(没有则提示待采)。 -->
+          <!-- 视频拍法:口播浓度/时长恒有;镜头/节奏/出镜 + 开头/景别/字幕/转场/风格(拍法)建档后补(没有则提示待采)。 -->
           <div v-if="noteVideo" class="nm-vprofile">
+            <span class="nm-vlead">视频拍法</span>
             <span v-for="c in noteVideo.chips" :key="c" class="nm-vchip">{{ c }}</span>
             <span v-if="noteVideo.facts.length" class="nm-vfacts">{{ noteVideo.facts.join(' · ') }}</span>
             <span v-if="!noteVideo.deep" class="nm-vhint">画面/节奏待采</span>
+          </div>
+          <div v-if="noteVideo && noteVideo.details.length" class="nm-vdetails">
+            <p v-for="d in noteVideo.details" :key="d.label"><strong>{{ d.label }}：</strong>{{ d.text }}</p>
           </div>
 
           <div class="nm-section">
@@ -372,7 +382,11 @@ function focusImage(index: number) {
 .nm-meta { margin: 0 0 10px; font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
 .nm-link { font-size: 13px; color: var(--color-accent); font-weight: 600; }
 .nm-vprofile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; }
+.nm-vlead { font-size: 12px; font-weight: 600; color: var(--color-ink-2); }
 .nm-vchip { font-size: 11.5px; color: var(--color-accent-ink); background: var(--color-accent-soft); border-radius: 999px; padding: 2px 9px; }
+.nm-vdetails { margin: 2px 0 4px; }
+.nm-vdetails p { margin: 2px 0; font-size: 12.5px; line-height: 1.5; color: var(--color-ink-2); }
+.nm-vdetails strong { color: var(--color-ink-3); font-weight: 600; }
 .nm-vfacts { font-size: 12px; color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
 .nm-vhint { font-size: 11px; color: var(--color-ink-3); border: 1px dashed var(--color-rule-strong); border-radius: 999px; padding: 1px 8px; }
 .nm-section { margin-top: 16px; }
