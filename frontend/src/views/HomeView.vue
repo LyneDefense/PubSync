@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 首页 Hub(对象驱动):接下来提示 + 两栏。
-// 左栏「对标博主」= 可搜索/排序/平台筛选、收藏置顶的密列表(抗规模,取代卡片墙);每行带真实信号
-// (粉丝/采集量/画像状态/草稿数,均来自 store 现有字段,不编造)。右栏 = 我的账号 + 最近草稿 + 公众号早报。
+// 首页 Hub（对象驱动 · 「工作台」方向）：masthead 概览 + 两栏。
+// 左栏「对标博主」= 铺满宽屏的对齐清单表（粉丝/采集/画像成列，发丝分隔行、悬停高亮、悬停浮出操作），抗规模。
+// 右栏 = 我的账号 + 最近草稿 + 公众号早报。每行信号（粉丝/采集/画像/草稿数）均来自 store 现有字段，不编造。
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { BloggerProfile } from '../api/types'
@@ -21,16 +21,31 @@ const distilledCount = computed(() => benchmarks.value.filter((b) => b.last_dist
 const draftCount = computed(() => visibleXhsPackages.value.length)
 const accountCount = computed(() => myAccounts.value.length)
 
-// 接下来:按当前状态给一句提示 + 一个主行动。
-const nextStep = computed(() => {
-  if (!benchmarks.value.length) return { text: '先加一个想学的对标博主,开始你的第一次创作。', cta: '加对标博主', act: () => router.push({ name: 'find' }) }
-  if (distilledCount.value === 0) return { text: '已有对标博主,给它建档蒸馏出创作画像。', cta: '去建档', act: () => openBlogger(benchmarks.value[0], 'dossier') }
-  const parts = [`${distilledCount.value} 个博主已出画像`]
+const greeting = (() => {
+  const h = new Date().getHours()
+  if (h < 6) return '夜深了'
+  if (h < 11) return '上午好'
+  if (h < 14) return '中午好'
+  if (h < 18) return '下午好'
+  return '晚上好'
+})()
+
+// masthead 概览一句；无对标博主时给起步引导。
+const mastSummary = computed(() => {
+  if (!benchmarks.value.length) return '先加一个想学的对标博主，开始你的第一次创作。'
+  const parts = [`${benchmarks.value.length} 位对标博主`, `${distilledCount.value} 份画像就绪`]
   if (draftCount.value) parts.push(`${draftCount.value} 篇草稿`)
-  return { text: parts.join(' · '), cta: '开始创作', act: () => router.push({ name: 'create' }) }
+  return parts.join(' · ')
 })
 
-// —— 列表:搜索 + 平台筛选 + 排序;收藏置顶(抗规模的关键) —— //
+// 主行动：按状态给 CTA。
+const nextStep = computed(() => {
+  if (!benchmarks.value.length) return { cta: '加对标博主', act: () => router.push({ name: 'find' }) }
+  if (distilledCount.value === 0) return { cta: '去建档', act: () => openBlogger(benchmarks.value[0], 'dossier') }
+  return { cta: '开始创作', act: () => router.push({ name: 'create' }) }
+})
+
+// —— 清单：搜索 + 平台筛选 + 排序；收藏置顶（抗规模的关键）—— //
 const query = ref('')
 const platformFilter = ref<'all' | 'xhs' | 'douyin'>('all')
 const sortBy = ref<'recent' | 'follower' | 'sample'>('recent')
@@ -52,7 +67,7 @@ const filteredBloggers = computed(() => {
   })
   const key = sortBy.value
   return [...list].sort((a, b) => {
-    if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1 // 收藏置顶
+    if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
     if (key === 'follower') return (b.follower_count || 0) - (a.follower_count || 0)
     if (key === 'sample') return (b.sample_count || 0) - (a.sample_count || 0)
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -68,10 +83,13 @@ const recentDrafts = computed(() =>
 function bloggerName(id: number) {
   return bloggers.value.find((b) => b.id === id)?.display_name || '未知博主'
 }
-function fmtNum(n: number) {
-  if (!n) return '0'
+function fmtNum(n: number | null | undefined) {
+  if (!n) return '—'
   if (n >= 10000) return `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}万`
   return String(n)
+}
+function platName(p: string) {
+  return p === 'douyin' ? '抖音' : '小红书'
 }
 function openBlogger(b: BloggerProfile, view: 'dossier' | 'analysis') {
   router.push({ name: 'blogger', params: { id: b.id }, query: { view } })
@@ -82,79 +100,85 @@ function createWith(b: BloggerProfile) {
 function openAccount(id: number) {
   router.push({ name: 'account', params: { id } })
 }
-function platMeta(p: string) {
-  return p === 'douyin' ? { name: '抖音', dot: '#1c2024' } : { name: '小红书', dot: '#e24b4a' }
-}
 </script>
 
 <template>
   <section class="home">
-    <!-- 接下来 -->
-    <div class="hero">
-      <span class="hero-ico" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-      </span>
-      <div class="hero-txt">
-        <strong>接下来</strong>
-        <p>{{ nextStep.text }}</p>
+    <!-- masthead -->
+    <div class="mast">
+      <div class="mast-txt">
+        <h1>{{ greeting }}</h1>
+        <p>{{ mastSummary }}</p>
       </div>
-      <button type="button" class="hero-cta" @click="nextStep.act()">{{ nextStep.cta }}</button>
+      <button type="button" class="mast-cta" @click="nextStep.act()">
+        {{ nextStep.cta }}
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </button>
     </div>
 
     <div class="grid">
-      <!-- 对标博主(主) -->
+      <!-- 对标博主（主） -->
       <div class="main">
-        <div class="main-head">
-          <h2 class="mh-title">对标博主<span class="mh-count">{{ benchmarks.length }}</span></h2>
-          <div class="mh-tools">
-            <label class="search">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-              <input v-model="query" type="search" placeholder="搜索名称 / 领域" aria-label="搜索对标博主" />
-            </label>
-            <select v-model="sortBy" class="sort" aria-label="排序">
-              <option value="recent">最近活动</option>
-              <option value="follower">粉丝多</option>
-              <option value="sample">采集多</option>
-            </select>
-            <button type="button" class="add-btn" @click="router.push({ name: 'find' })">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              加对标博主
-            </button>
+        <div class="toolbar">
+          <h2>对标博主</h2>
+          <span class="cnt">{{ benchmarks.length }}</span>
+          <template v-if="showPlatformFilter">
+            <button type="button" class="chip" :class="{ on: platformFilter === 'all' }" @click="platformFilter = 'all'">全部</button>
+            <button type="button" class="chip" :class="{ on: platformFilter === 'xhs' }" @click="platformFilter = 'xhs'">小红书</button>
+            <button type="button" class="chip" :class="{ on: platformFilter === 'douyin' }" @click="platformFilter = 'douyin'">抖音</button>
+          </template>
+          <span class="sp"></span>
+          <label class="search">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
+            <input v-model="query" type="search" placeholder="搜索名称 / 领域" aria-label="搜索对标博主" />
+          </label>
+          <select v-model="sortBy" class="sort" aria-label="排序">
+            <option value="recent">最近活动</option>
+            <option value="follower">粉丝多</option>
+            <option value="sample">采集多</option>
+          </select>
+          <button type="button" class="add" title="加对标博主" aria-label="加对标博主" @click="router.push({ name: 'find' })">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+        </div>
+
+        <div v-if="filteredBloggers.length" class="table">
+          <div class="thead">
+            <div>博主</div>
+            <div class="r">粉丝</div>
+            <div class="r col-hide">采集</div>
+            <div class="col-hide">画像</div>
+            <div></div>
           </div>
-        </div>
-
-        <div v-if="showPlatformFilter" class="chips">
-          <button type="button" :class="{ on: platformFilter === 'all' }" @click="platformFilter = 'all'">全部</button>
-          <button type="button" :class="{ on: platformFilter === 'xhs' }" @click="platformFilter = 'xhs'">小红书</button>
-          <button type="button" :class="{ on: platformFilter === 'douyin' }" @click="platformFilter = 'douyin'">抖音</button>
-        </div>
-
-        <div v-if="filteredBloggers.length" class="blist">
-          <article v-for="b in filteredBloggers" :key="b.id" class="brow">
-            <button type="button" class="fav" :class="{ on: b.is_favorite }" :title="b.is_favorite ? '取消收藏' : '收藏'" :aria-label="b.is_favorite ? '取消收藏' : '收藏'" @click="handleToggleBloggerFavorite(b)">
-              <svg viewBox="0 0 24 24" width="15" height="15" :fill="b.is_favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 18.4 6.2 21.4l1.1-6.5L2.6 9.8l6.5-.9L12 3z" /></svg>
-            </button>
-            <button type="button" class="brow-open" @click="openBlogger(b, 'dossier')">
-              <span class="brow-av" :class="{ lit: b.last_distilled_at }">{{ (b.display_name || '?').slice(0, 1) }}</span>
-              <span class="brow-id">
-                <span class="brow-name">
-                  {{ b.display_name }}
-                  <span class="brow-dot" :style="{ background: platMeta(b.platform).dot }"></span>
-                  <span class="brow-plat">{{ platMeta(b.platform).name }}</span>
+          <article v-for="b in filteredBloggers" :key="b.id" class="trow">
+            <div class="who">
+              <button type="button" class="star" :class="{ on: b.is_favorite }" :title="b.is_favorite ? '取消收藏' : '收藏'" :aria-label="b.is_favorite ? '取消收藏' : '收藏'" @click="handleToggleBloggerFavorite(b)">
+                <svg viewBox="0 0 24 24" width="14" height="14" :fill="b.is_favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 18.4 6.2 21.4l1.1-6.5L2.6 9.8l6.5-.9L12 3z" /></svg>
+              </button>
+              <button type="button" class="who-open" @click="openBlogger(b, 'dossier')">
+                <span class="av" :class="{ lit: b.last_distilled_at }">{{ (b.display_name || '?').slice(0, 1) }}</span>
+                <span class="who-txt">
+                  <span class="nm">
+                    {{ b.display_name }}
+                    <span v-if="draftsByBlogger[b.id]" class="dtag">草稿 {{ draftsByBlogger[b.id] }}</span>
+                  </span>
+                  <span class="sm">{{ platName(b.platform) }} · {{ b.niche || '未设置领域' }}</span>
                 </span>
-                <span class="brow-meta">
-                  <span>{{ b.niche || '未设置领域' }}</span>
-                  <span v-if="b.follower_count">粉丝 {{ fmtNum(b.follower_count) }}</span>
-                  <span>{{ b.sample_count ? `采集 ${b.sample_count} 篇` : '未采集' }}</span>
-                  <span class="pill" :class="b.last_distilled_at ? 'ok' : 'muted'">{{ b.last_distilled_at ? '画像最新' : '未建画像' }}</span>
-                  <span v-if="draftsByBlogger[b.id]" class="pill draft">草稿 {{ draftsByBlogger[b.id] }}</span>
-                </span>
+              </button>
+            </div>
+            <div class="cell r num">{{ fmtNum(b.follower_count) }}</div>
+            <div class="cell r num col-hide">{{ b.sample_count || '—' }}</div>
+            <div class="col-hide">
+              <span class="stt" :class="{ pending: !b.last_distilled_at }">
+                <span class="dot" :class="b.last_distilled_at ? 'ready' : 'none'"></span>{{ b.last_distilled_at ? '最新' : '未建' }}
               </span>
-            </button>
-            <div class="brow-act">
-              <button type="button" @click="openBlogger(b, 'dossier')">档案</button>
-              <button type="button" @click="openBlogger(b, 'analysis')">分析</button>
-              <button type="button" class="lit" @click="createWith(b)">用它创作</button>
+            </div>
+            <div class="act">
+              <span class="act-rest" aria-hidden="true">›</span>
+              <span class="act-hover">
+                <button type="button" @click="openBlogger(b, 'analysis')">分析</button>
+                <button type="button" class="pri" @click="createWith(b)">用它创作</button>
+              </span>
             </div>
           </article>
         </div>
@@ -172,42 +196,37 @@ function platMeta(p: string) {
       <!-- 右栏 -->
       <aside class="rail">
         <div class="panel">
-          <div class="panel-head">
-            <span>我的账号<em v-if="accountCount">{{ accountCount }}</em></span>
-          </div>
-          <div v-if="accountCount" class="panel-list">
+          <h3>我的账号<span v-if="accountCount" class="n">{{ accountCount }}</span></h3>
+          <div v-if="accountCount" class="plist">
             <button v-for="a in myAccounts" :key="a.id" type="button" class="pitem" @click="openAccount(a.id)">
-              <span class="pitem-av">{{ (a.display_name || '?').slice(0, 1) }}</span>
-              <span class="pitem-main">
+              <span class="pav">{{ (a.display_name || '?').slice(0, 1) }}</span>
+              <span class="pt">
                 <b>{{ a.display_name }}</b>
-                <small>{{ platMeta(a.platform).name }}{{ a.niche ? ` · ${a.niche}` : '' }}</small>
+                <small>{{ platName(a.platform) }}{{ a.niche ? ` · ${a.niche}` : '' }}</small>
               </span>
-              <span class="pitem-go" aria-hidden="true">→</span>
+              <span class="pgo" aria-hidden="true">→</span>
             </button>
           </div>
-          <p v-else class="panel-empty">绑定你自己的账号,创作时能把对标拍法降到你做得到的版本。</p>
+          <p v-else class="pempty">绑定你自己的账号，创作时能把对标拍法降到你做得到的版本。</p>
         </div>
 
         <div class="panel">
-          <div class="panel-head">
-            <span>最近草稿</span>
-            <button v-if="draftCount" type="button" class="link" @click="router.push({ name: 'drafts' })">全部 {{ draftCount }} →</button>
-          </div>
-          <div v-if="recentDrafts.length" class="panel-list">
-            <button v-for="d in recentDrafts" :key="d.id" type="button" class="pitem draft-item" @click="router.push({ name: 'drafts' })">
-              <span class="pitem-main">
+          <h3>最近草稿<button v-if="draftCount" type="button" class="all" @click="router.push({ name: 'drafts' })">全部 {{ draftCount }} →</button></h3>
+          <div v-if="recentDrafts.length" class="plist">
+            <button v-for="d in recentDrafts" :key="d.id" type="button" class="pitem" @click="router.push({ name: 'drafts' })">
+              <span class="pt">
                 <b>{{ d.title || d.topic || '未命名草稿' }}</b>
                 <small>{{ xhsContentTypeLabel(d.content_type) }} · {{ bloggerName(d.blogger_id) }} · {{ friendlyTime(d.updated_at) }}</small>
               </span>
             </button>
           </div>
-          <p v-else class="panel-empty">还没有草稿。选个博主「用它创作」就有了。</p>
+          <p v-else class="pempty">还没有草稿。选个博主「用它创作」就有了。</p>
         </div>
 
         <button type="button" class="wechat" @click="router.push({ name: 'workspace', params: { platform: 'wechat', tab: 'brief' } })">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></svg>
-          <span>公众号早报</span>
-          <span class="wechat-go" aria-hidden="true">进入 →</span>
+          <b>公众号早报</b>
+          <span class="wgo" aria-hidden="true">进入 →</span>
         </button>
       </aside>
     </div>
@@ -217,280 +236,120 @@ function platMeta(p: string) {
 <style scoped>
 .home { display: flex; flex-direction: column; }
 
-/* —— 接下来 —— */
-.hero {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--color-accent-tint);
-  border: 1px solid var(--color-accent-soft-bd);
-  border-radius: 12px;
-  padding: 13px 15px;
-  margin-bottom: 18px;
-}
-.hero-ico { color: var(--color-accent); flex: 0 0 auto; display: inline-flex; }
-.hero-txt { flex: 1; min-width: 0; }
-.hero-txt strong { display: block; font-size: 14px; font-weight: 640; color: var(--color-accent-ink); }
-.hero-txt p { margin: 1px 0 0; font-size: 13px; color: var(--color-accent-ink); }
-.hero-cta {
+/* —— masthead —— */
+.mast { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.mast-txt h1 { margin: 0; font-family: var(--font-display); font-size: 23px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-ink); }
+.mast-txt p { margin: 5px 0 0; font-size: 13.5px; color: var(--color-ink-2); }
+.mast-cta {
   flex: 0 0 auto;
-  border: 1px solid var(--color-accent-soft-bd);
-  background: var(--color-surface);
-  color: var(--color-accent-ink);
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--color-accent);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: border-color 120ms var(--ease-out);
+  transition: background 120ms var(--ease-out);
 }
-.hero-cta:hover { border-color: var(--color-accent); }
+.mast-cta:hover { background: var(--color-accent-press); }
 
 /* —— 两栏 —— */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 20px; align-items: start; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
 
-/* —— 主:对标博主 —— */
-.main-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.mh-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--color-ink); display: inline-flex; align-items: center; }
-.mh-count {
-  margin-left: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-ink-3);
-  background: var(--color-paper-3);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-.mh-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.search {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-rule);
-  border-radius: 8px;
-  padding: 0 10px;
-  height: 32px;
-  color: var(--color-ink-3);
-}
+/* —— 主：工具条 —— */
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar h2 { margin: 0; font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--color-ink); }
+.toolbar .cnt { font-family: var(--font-display); font-size: 11.5px; font-weight: 600; color: var(--color-ink-3); background: var(--color-paper-3); border-radius: var(--radius-pill); padding: 1px 8px; }
+.toolbar .sp { flex: 1; }
+.chip { border: 1px solid var(--color-rule); background: var(--color-surface); color: var(--color-ink-2); border-radius: var(--radius-pill); padding: 3px 11px; font-size: 12px; cursor: pointer; }
+.chip.on { border-color: var(--color-accent-soft-bd); background: var(--color-accent-soft); color: var(--color-accent-ink); }
+.search { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-ink-3); }
 .search:focus-within { border-color: var(--color-accent-soft-bd); }
-.search input { border: 0; background: none; outline: none; font-size: 13px; color: var(--color-ink); width: 132px; }
+.search input { border: 0; background: none; outline: none; font-size: 12.5px; color: var(--color-ink); width: 116px; }
 .search input::placeholder { color: var(--color-ink-3); }
-.sort {
-  height: 32px;
-  border: 1px solid var(--color-rule);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-ink-2);
-  font-size: 13px;
-  padding: 0 8px;
-  cursor: pointer;
-}
-.add-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--color-accent-soft-bd);
-  background: var(--color-accent-tint);
-  color: var(--color-accent-ink);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-}
-.add-btn:hover { border-color: var(--color-accent); }
+.sort { height: 30px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-ink-2); font-size: 12.5px; padding: 0 8px; cursor: pointer; }
+.add { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--color-accent-soft-bd); background: var(--color-accent-tint); color: var(--color-accent-ink); border-radius: var(--radius-md); cursor: pointer; }
+.add:hover { border-color: var(--color-accent); }
 
-.chips { display: flex; gap: 6px; margin-bottom: 12px; }
-.chips button {
-  border: 1px solid var(--color-rule);
-  background: var(--color-surface);
-  color: var(--color-ink-2);
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.chips button.on { border-color: var(--color-accent-soft-bd); background: var(--color-accent-soft); color: var(--color-accent-ink); }
+/* —— 清单表：单一边框容器 + 发丝分隔行（去掉一格格盒子）—— */
+.table { border: 1px solid var(--color-rule); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
+.thead, .trow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 66px 82px 128px; align-items: center; gap: 10px; padding: 0 14px; }
+.thead { height: 34px; font-size: 11px; color: var(--color-ink-3); background: var(--color-paper-3); border-bottom: 1px solid var(--color-rule); }
+.thead .r { text-align: right; }
+.trow { height: 58px; border-bottom: 1px solid var(--color-paper-3); }
+.trow:last-child { border-bottom: 0; }
+.trow:hover { background: var(--color-accent-tint); }
 
-.blist { display: flex; flex-direction: column; gap: 8px; }
-.brow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-lg);
-  padding: 10px 12px;
-  transition: border-color 120ms var(--ease-out);
-}
-.brow:hover { border-color: var(--color-accent-soft-bd); }
-.fav {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  background: none;
-  color: var(--color-ink-3);
-  border-radius: 7px;
-  cursor: pointer;
-}
-.fav:hover { background: var(--color-paper-3); color: var(--color-ink-2); }
-.fav.on { color: #d8a72a; }
-.brow-open {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  padding: 0;
-}
-.brow-av {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-paper-3);
-  color: var(--color-ink-2);
-  font-size: 14px;
-  font-weight: 600;
-}
-.brow-av.lit { background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.brow-id { flex: 1; min-width: 0; }
-.brow-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 620;
-  color: var(--color-ink);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.brow-name > :first-child { overflow: hidden; text-overflow: ellipsis; }
-.brow-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; }
-.brow-plat { flex: 0 0 auto; font-size: 11px; font-weight: 500; color: var(--color-ink-3); }
-.brow-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 9px;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--color-ink-3);
-}
-.pill { border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 500; }
-.pill.ok { background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.pill.muted { background: var(--color-paper-3); color: var(--color-ink-3); }
-.pill.draft { background: var(--color-paper-3); color: var(--color-ink-2); }
-.brow-act { flex: 0 0 auto; display: flex; gap: 6px; }
-.brow-act button {
-  border: 0;
-  background: var(--color-paper-3);
-  color: var(--color-ink-2);
-  border-radius: 7px;
-  padding: 5px 11px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.brow-act button:hover { background: var(--color-rule); }
-.brow-act button.lit { background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.brow-act button.lit:hover { background: var(--color-accent-soft-bd); }
+.who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.star { flex: 0 0 auto; display: grid; place-items: center; width: 20px; height: 20px; border: 0; background: none; color: var(--color-ink-3); cursor: pointer; padding: 0; opacity: 0; transition: opacity 120ms var(--ease-out); }
+.star.on { opacity: 1; color: #cf9f2c; }
+.trow:hover .star { opacity: 1; }
+.who-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px; border: 0; background: none; cursor: pointer; text-align: left; padding: 0; }
+.av { flex: 0 0 auto; display: grid; place-items: center; width: 35px; height: 35px; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+.av.lit { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+.who-txt { min-width: 0; }
+.nm { display: flex; align-items: center; gap: 7px; font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--color-ink); white-space: nowrap; overflow: hidden; }
+.nm { text-overflow: ellipsis; }
+.dtag { flex: 0 0 auto; font-family: var(--font-body); font-size: 10.5px; font-weight: 500; color: var(--color-accent-ink); background: var(--color-accent-soft); border-radius: var(--radius-pill); padding: 1px 7px; }
+.sm { display: block; margin-top: 2px; font-size: 11.5px; color: var(--color-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.empty {
-  padding: 28px 16px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--color-ink-3);
-  border: 1px dashed var(--color-rule-strong);
-  border-radius: var(--radius-lg);
-}
+.cell { font-size: 13px; color: var(--color-ink-2); }
+.cell.r { text-align: right; }
+.num { font-variant-numeric: tabular-nums; }
+.stt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-ink-2); }
+.stt.pending { color: var(--color-ink-3); }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.dot.ready { background: var(--color-accent); }
+.dot.none { border: 1.5px solid var(--color-ink-3); box-sizing: border-box; }
+
+.act { justify-self: end; }
+.act-rest { color: var(--color-ink-3); font-size: 16px; padding-right: 6px; }
+.act-hover { display: none; gap: 6px; }
+.trow:hover .act-rest { display: none; }
+.trow:hover .act-hover { display: inline-flex; }
+.act-hover button { border: 0; background: var(--color-paper-3); color: var(--color-ink-2); border-radius: var(--radius-sm); padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.act-hover button:hover { background: var(--color-rule); }
+.act-hover button.pri { background: var(--color-accent-soft); color: var(--color-accent-ink); font-weight: 550; }
+.act-hover button.pri:hover { background: var(--color-accent-soft-bd); }
+
+.empty { padding: 30px 16px; text-align: center; font-size: 13px; color: var(--color-ink-3); border: 1px dashed var(--color-rule-strong); border-radius: var(--radius-lg); }
 .link { border: 0; background: none; color: var(--color-accent-ink); font-size: 13px; cursor: pointer; padding: 0; }
 .link:hover { text-decoration: underline; }
 
 /* —— 右栏 —— */
-.rail { display: flex; flex-direction: column; gap: 12px; }
+.rail { display: flex; flex-direction: column; gap: 13px; }
 .panel { background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-lg); padding: 13px 14px; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.panel-head > span { font-size: 13px; font-weight: 640; color: var(--color-ink); display: inline-flex; align-items: center; }
-.panel-head em {
-  margin-left: 6px;
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-ink-3);
-  background: var(--color-paper-3);
-  border-radius: 999px;
-  padding: 0 7px;
-}
-.panel-list { display: flex; flex-direction: column; gap: 2px; }
-.pitem {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  background: none;
-  border-radius: 8px;
-  padding: 7px 8px;
-  cursor: pointer;
-  text-align: left;
-}
+.panel h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; }
+.panel h3 .n { margin-left: 7px; font-size: 11px; font-weight: 500; color: var(--color-ink-3); }
+.panel h3 .all { margin-left: auto; border: 0; background: none; font-size: 11.5px; color: var(--color-ink-3); cursor: pointer; padding: 0; }
+.panel h3 .all:hover { color: var(--color-accent-ink); }
+.plist { display: flex; flex-direction: column; gap: 2px; }
+.pitem { display: flex; align-items: center; gap: 10px; border: 0; background: none; border-radius: var(--radius-md); padding: 7px 8px; cursor: pointer; text-align: left; }
 .pitem:hover { background: var(--color-paper-3); }
-.pitem-av {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--color-paper-3);
-  color: var(--color-ink-2);
-  font-size: 12px;
-  font-weight: 600;
-}
-.pitem:hover .pitem-av { background: var(--color-surface); }
-.pitem-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.pitem-main b { font-size: 13px; font-weight: 560; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pitem-main small { font-size: 11.5px; color: var(--color-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pitem-go { flex: 0 0 auto; color: var(--color-ink-3); font-size: 13px; }
-.draft-item { padding-left: 8px; }
-.panel-empty { margin: 0; font-size: 12px; line-height: 1.5; color: var(--color-ink-3); }
+.pav { flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
+.pitem:hover .pav { background: var(--color-surface); }
+.pt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pt b { font-size: 13px; font-weight: 560; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt small { font-size: 11.5px; color: var(--color-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pgo { flex: 0 0 auto; color: var(--color-ink-3); font-size: 13px; }
+.pempty { margin: 0; font-size: 12px; line-height: 1.55; color: var(--color-ink-3); }
 
-.wechat {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-lg);
-  padding: 13px 14px;
-  color: var(--color-ink-2);
-  cursor: pointer;
-  transition: border-color 120ms var(--ease-out);
-}
+.wechat { display: flex; align-items: center; gap: 10px; background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-lg); padding: 13px 14px; color: var(--color-ink-2); cursor: pointer; transition: border-color 120ms var(--ease-out); }
 .wechat:hover { border-color: var(--color-accent-soft-bd); }
-.wechat > span:nth-of-type(1) { font-size: 13.5px; font-weight: 600; color: var(--color-ink); }
-.wechat-go { margin-left: auto; font-size: 12px; color: var(--color-ink-3); }
+.wechat b { font-size: 13px; font-weight: 600; color: var(--color-ink); }
+.wgo { margin-left: auto; font-size: 11.5px; color: var(--color-ink-3); }
 
-/* —— 响应式:窄屏叠成一栏,右栏移到下方 —— */
-@media (max-width: 860px) {
+/* —— 响应式 —— */
+@media (max-width: 880px) {
   .grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
-  .mh-tools { width: 100%; }
-  .search { flex: 1; }
-  .search input { width: 100%; }
-  .brow { flex-wrap: wrap; }
-  .brow-act { width: 100%; padding-left: 30px; }
+  .thead, .trow { grid-template-columns: minmax(0, 1fr) 58px 88px; }
+  .col-hide { display: none; }
+  .act { justify-self: end; }
 }
 </style>
