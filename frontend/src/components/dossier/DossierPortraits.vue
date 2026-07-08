@@ -87,24 +87,22 @@ async function exportImage() {
           <strong>{{ detailPortrait.snapshot_name || detailPortrait.name }} · 创作画像</strong>
           <button type="button" class="cp-modal__close" aria-label="关闭" @click="detailPortrait = null">✕</button>
         </div>
+        <!-- 弹窗正文即导出目标:可见、在流内、自然全高(不受滚动裁剪),html-to-image 截它才不空白。 -->
         <div class="cp-modal__body">
-          <DossierPortraitContent :run-id="detailPortrait.run_id" flat />
+          <div ref="exportEl" class="cp-export">
+            <div class="cp-export__head">
+              <strong>{{ selectedBlogger?.display_name || detailPortrait.snapshot_name || detailPortrait.name }} · 创作画像</strong>
+              <span>蒸馏于 {{ detailPortrait.distilled_at ? friendlyTime(detailPortrait.distilled_at) : '未知' }} · 样本 {{ detailPortrait.sample_count }} 篇 · 覆盖 {{ laneLabel(detailPortrait.lanes) }}</span>
+            </div>
+            <DossierPortraitContent :run-id="detailPortrait.run_id" flat />
+            <div class="cp-export__foot">由 Cadence 生成 · {{ new Date().toLocaleDateString('zh-CN') }}</div>
+          </div>
         </div>
         <div class="cp-modal__foot">
           <button type="button" class="cp__btn" @click="openFullReport(detailPortrait)">查看完整报告 →</button>
           <button type="button" class="cp__btn" :disabled="exporting" @click="exportImage">{{ exporting ? '导出中…' : '导出长图' }}</button>
           <button type="button" class="cp__btn cp__btn--accent" @click="detailPortrait = null">关闭</button>
         </div>
-      </div>
-
-      <!-- 导出长图用的离屏节点:白底、固定宽、全量画像(不受弹窗滚动/高度限制),截它成 PNG。 -->
-      <div ref="exportEl" class="cp-export" aria-hidden="true">
-        <div class="cp-export__head">
-          <strong>{{ selectedBlogger?.display_name || '' }} · 创作画像</strong>
-          <span>蒸馏于 {{ detailPortrait.distilled_at ? friendlyTime(detailPortrait.distilled_at) : '未知' }} · 样本 {{ detailPortrait.sample_count }} 篇 · 覆盖 {{ laneLabel(detailPortrait.lanes) }}</span>
-        </div>
-        <DossierPortraitContent :run-id="detailPortrait.run_id" flat />
-        <div class="cp-export__foot">由 Cadence 生成 · {{ new Date().toLocaleDateString('zh-CN') }}</div>
       </div>
     </div>
   </section>
@@ -166,8 +164,8 @@ async function exportImage() {
 .cp-modal__body { padding: 4px 18px 8px; overflow-y: auto; }
 .cp-modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-paper-3); }
 
-/* 导出长图离屏节点:固定宽、白底、不受高度限制,html-to-image 截它。 */
-.cp-export { position: fixed; left: -99999px; top: 0; width: 640px; background: #fff; padding: 22px 24px; box-sizing: border-box; }
+/* 导出目标:弹窗内可见、白底(在流内自然全高;html-to-image 截可见元素才不空白)。 */
+.cp-export { background: #fff; padding: 2px; box-sizing: border-box; }
 .cp-export__head { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 2px solid var(--color-accent); }
 .cp-export__head strong { font-size: 17px; font-weight: 700; color: var(--color-ink); }
 .cp-export__head span { font-size: 12px; color: var(--color-ink-3); }
