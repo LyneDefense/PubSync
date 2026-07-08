@@ -20,7 +20,7 @@ from app.blogger_distillation.modality import assemble_video_profile_l0, classif
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.quality import evaluate_post_quality
 from app.blogger_distillation.service.asr_step import handle_video_asr
-from app.blogger_distillation.service.events import ensure_distillation_not_cancelled, record_task_event
+from app.blogger_distillation.service.events import ensure_distillation_not_cancelled, note_title_label, record_task_event
 from app.blogger_distillation.service.extract import (
     extract_video_url,
     normalize_comment,
@@ -91,8 +91,10 @@ def process_one_note(
 ) -> BloggerPost | None:
     """采一篇:取详情 → 按类型分派到图文/视频管线。单篇失败返回 None,不掀翻整批。"""
     ensure_distillation_not_cancelled(db, tenant_id, task_id)
+    label = note_title_label(candidate.title)
     record_task_event(
-        db, tenant_id, task_id, "笔记详情", "running", f"正在采集第 {current}/{total} 篇笔记详情",
+        db, tenant_id, task_id, "笔记详情", "running",
+        f"正在采集第 {current}/{total} 篇{('：' + label) if label else '笔记详情'}",
         {"current": current, "total": total, "type": candidate.note_type, "note_id": candidate.external_id},
     )
     try:
@@ -190,8 +192,9 @@ def _finalize_post(db, tenant_id, task_id, blogger, settings, candidate, normali
     if post_quality.level == "partial":
         logger.info("笔记质量部分可用：note_id=%s，缺失=%s", candidate.external_id, ",".join(post_quality.missing))
     post = upsert_post(db, tenant_id, blogger, normalized)
+    label = note_title_label(normalized.get("title") or candidate.title)
     record_task_event(
-        db, tenant_id, task_id, "样本入库", "succeeded", "已保存样本",
+        db, tenant_id, task_id, "样本入库", "succeeded", f"已保存{label}" if label else "已保存样本",
         {"current": current, "total": total, "post_id": post.id, "note_id": candidate.external_id,
          "asr": post.asr_status, "vision": post.vision_status or ""},
     )

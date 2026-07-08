@@ -77,6 +77,7 @@ class TikHubDouyinClient(TikHubBaseClient):
                         raw=normalize_douyin_video_obj(item),
                         published_at=parse_timestamp(item.get("create_time") or item.get("createTime")),
                         view_count=first_int(item, ["plays", "play_count"]),
+                        title=first_str(item, ["desc", "title"]),
                     )
                 )
                 if len(candidates) >= limit:

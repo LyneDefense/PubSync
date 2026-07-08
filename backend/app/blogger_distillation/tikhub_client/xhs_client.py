@@ -98,6 +98,7 @@ class TikHubXhsClient(TikHubBaseClient):
                         raw=note,
                         published_at=extract_note_published_at(note),
                         view_count=counts["view_count"],
+                        title=first_str(note, ["display_title", "title", "desc", "note_name"]),
                     )
                 )
                 if len(candidates) >= limit:

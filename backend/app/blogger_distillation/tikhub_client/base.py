@@ -79,6 +79,8 @@ class XhsPostCandidate:
     # 列表卡自带的发布时间与浏览量(笔记池 list 级行的数据源;老调用点不传则为空)。
     published_at: datetime | None = None
     view_count: int = 0
+    # 列表卡标题(用于采集进度文案「正在采集《标题》」;详情采回后以 normalized 标题为准)。
+    title: str = ""
 
 
 @dataclass

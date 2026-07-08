@@ -11,6 +11,14 @@ from app.models import OperationTask, OperationTaskEvent, TaskStatus
 logger = logging.getLogger(__name__)
 
 
+def note_title_label(title: str, n: int = 16) -> str:
+    """采集进度文案用的短标题《…》;空标题返回空串(调用方退回通用文案)。"""
+    text = (title or "").strip().replace("\n", " ")
+    if not text:
+        return ""
+    return f"《{text[:n]}…》" if len(text) > n else f"《{text}》"
+
+
 class DistillationCancelled(Exception):
     pass
 

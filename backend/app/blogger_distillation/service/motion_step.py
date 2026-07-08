@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.blogger_distillation import video_frames
-from app.blogger_distillation.service.events import is_control_flow_exception, record_task_event
+from app.blogger_distillation.service.events import is_control_flow_exception, note_title_label, record_task_event
 from app.blogger_distillation.service.extract import extract_video_url, is_video_url_candidate, pick_video_stream
 from app.blogger_distillation.tikhub_client import XhsPostCandidate
 from app.config import Settings
@@ -76,17 +76,18 @@ def handle_video_motion(
 ) -> None:
     if not settings.video_motion_enabled or normalized.get("content_type") != "video":
         return
+    label = note_title_label(normalized.get("title") or candidate.title) or "这条视频"
     if _reuse_existing_motion(db, tenant_id, blogger, normalized):
-        record_task_event(db, tenant_id, task_id, "视频拍法", "succeeded", "这条视频之前分析过画面,直接复用")
+        record_task_event(db, tenant_id, task_id, "视频拍法", "succeeded", f"{label}之前分析过画面,直接复用")
         return
     video_url = _resolve_video_url(candidate, normalized)
     if not video_url:
         return
     try:
-        record_task_event(db, tenant_id, task_id, "视频拍法", "running", "正在分析这条视频的镜头与节奏…")
+        record_task_event(db, tenant_id, task_id, "视频拍法", "running", f"正在分析{label}的镜头与节奏…")
         extract = video_frames.analyze_video_motion(settings, video_url)
         if extract is None:
-            record_task_event(db, tenant_id, task_id, "视频拍法", "succeeded", "这条视频画面没分析成,改用文字/封面信息")
+            record_task_event(db, tenant_id, task_id, "视频拍法", "succeeded", f"{label}画面没分析成,改用文字/封面信息")
             return
         motion: dict = {**extract.pacing, "layer": "L1"}  # L1:镜头数/节奏
         # L2:代表帧 → VLM 拍法(出镜/景别/字幕/转场/一句话)。失败/无帧只保留 L1。
@@ -102,10 +103,10 @@ def handle_video_motion(
         normalized["_motion"] = motion
         record_task_event(
             db, tenant_id, task_id, "视频拍法", "succeeded",
-            f"视频画面分析完成（{motion.get('shot_count', '?')} 个镜头）",
+            f"{label}画面分析完成（{motion.get('shot_count', '?')} 个镜头）",
         )
     except Exception as exc:
         if is_control_flow_exception(exc):
             raise  # 取消/超时照常上抛,不当单条失败吞掉
         logger.info("视频拍法分析失败,降级:note_id=%s,%s", candidate.external_id, exc)
-        record_task_event(db, tenant_id, task_id, "视频拍法", "failed", "视频画面分析没跑成,这条改用文字/封面信息")
+        record_task_event(db, tenant_id, task_id, "视频拍法", "failed", f"{label}画面没跑成,改用文字/封面信息")
