@@ -2,9 +2,10 @@
 // 档案页·创作画像区(去多画像:一份画像,可展开看蒸馏本体)。
 // 查看完整报告→ 主按钮;更新画像=用现有详情池重蒸(便宜);重建画像=拉最新+重升详情+重蒸(纳入新笔记)。
 import { ref } from 'vue'
+import { toPng } from 'html-to-image'
 import type { DossierPortrait } from '../../api/types'
 import DossierPortraitContent from './DossierPortraitContent.vue'
-import { friendlyTime, SUBTYPE_LABELS, selectedBloggerRunId, setCurrentSocialTab } from '../../composables/useWorkspaceStore'
+import { friendlyTime, SUBTYPE_LABELS, selectedBlogger, selectedBloggerRunId, setCurrentSocialTab, showMessage } from '../../composables/useWorkspaceStore'
 
 const props = defineProps<{ portraits: DossierPortrait[]; busy: boolean }>()
 defineEmits<{ (e: 'redistill'): void; (e: 'rebuild'): void }>()
@@ -30,6 +31,27 @@ function openFullReport(portrait: DossierPortrait) {
 
 // 「查看详情」弹窗:展开完整创作方法(认知/方法/分车道),避免卡片内堆太密。
 const detailPortrait = ref<DossierPortrait | null>(null)
+
+// 导出长图:截离屏节点(白底、固定宽、全量画像)成一张 PNG,含头部署名。
+const exportEl = ref<HTMLElement | null>(null)
+const exporting = ref(false)
+async function exportImage() {
+  const el = exportEl.value
+  if (!el || exporting.value) return
+  exporting.value = true
+  try {
+    const url = await toPng(el, { pixelRatio: 2, backgroundColor: '#fff', cacheBust: true })
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `创作画像_${selectedBlogger.value?.display_name || 'portrait'}.png`
+    a.click()
+    showMessage('已导出创作画像长图')
+  } catch (err) {
+    showMessage(err instanceof Error ? err.message : '导出图片失败,请重试', true)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -66,12 +88,23 @@ const detailPortrait = ref<DossierPortrait | null>(null)
           <button type="button" class="cp-modal__close" aria-label="关闭" @click="detailPortrait = null">✕</button>
         </div>
         <div class="cp-modal__body">
-          <DossierPortraitContent :run-id="detailPortrait.run_id" />
+          <DossierPortraitContent :run-id="detailPortrait.run_id" flat />
         </div>
         <div class="cp-modal__foot">
           <button type="button" class="cp__btn" @click="openFullReport(detailPortrait)">查看完整报告 →</button>
+          <button type="button" class="cp__btn" :disabled="exporting" @click="exportImage">{{ exporting ? '导出中…' : '导出长图' }}</button>
           <button type="button" class="cp__btn cp__btn--accent" @click="detailPortrait = null">关闭</button>
         </div>
+      </div>
+
+      <!-- 导出长图用的离屏节点:白底、固定宽、全量画像(不受弹窗滚动/高度限制),截它成 PNG。 -->
+      <div ref="exportEl" class="cp-export" aria-hidden="true">
+        <div class="cp-export__head">
+          <strong>{{ selectedBlogger?.display_name || '' }} · 创作画像</strong>
+          <span>蒸馏于 {{ detailPortrait.distilled_at ? friendlyTime(detailPortrait.distilled_at) : '未知' }} · 样本 {{ detailPortrait.sample_count }} 篇 · 覆盖 {{ laneLabel(detailPortrait.lanes) }}</span>
+        </div>
+        <DossierPortraitContent :run-id="detailPortrait.run_id" flat />
+        <div class="cp-export__foot">由 Cadence 生成 · {{ new Date().toLocaleDateString('zh-CN') }}</div>
       </div>
     </div>
   </section>
@@ -131,4 +164,11 @@ const detailPortrait = ref<DossierPortrait | null>(null)
 .cp-modal__close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-size: 13px; cursor: pointer; }
 .cp-modal__close:hover { background: var(--color-rule-strong); }
 .cp-modal__body { padding: 4px 18px 8px; overflow-y: auto; }
-.cp-modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-paper-3); }</style>
+.cp-modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-paper-3); }
+
+/* 导出长图离屏节点:固定宽、白底、不受高度限制,html-to-image 截它。 */
+.cp-export { position: fixed; left: -99999px; top: 0; width: 640px; background: #fff; padding: 22px 24px; box-sizing: border-box; }
+.cp-export__head { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 2px solid var(--color-accent); }
+.cp-export__head strong { font-size: 17px; font-weight: 700; color: var(--color-ink); }
+.cp-export__head span { font-size: 12px; color: var(--color-ink-3); }
+.cp-export__foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--color-paper-3); font-size: 11px; color: var(--color-ink-3); text-align: right; }</style>

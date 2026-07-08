@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { bloggerRuns, SUBTYPE_LABELS } from '../../composables/useWorkspaceStore'
 
-const props = defineProps<{ runId: number; compact?: boolean }>()
+const props = defineProps<{ runId: number; compact?: boolean; flat?: boolean }>()
 
 type Dist = Record<string, unknown>
 const distillation = computed<Dist | null>(() => {
@@ -161,21 +161,35 @@ const watchouts = computed(() => list(distillation.value, 'compliance_watchouts'
       </div>
 
       <template v-if="lanes.length">
-        <div class="pc-lane-tabs">
-          <button
-            v-for="l in lanes"
-            :key="l.lane"
-            type="button"
-            :class="{ on: currentLane?.lane === l.lane }"
-            @click="activeLane = l.lane"
-          >{{ l.label }}写法</button>
-        </div>
-        <div v-if="currentLane" class="pc-lane">
-          <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-card">
-            <div class="pc-lane-card__h">{{ group.label }}</div>
-            <ul class="pc-lane-card__list"><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+        <!-- flat(详情/导出长图):所有车道平铺全展开;否则 tab 切换只看一条。 -->
+        <template v-if="flat">
+          <div v-for="l in lanes" :key="l.lane" class="pc-lane-block">
+            <h5 class="pc-lane-block__h">{{ l.label }}写法</h5>
+            <div class="pc-lane">
+              <div v-for="group in l.groups" :key="group.label" class="pc-lane-card">
+                <div class="pc-lane-card__h">{{ group.label }}</div>
+                <ul class="pc-lane-card__list"><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+              </div>
+            </div>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <div class="pc-lane-tabs">
+            <button
+              v-for="l in lanes"
+              :key="l.lane"
+              type="button"
+              :class="{ on: currentLane?.lane === l.lane }"
+              @click="activeLane = l.lane"
+            >{{ l.label }}写法</button>
+          </div>
+          <div v-if="currentLane" class="pc-lane">
+            <div v-for="group in currentLane.groups" :key="group.label" class="pc-lane-card">
+              <div class="pc-lane-card__h">{{ group.label }}</div>
+              <ul class="pc-lane-card__list"><li v-for="(item, i) in group.items" :key="i">{{ item }}</li></ul>
+            </div>
+          </div>
+        </template>
       </template>
     </div>
 
@@ -241,6 +255,8 @@ const watchouts = computed(() => list(distillation.value, 'compliance_watchouts'
 .pc-lane-tabs button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-ink); }
 
 /* 方法卡片:每组(标题公式/开头模板/…)一张卡,条目分行、hairline 分隔,不再挤成一坨 */
+.pc-lane-block { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.pc-lane-block__h { margin: 0; font-size: 12px; font-weight: 650; color: var(--color-ink-2); }
 .pc-lane { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-top: 10px; }
 .pc-lane-card { background: var(--color-paper); border: 1px solid var(--color-paper-3); border-radius: 10px; overflow: hidden; }
 .pc-lane-card__h { padding: 8px 12px; font-size: 12px; font-weight: 650; color: var(--color-accent-ink); background: var(--color-accent-soft); }
