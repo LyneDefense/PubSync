@@ -120,7 +120,7 @@ function openAccount(id: number) {
       <!-- 对标博主（主） -->
       <div class="main">
         <div class="toolbar">
-          <h2>对标博主</h2>
+          <h2>博主档案</h2>
           <span class="cnt">{{ benchmarks.length }}</span>
           <template v-if="showPlatformFilter">
             <button type="button" class="chip" :class="{ on: platformFilter === 'all' }" @click="platformFilter = 'all'">全部</button>
@@ -130,15 +130,11 @@ function openAccount(id: number) {
           <span class="sp"></span>
           <label class="search">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-            <input v-model="query" type="search" placeholder="搜索名称 / 领域" aria-label="搜索对标博主" />
+            <input v-model="query" type="search" placeholder="搜索名称 / 领域" aria-label="搜索博主档案" />
           </label>
-          <select v-model="sortBy" class="sort" aria-label="排序">
-            <option value="recent">最近活动</option>
-            <option value="follower">粉丝多</option>
-            <option value="sample">采集多</option>
-          </select>
-          <button type="button" class="add" title="加对标博主" aria-label="加对标博主" @click="router.push({ name: 'find' })">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <button type="button" class="add" @click="router.push({ name: 'find' })">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            加博主
           </button>
         </div>
 
@@ -159,10 +155,10 @@ function openAccount(id: number) {
                 <span class="av" :class="{ lit: b.last_distilled_at }">{{ (b.display_name || '?').slice(0, 1) }}</span>
                 <span class="who-txt">
                   <span class="nm">
-                    {{ b.display_name }}
+                    <span class="nm-text">{{ b.display_name }}</span>
                     <span v-if="draftsByBlogger[b.id]" class="dtag">草稿 {{ draftsByBlogger[b.id] }}</span>
                   </span>
-                  <span class="sm">{{ platName(b.platform) }} · {{ b.niche || '未设置领域' }}</span>
+                  <span class="sm">{{ platName(b.platform) }}{{ b.niche ? ` · ${b.niche}` : '' }}</span>
                 </span>
               </button>
             </div>
@@ -277,10 +273,10 @@ function openAccount(id: number) {
 
 /* —— 清单表：单一边框容器 + 发丝分隔行（去掉一格格盒子）—— */
 .table { border: 1px solid var(--color-rule); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
-.thead, .trow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 66px 82px 128px; align-items: center; gap: 10px; padding: 0 14px; }
+.thead, .trow { display: grid; grid-template-columns: minmax(240px, 1fr) 104px 88px 100px 152px; align-items: center; gap: 12px; padding: 0 16px; }
 .thead { height: 34px; font-size: 11px; color: var(--color-ink-3); background: var(--color-paper-3); border-bottom: 1px solid var(--color-rule); }
 .thead .r { text-align: right; }
-.trow { height: 58px; border-bottom: 1px solid var(--color-paper-3); }
+.trow { height: 62px; border-bottom: 1px solid var(--color-paper-3); }
 .trow:last-child { border-bottom: 0; }
 .trow:hover { background: var(--color-accent-tint); }
 
@@ -289,13 +285,13 @@ function openAccount(id: number) {
 .star.on { opacity: 1; color: #cf9f2c; }
 .trow:hover .star { opacity: 1; }
 .who-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px; border: 0; background: none; cursor: pointer; text-align: left; padding: 0; }
-.av { flex: 0 0 auto; display: grid; place-items: center; width: 35px; height: 35px; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+.av { flex: 0 0 auto; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--color-paper-3); color: var(--color-ink-2); font-family: var(--font-display); font-size: 14px; font-weight: 600; }
 .av.lit { background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.who-txt { min-width: 0; }
-.nm { display: flex; align-items: center; gap: 7px; font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--color-ink); white-space: nowrap; overflow: hidden; }
-.nm { text-overflow: ellipsis; }
+.who-txt { flex: 1; min-width: 0; }
+.nm { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.nm-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-display); font-size: 14.5px; font-weight: 600; color: var(--color-ink); }
 .dtag { flex: 0 0 auto; font-family: var(--font-body); font-size: 10.5px; font-weight: 500; color: var(--color-accent-ink); background: var(--color-accent-soft); border-radius: var(--radius-pill); padding: 1px 7px; }
-.sm { display: block; margin-top: 2px; font-size: 11.5px; color: var(--color-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm { display: block; margin-top: 2px; font-size: 12px; color: var(--color-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .cell { font-size: 13px; color: var(--color-ink-2); }
 .cell.r { text-align: right; }
@@ -343,13 +339,12 @@ function openAccount(id: number) {
 .wechat b { font-size: 13px; font-weight: 600; color: var(--color-ink); }
 .wgo { margin-left: auto; font-size: 11.5px; color: var(--color-ink-3); }
 
-/* —— 响应式 —— */
-@media (max-width: 880px) {
+/* —— 响应式:两栏先叠成一栏(让清单表拿到全宽),再窄才收起 采集/画像 列 —— */
+@media (max-width: 1080px) {
   .grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 560px) {
-  .thead, .trow { grid-template-columns: minmax(0, 1fr) 58px 88px; }
+@media (max-width: 772px) {
+  .thead, .trow { grid-template-columns: minmax(0, 1fr) 76px 100px; }
   .col-hide { display: none; }
-  .act { justify-self: end; }
 }
 </style>

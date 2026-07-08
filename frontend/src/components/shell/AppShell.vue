@@ -2,11 +2,14 @@
 // 对象驱动新外壳:顶栏(品牌 + ⌘K占位 + ＋创作 + 账号菜单)+ 内容区(router-view)。
 // 没有左侧功能栏 —— 导航靠首页选对象 + 页面内面包屑返回。与旧 sh-shell(App.vue)并存,按 route.meta.shell='new' 分流。
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { currentUsername, currentTenantName, handleLogout, showMessage } from '../../composables/useWorkspaceStore'
 import BloggerFormModal from '../BloggerFormModal.vue'
 
 const router = useRouter()
+const route = useRoute()
+// 首页是「工作台」(清单表 + 右栏),需要更宽的画布;其余页(表单/向导/报告)保持窄栏易读。
+const contentWide = computed(() => route.name === 'home')
 const showMenu = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const initial = computed(() => (currentUsername.value || '?').slice(0, 1).toUpperCase())
@@ -53,7 +56,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocDown))
     </header>
 
     <main class="ns-main">
-      <div class="ns-container">
+      <div class="ns-container" :class="{ wide: contentWide }">
         <router-view />
       </div>
     </main>
@@ -178,6 +181,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocDown))
 .ns-menu button:hover { background: var(--color-paper-3); color: var(--color-danger); }
 .ns-main { overflow-y: auto; }
 .ns-container { max-width: 880px; margin: 0 auto; padding: 18px 20px 60px; }
+.ns-container.wide { max-width: 1200px; }
 
 @media (max-width: 560px) {
   .ns-k-txt { display: none; }
