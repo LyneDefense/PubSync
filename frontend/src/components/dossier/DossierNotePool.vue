@@ -1,7 +1,6 @@
 <script setup lang="ts">
-// 档案页·笔记池:两级分类 —— 一级 已采详情 / 未采详情,二级按模态细分,每类独立分页(每页 5)。
-//   已采详情(detail_level=full):二级 = 图文 / 口播视频 / 非口播视频(按 content_subtype)。
-//   未采详情(列表级):还没判模态,二级按列表自带的 content_type 分 图文 / 视频。
+// 档案页·笔记池:两级分类 —— 一级 已采详情 / 未采详情,二级都按 content_type 分 图文 / 视频,每类独立分页(每页 5)。
+//   视频不再拆口播/非口播(模态就一个);具体拍法(口播浓度/出镜/镜头/风格)在单篇详情的「视频拍法」里看。
 // 最新/最热排序;切分类或排序回第 1 页。行点击开单篇详情弹窗(公共组件)。
 import { computed, ref, watch } from 'vue'
 import type { BloggerPost } from '../../api/types'
@@ -11,10 +10,8 @@ import {
   activeNotePool,
   delistedNoteCount,
   formatDate,
-  NOTE_GROUP_ORDER,
   openNote,
-  selectedBloggerId,
-  subtypeLabel
+  selectedBloggerId
 } from '../../composables/useWorkspaceStore'
 
 const PAGE_SIZE = 5
@@ -32,9 +29,6 @@ function fmt(v: number): string {
   return v >= 10000 ? `${(v / 10000).toFixed(1)}w` : v.toLocaleString()
 }
 function isVideo(post: BloggerPost): boolean {
-  const sub = post.content_subtype || ''
-  if (sub === 'talking_video' || sub === 'visual_video') return true
-  if (sub === 'image_text' || sub === 'article' || sub === 'article_with_image') return false
   return post.content_type === 'video'
 }
 function rowIcon(post: BloggerPost): { ch: string; cls: string } {
@@ -52,25 +46,15 @@ const primaryTabs = computed(() => [
   { key: 'list' as const, label: `未采详情 ${listPosts.value.length}` }
 ])
 
-// 已采详情二级:按 content_subtype 分,顺序沿用 NOTE_GROUP_ORDER,只留有笔记的。
-const detailSubGroups = computed(() => {
-  const counts = new Map<string, number>()
-  for (const p of fullPosts.value) {
-    const k = p.content_subtype || 'unknown'
-    counts.set(k, (counts.get(k) || 0) + 1)
-  }
-  const order = NOTE_GROUP_ORDER as readonly string[]
-  return [...counts.keys()]
-    .sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)))
-    .map((k) => ({ key: k, label: subtypeLabel(k), count: counts.get(k)! }))
-})
-// 未采详情二级:列表级按 content_type 分 图文 / 视频。
-const listSubGroups = computed(() =>
-  [
-    { key: 'image', label: '图文', count: listPosts.value.filter((p) => p.content_type !== 'video').length },
-    { key: 'video', label: '视频', count: listPosts.value.filter((p) => p.content_type === 'video').length }
+// 二级都按 content_type 分 图文 / 视频(视频不再拆口播/非口播——模态就一个,具体看笔记详情的拍法标签)。
+function contentTypeGroups(posts: BloggerPost[]) {
+  return [
+    { key: 'image', label: '图文', count: posts.filter((p) => p.content_type !== 'video').length },
+    { key: 'video', label: '视频', count: posts.filter((p) => p.content_type === 'video').length }
   ].filter((g) => g.count > 0)
-)
+}
+const detailSubGroups = computed(() => contentTypeGroups(fullPosts.value))
+const listSubGroups = computed(() => contentTypeGroups(listPosts.value))
 
 const secondaryTabs = computed(() => {
   if (primary.value === 'full') return [{ key: '', label: `全部 ${fullPosts.value.length}` }, ...detailSubGroups.value.map((g) => ({ key: g.key, label: `${g.label} ${g.count}` }))]
@@ -81,7 +65,7 @@ const secondaryTabs = computed(() => {
 const filtered = computed<BloggerPost[]>(() => {
   let src: BloggerPost[]
   if (primary.value === 'full') {
-    src = secondary.value ? fullPosts.value.filter((p) => (p.content_subtype || 'unknown') === secondary.value) : fullPosts.value
+    src = secondary.value ? fullPosts.value.filter((p) => (secondary.value === 'video' ? p.content_type === 'video' : p.content_type !== 'video')) : fullPosts.value
   } else if (primary.value === 'list') {
     src = secondary.value ? listPosts.value.filter((p) => (secondary.value === 'video' ? p.content_type === 'video' : p.content_type !== 'video')) : listPosts.value
   } else {

@@ -54,7 +54,7 @@ const LANE_KEYS: { key: string; label: string }[] = [
   { key: 'opening_templates', label: '开头模板' },
   { key: 'cover_text_rules', label: '封面文案' },
   { key: 'visual_layout_patterns', label: '图内编排 / 版式' },
-  { key: 'video_script_structures', label: '口播结构' },
+  { key: 'video_script_structures', label: '视频脚本 / 分镜结构' },
   { key: 'language_dna', label: '语言 DNA' }
 ]
 const lanes = computed(() => {
