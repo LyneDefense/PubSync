@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace as N
 
-from app.blogger_distillation.modality import IMAGE_TEXT, TALKING_VIDEO, VISUAL_VIDEO
+from app.blogger_distillation.modality import IMAGE_TEXT, VIDEO
 from app.blogger_distillation.service.distill_engine import (
     DistillContext,
     build_core_prompt,
@@ -29,10 +29,11 @@ def test_core_prompt_has_cognitive_not_content():
 
 
 def test_lane_prompt_framing_by_modality():
-    assert "口播脚本" in build_lane_prompt(_ctx({}, lane=TALKING_VIDEO))
-    assert "图文笔记" in build_lane_prompt(_ctx({}, lane=IMAGE_TEXT))
-    assert "视觉 craft" in build_lane_prompt(_ctx({}, lane=VISUAL_VIDEO))  # 非口播诚实边界
-    assert "title_formulas" in build_lane_prompt(_ctx({}, lane=IMAGE_TEXT))
+    # 收敛后:视频层一条,吃话术+拍法;图文层照旧。
+    vp = build_lane_prompt(_ctx({}, lane=VIDEO))
+    assert "拍法" in vp and "video_script_structures" in vp
+    ip = build_lane_prompt(_ctx({}, lane=IMAGE_TEXT))
+    assert "图文笔记" in ip and "title_formulas" in ip
 
 
 def test_normalize_core_fills_skeleton():
@@ -58,11 +59,11 @@ def test_core_quality_counts_cognitive():
     assert thin["score"] < 85 and thin["issues"]
 
 
-def test_lane_quality_visual_relaxed():
-    # 非口播车道:没有正文/口播结构不该被重罚,只要标题/封面/标签有内容。
+def test_lane_quality_video_structure_from_cover_or_script():
+    # 视频车道(收敛口播+非口播):有视频脚本/分镜结构或封面文案就算有结构,不被重罚。
     content = {"title_formulas": ["t1", "t2", "t3"], "cover_text_rules": ["封面"], "top_post_breakdowns": []}
-    q = evaluate_lane_quality(content, {"hot_posts": []}, VISUAL_VIDEO)
+    q = evaluate_lane_quality(content, {"hot_posts": []}, VIDEO)
     assert q["score"] >= 70
-    # 口播车道:缺结构会扣「正文/口播结构」分
-    q2 = evaluate_lane_quality({"title_formulas": ["a", "b", "c"], "top_post_breakdowns": []}, {"hot_posts": []}, TALKING_VIDEO)
+    # 图文车道:缺正文结构会扣「正文结构」分
+    q2 = evaluate_lane_quality({"title_formulas": ["a", "b", "c"], "top_post_breakdowns": []}, {"hot_posts": []}, IMAGE_TEXT)
     assert any("结构" in i for i in q2["issues"])

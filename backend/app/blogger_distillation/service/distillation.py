@@ -20,8 +20,7 @@ from app.blogger_distillation.evidence import compliance_watchouts
 from app.blogger_distillation.modality import ALL as SCOPE_ALL
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
-    TALKING_VIDEO,
-    VISUAL_VIDEO,
+    VIDEO,
     subtype_label,
 )
 from app.blogger_distillation.service.crud import archive_active_skills
@@ -49,6 +48,14 @@ from app.models import (
 from app.synthesis import humanize_event
 
 logger = logging.getLogger(__name__)
+
+
+def _has_motion(post: BloggerPost) -> bool:
+    """这条视频是否已抽到拍法(video_profile 到了 L1/L2)。用于「缺详情提醒」。"""
+    try:
+        return json.loads(post.video_profile or "{}").get("layer") in ("L1", "L2")
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        return False
 
 
 @dataclass
@@ -165,12 +172,11 @@ def run_blogger_distillation(
         core, core_trace = distill_core(settings, blogger, user_info, stats, mode, on_event=on_distill_event, grounding=grounding)
         core_quality = evaluate_core_quality(core, stats, mode)
 
-        # 2) 内容层按 content_subtype 分车道蒸馏;样本不足的车道诚实跳过。
-        lane_posts: dict[str, list[BloggerPost]] = {IMAGE_TEXT: [], TALKING_VIDEO: [], VISUAL_VIDEO: []}
+        # 2) 内容层按 content_type 收敛成 图文 / 视频 两层(P1:视频层同时吃话术+拍法,权重靠数据,不再硬分口播/非口播)。
+        lane_posts: dict[str, list[BloggerPost]] = {IMAGE_TEXT: [], VIDEO: []}
         for post in posts:
-            if post.content_subtype in lane_posts:
-                lane_posts[post.content_subtype].append(post)
-        unknown_count = len(posts) - sum(len(v) for v in lane_posts.values())
+            lane_posts[VIDEO if post.content_type == "video" else IMAGE_TEXT].append(post)
+        # 按 content_type 路由后每条都有归属,无「未知」桶(无转写视频也进视频层,靠拍法蒸)。
         min_lane = settings.distill_min_samples_per_subtype
         content_lanes: dict[str, Any] = {}
         lane_quality: dict[str, Any] = {}
@@ -201,10 +207,19 @@ def run_blogger_distillation(
             total_revisions += lane_trace.revisions
             skipped.append("样本不足未分车道,内容层基于全部笔记(综合)")
 
+        # 缺详情提醒:视频池里过半只有语音/字幕稿、没抽到镜头/拍法(video_profile 未到 L1/L2)→ 提示可开视频画面分析重采补齐。
+        vids = lane_posts[VIDEO]
+        if vids:
+            shallow = sum(1 for p in vids if not _has_motion(p))
+            if shallow >= max(1, len(vids) // 2):
+                record_task_event(
+                    db, tenant_id, task_id, "视频拍法", "succeeded",
+                    f"{shallow}/{len(vids)} 条视频只有语音稿、缺镜头/节奏数据,拍法分析可能不全(可开启视频画面分析后重采补齐)",
+                )
+
         # 3) 合并结果 + 组合质量分。
         lane_coverage = {
-            IMAGE_TEXT: len(lane_posts[IMAGE_TEXT]), TALKING_VIDEO: len(lane_posts[TALKING_VIDEO]),
-            VISUAL_VIDEO: len(lane_posts[VISUAL_VIDEO]), "unknown": unknown_count, "skipped": skipped,
+            IMAGE_TEXT: len(lane_posts[IMAGE_TEXT]), VIDEO: len(lane_posts[VIDEO]), "skipped": skipped,
         }
         distillation = {**core, "content_lanes": content_lanes, "lane_coverage": lane_coverage}
         # 合规红线(确定性,来自全量池扫描):让「学思路别抄词」落到 skill 与创作套件。

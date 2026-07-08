@@ -203,7 +203,10 @@ def _evidence_block(sample: dict[str, Any]) -> str:
         if transcript:
             lines.append(f"  口播摘要：{transcript[:280]}")
         else:
-            lines.append("  （无转写：口播内容未覆盖，以下为封面/首帧信号）")
+            lines.append("  （无转写：口播内容未覆盖，以下为拍法/封面信号）")
+        motion = _motion_line(sample)  # 视频拍法(镜头/节奏/出镜/景别/字幕/风格),video_profile 的 L1/L2
+        if motion:
+            lines.append(motion)
         lines.extend(_visual_lines(sample, max_points=2))  # 视频只取封面/少量
     else:  # 图文:视觉信号为主,正文为辅
         lines.extend(_visual_lines(sample, max_points=6))
@@ -211,6 +214,33 @@ def _evidence_block(sample: dict[str, Any]) -> str:
         if body:
             lines.append(f"  正文摘要：{body[:200]}")
     return "\n".join(lines)[:_BLOCK_CHAR_CAP]
+
+
+_PACE_CN = {"fast": "快剪", "medium": "中速", "slow": "慢节奏"}
+
+
+def _motion_line(sample: dict[str, Any]) -> str:
+    """把 video_profile 的拍法(L1 节奏 + L2 风格)压成一行证据。没数据返回空串。"""
+    p = sample.get("video_profile")
+    if not isinstance(p, dict) or not p:
+        return ""
+    head: list[str] = []
+    if p.get("shot_count"):
+        head.append(f"{p['shot_count']}个镜头")
+    if p.get("cuts_per_min"):
+        head.append(f"{p['cuts_per_min']}cuts/min")
+    if _PACE_CN.get(p.get("pace")):
+        head.append(_PACE_CN[p["pace"]])
+    if p.get("on_camera") is True:
+        head.append("出镜")
+    elif p.get("on_camera") is False:
+        head.append("画外音")
+    tail = "；".join(
+        str(p[k]).strip() for k in ("hook_3s", "shot_style", "on_screen_text", "transitions", "style_summary")
+        if str(p.get(k) or "").strip()
+    )
+    segs = [s for s in ("｜".join(head), tail) if s]
+    return ("  视频拍法：" + "；".join(segs)) if segs else ""
 
 
 def _head_line(sample: dict[str, Any]) -> str:

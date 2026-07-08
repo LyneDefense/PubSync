@@ -38,7 +38,43 @@ def assemble_learnable_text(post: Any) -> str:
         parts.append(transcript)
     if image_text:
         parts.append(f"[图内文字]\n{image_text}")
+    motion = motion_context(post)
+    if motion:
+        parts.append(f"[视频拍法]\n{motion}")
     return "\n".join(parts).strip()
+
+
+def motion_context(post: Any) -> str:
+    """从 video_profile 拼「视频拍法」块(镜头/节奏/出镜/景别/字幕/转场/风格);无则空串。与 visual_context 对称。"""
+    raw = (getattr(post, "video_profile", "") or "").strip()
+    if not raw:
+        return ""
+    try:
+        p = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return ""
+    if not isinstance(p, dict):
+        return ""
+    lines: list[str] = []
+    rhythm: list[str] = []
+    if p.get("shot_count"):
+        rhythm.append(f"{p['shot_count']}个镜头")
+    if p.get("cuts_per_min"):
+        rhythm.append(f"{p['cuts_per_min']} cuts/min")
+    pace = {"fast": "快剪", "medium": "中速", "slow": "慢节奏"}.get(p.get("pace"))
+    if pace:
+        rhythm.append(pace)
+    if rhythm:
+        lines.append("节奏：" + "、".join(rhythm))
+    if p.get("on_camera") is True:
+        lines.append("出镜：真人对镜口播")
+    elif p.get("on_camera") is False:
+        lines.append("出镜：画外音/无真人出镜")
+    for label, key in (("开头3秒", "hook_3s"), ("景别构图", "shot_style"), ("字幕花字", "on_screen_text"), ("转场剪辑", "transitions"), ("拍法概括", "style_summary")):
+        val = str(p.get(key) or "").strip()
+        if val:
+            lines.append(f"{label}：{val}")
+    return "\n".join(lines)
 
 
 def visual_context(post: Any) -> str:

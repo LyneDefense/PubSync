@@ -11,13 +11,15 @@
 from __future__ import annotations
 
 IMAGE_TEXT = "image_text"
-TALKING_VIDEO = "talking_video"
-VISUAL_VIDEO = "visual_video"
+TALKING_VIDEO = "talking_video"  # 旧 content_subtype 值,保留兼容(classify_subtype/存量)
+VISUAL_VIDEO = "visual_video"    # 同上
+VIDEO = "video"                  # 蒸馏内容层收敛后的「视频」车道(话术+拍法,按 content_type 路由)
 UNKNOWN = "unknown"
 ALL = "__all__"
 
 SUBTYPE_LABELS = {
     IMAGE_TEXT: "图文",
+    VIDEO: "视频",
     TALKING_VIDEO: "口播视频",
     VISUAL_VIDEO: "非口播视频",
     UNKNOWN: "未知",

@@ -311,6 +311,10 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         comments = json.loads(post.comments_json or "[]")
     except json.JSONDecodeError:
         pass
+    try:
+        video_profile = json.loads(post.video_profile) if (post.video_profile or "").strip() else {}
+    except json.JSONDecodeError:
+        video_profile = {}
     return {
         "id": post.id,
         "external_id": post.external_id,
@@ -323,6 +327,7 @@ def post_summary(post: BloggerPost) -> dict[str, Any]:
         "has_image_text": bool((post.image_text or "").strip()),
         "image_text_excerpt": (post.image_text or "")[:500],
         "visual_digest": visual_digest_dict(post),
+        "video_profile": video_profile if isinstance(video_profile, dict) else {},
         "hashtags": json.loads(post.hashtags_json or "[]"),
         "like_count": post.like_count,
         "favorite_count": post.favorite_count,

@@ -16,8 +16,7 @@ from typing import Any
 from app.blogger_distillation.evidence import render_grounding, render_stats_digest
 from app.blogger_distillation.modality import (
     IMAGE_TEXT,
-    TALKING_VIDEO,
-    VISUAL_VIDEO,
+    VIDEO,
     subtype_label,
 )
 from app.config import Settings
@@ -133,19 +132,15 @@ _LANE_FRAMING: dict[str, str] = {
         "图内要点常常才是真正的内容与钩子——据此提炼封面文案公式(cover_text_rules)、"
         "图内信息编排与版式套路(visual_layout_patterns),别只盯着单薄的正文。"
     ),
-    TALKING_VIDEO: (
-        "这是**口播视频**车道(人对着镜头讲述/教学,说的话即内容)。写法藏在:口播脚本"
-        "(开场钩子、信息密度、讲述节奏、结尾)、标题、封面、口语语言 DNA。"
-        "把结构写进 video_script_structures(基于 transcript);body_structures 留空数组。"
-        "language_dna 每条以「口播：」开头,只依据 transcript,不要写成「正文几千字」。"
-    ),
-    VISUAL_VIDEO: (
-        "这是**非口播视频**车道(剧情/卡点/vlog/展示,画面为主、台词很少)。**诚实边界**:"
-        "纯文本可靠给出 标题公式 / 封面文案 / 标签策略 / 发布节奏;若证据块带封面钩子/图内要点"
-        "(封面/首帧的文字与版式),据此补充封面文案与信息编排;"
-        "但画面、卡点、运镜、BGM 这类动态视觉 craft **仍无法从文本/封面蒸出**——相关字段给空数组,"
-        "并在 body_structures 里放一条「动态视觉打法需逐帧视觉分析,本次未覆盖」。"
-        "video_script_structures 若几乎无转写则留空。"
+    VIDEO: (
+        "这是**视频**车道(收敛口播+非口播,一个博主的视频统一在这蒸)。视频有两面,按证据自适应加权:\n"
+        "① **话术**(有口播/转写时):开场钩子、信息密度、讲述节奏、结尾、口语语言 DNA——写进 video_script_structures,"
+        "language_dna 以「口播：」开头,只依据 transcript;转写很少/没有就别硬凑话术。\n"
+        "② **拍法**(证据块带「视频拍法」时——镜头数/节奏 cuts·min/景别/出镜/字幕/转场/开头3秒/一句话风格):"
+        "**据此把「分镜与节奏结构」也写进 video_script_structures**(如「开头3秒怼脸抛问题→中段N个快切菜品特写→结尾拉远总结」、"
+        "「均~2s/镜、28cuts·min 的快剪」、「全程大字幕+卡点」),这是这条车道最值钱的部分,别再说「动态视觉无法蒸出」。\n"
+        "封面文案(cover_text_rules)、标题公式、标签、发布节奏照常给。body_structures 留空数组(视频不是图文正文)。"
+        "**没有拍法证据的视频**:老实只做话术+封面,别编分镜。"
     ),
 }
 
@@ -215,12 +210,13 @@ class LaneSchemaSensor:
     name = "车道完整性"
 
     def check(self, result: dict[str, Any], ctx: DistillContext) -> SensorResult:
-        if ctx.lane == VISUAL_VIDEO:
-            ok = bool(result.get("title_formulas") or result.get("cover_text_rules") or result.get("hashtag_strategy"))
-            msg = "非口播车道至少补全标题公式或封面文案"
+        if ctx.lane == VIDEO:
+            # 视频车道容纳口播/非口播:标题公式、或视频脚本/分镜结构、或封面文案 任一非空即可。
+            ok = bool(result.get("title_formulas") or result.get("video_script_structures") or result.get("cover_text_rules"))
+            msg = "视频车道至少补全标题公式,或视频脚本/分镜结构,或封面文案"
         else:
             ok = bool(result.get("title_formulas") or result.get("body_structures") or result.get("video_script_structures"))
-            msg = "内容层缺少标题公式与正文/口播结构,至少补全标题公式与一种结构"
+            msg = "内容层缺少标题公式与正文结构,至少补全标题公式与一种结构"
         return SensorResult(passed=ok, issues=[] if ok else [msg], corrective_feedback="" if ok else msg)
 
 
@@ -422,10 +418,10 @@ def evaluate_lane_quality(content: dict[str, Any], lane_stats: dict[str, Any], l
     deduct(25, "标题公式", title_count >= 3, f"标题公式 {title_count} 条，建议 ≥3 条")
     has_body = bool(content.get("body_structures"))
     has_video = bool(content.get("video_script_structures"))
-    if lane == VISUAL_VIDEO:
-        deduct(10, "封面/标签", bool(content.get("cover_text_rules") or content.get("hashtag_strategy")), "非口播车道封面文案与标签策略均空")
+    if lane == VIDEO:
+        deduct(20, "视频脚本/分镜结构", has_video or bool(content.get("cover_text_rules")), "视频脚本/分镜结构与封面文案均空")
     else:
-        deduct(20, "正文/口播结构", has_body or has_video, "图文正文结构与视频口播结构均为空")
+        deduct(20, "正文结构", has_body, "图文正文结构为空")
     breakdowns = content.get("top_post_breakdowns") or []
     hot_available = len(lane_stats.get("hot_posts") or [])
     expected = min(3, hot_available) if hot_available else 0
