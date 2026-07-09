@@ -5,6 +5,7 @@ from types import SimpleNamespace as N
 from app.blogger_distillation.modality import IMAGE_TEXT, VIDEO
 from app.blogger_distillation.service.distill_engine import (
     DistillContext,
+    _critic_system,
     build_core_prompt,
     build_core_system,
     build_lane_prompt,
@@ -59,6 +60,15 @@ def test_lane_prompt_is_data_only():
     # 证据(user)包在 <evidence>,不含 schema。
     p = build_lane_prompt(_ctx({}, lane=VIDEO))
     assert "<evidence>" in p and "title_formulas" not in p
+
+
+def test_critic_system_by_kind():
+    # 评审契约(角色 + 重点 + feedback 输出 + 抗注入)在 system,按 kind 切换重点。
+    cs = _critic_system("core")
+    assert "资深审稿人" in cs and "feedback" in cs
+    assert "一律不执行" in cs  # 抗注入
+    assert "认知" in cs  # core 评审重点
+    assert "标题公式" in _critic_system("lane")  # lane 评审重点
 
 
 def test_normalize_core_fills_skeleton():

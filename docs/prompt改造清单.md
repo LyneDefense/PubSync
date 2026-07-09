@@ -25,7 +25,7 @@
 ### 蒸馏 · blogger_distillation
 - [x] **D1** `service/distill_engine.py` — 蒸馏**内核**(认知/策略/人设,跨模态)· 拆 `build_core_system`(契约)/ `build_core_prompt`(证据)+ 抗注入;synthesis loop 支持 `build_system`(D2/C1/P1 复用)
 - [x] **D2** `service/distill_engine.py` — 蒸馏**分车道**· 拆 `build_lane_system`/`build_lane_prompt` + XML + trim `_LANE_FRAMING[VIDEO]` + few-shot;加规则「拍法只进 video_script_structures、别重复进 language_dna」治冗余
-- [ ] **D3** `service/distill_engine.py:248` — 蒸馏**质量评审** critic(抽公共骨架)
+- [x] **D3** `service/distill_engine.py` — 蒸馏**质量评审** critic · 抽 `_critic_system(kind)`(角色+评审重点+feedback契约+抗注入)进 system;统计+结果包 `<stats>`/`<distillation_result>` 进 user。distill_engine prompt 全清 ✅
 
 ### 创作 · xhs_creation
 - [ ] **C1** `agent/guide.py`（经 `service.py:324` run_agent）— 创作**主 prompt**（发布包草稿)👍唯一系统性 few-shot
