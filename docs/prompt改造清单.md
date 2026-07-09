@@ -28,10 +28,10 @@
 - [x] **D3** `service/distill_engine.py` — 蒸馏**质量评审** critic · 抽 `_critic_system(kind)`(角色+评审重点+feedback契约+抗注入)进 system;统计+结果包 `<stats>`/`<distillation_result>` 进 user。distill_engine prompt 全清 ✅
 
 ### 创作 · xhs_creation
-- [ ] **C1** `agent/guide.py`（经 `service.py:324` run_agent）— 创作**主 prompt**（发布包草稿)👍唯一系统性 few-shot
-- [ ] **C2** `service.py:252` — **选题**生成(对标法 × 我的受众 × 意图)
-- [ ] **C3** `agent/benchmark.py:44` — **对标对比**(草稿 vs 对标画像)
-- [ ] **C4** `agent/critic.py:30` — 创作 critic(并入公共骨架)
+- [x] **C1** `agent/guide.py`（经 run_agent）— 创作**主 prompt** · 拆 `build_creation_system`(角色+平台口径+类型指令+硬边界+合规+schema)/`build_creation_prompt`(对标套件+爆文示例+拍法基线+创作输入);few-shot 包进 `<benchmark_examples>` 留在 user(抓取数据抗注入);assembly 挂 `build_system`(复用 D1 通路)
+- [x] **C2** `service.py` — **选题**生成 · 拆 system(选题公式+规则+schema+抗注入)/user(`<my_audience>`/`<intent>`/`<benchmark>`)
+- [x] **C3** `agent/benchmark.py` — **对标对比** · 角色+`<output_schema>`+抗注入进 system;`<benchmark_method>`/`<benchmark_stats>`/`<draft>` 进 user
+- [x] **C4** `agent/critic.py` — 创作 critic · 角色+评审维度+feedback契约+抗注入进 system;`<skill>`/`<draft>` 进 user
 
 ### 诊断 / 体检 · appraisal + account_audit
 - [ ] **P1** `account_audit/agent/guide.py`（经 `service.py:94`）— **我的账号体检**主 prompt · agent-loop
@@ -75,3 +75,4 @@
 | 地基 | `29050d2` | ai_service `system=` 参 + `_compose_system` |
 | D1 | `8e58e56` | synthesis loop 支持 `build_system`;蒸馏内核拆 system(契约)/user(证据)+ 抗注入。样板确立 |
 | D1+ | _(本次)_ | 内核 prompt 按最佳实践优化:XML 分隔(`<rules>`/`<quality_bar>`/`<output_schema>`/`<evidence>`)+ 加 few-shot 质量标杆(打"正确的废话")。查证 GLM 已开 JSON 模式 + temp 0.2,故 ④⑥ 无需动 |
+| C1-C4 | _(本次)_ | 创作四站点分层:C1 主 prompt 拆 `build_creation_system`/`build_creation_prompt`(爆文 few-shot 包 `<benchmark_examples>` 留 user 抗注入)+ assembly 挂 `build_system`;C2 选题 / C3 对标对比 / C4 创作 critic 走 `create_json_response(system=)`。test_creation_guide 3 例,290 passed |
