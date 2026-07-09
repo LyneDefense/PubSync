@@ -141,6 +141,54 @@ export function xhsPackageCopyText(
   return [pack.title, pack.body_text, tags].filter(Boolean).join('\n\n')
 }
 
+// 发布包「全文」:把所有字段拼成人类可读的纯文本(不是发布文案那种只标题+正文+标签),
+// 覆盖全类型 —— 图文出配图方案,视频/口播出分镜/口播脚本(段落 + 钩子 + 节奏 + 拍摄建议)。供「一键导出文字」。
+export function buildPackageFullText(pkg: XhsPublishPackage | XhsPublishPackageDraft): string {
+  const blocks: string[] = []
+  const push = (label: string, body: string) => {
+    if (body.trim()) blocks.push(`【${label}】\n${body.trim()}`)
+  }
+  push('标题', pkg.title || '')
+  push('正文', pkg.body_text || '')
+  const tags = parseJsonArray(pkg.hashtags_json).map((t) => `#${String(t).replace(/^#/, '')}`).join(' ')
+  push('话题标签', tags)
+  push('封面文案', pkg.cover_text || '')
+
+  if (pkg.content_type === 'image_note') {
+    const plan = parseJsonArray(pkg.image_plan_json)
+    const lines = plan.map((img, i) => {
+      const bits = [`图${img.slot || i + 1}${img.purpose ? ` · ${img.purpose}` : ''}`]
+      if (img.caption) bits.push(`  图上文案:${img.caption}`)
+      if (img.format) bits.push(`  版式:${img.format}`)
+      if (img.prompt) bits.push(`  生图 prompt:${img.prompt}`)
+      return bits.join('\n')
+    })
+    push('配图方案', lines.join('\n\n'))
+  }
+
+  if (pkg.content_type === 'video_script' || pkg.content_type === 'spoken_script') {
+    const script = parseJsonObject(pkg.script_json)
+    const segs = Array.isArray(script.segments) ? (script.segments as Record<string, unknown>[]) : []
+    const sub: string[] = []
+    if (script.hook) sub.push(`开头钩子:${String(script.hook)}`)
+    if (script.pacing) sub.push(`整体节奏:${String(script.pacing)}`)
+    segs.forEach((s, i) => {
+      const head = `镜头 ${i + 1}${s.start ? ` · ${s.start}${s.end ? `-${s.end}` : ''}` : ''}`
+      const bits = [head]
+      if (s.shot_type) bits.push(`  景别/运镜:${s.shot_type}`)
+      if (s.scene) bits.push(`  画面:${s.scene}`)
+      if (s.voiceover) bits.push(`  口播:${s.voiceover}`)
+      if (s.subtitle) bits.push(`  字幕:${s.subtitle}`)
+      sub.push(bits.join('\n'))
+    })
+    const notes = Array.isArray(script.shooting_notes) ? (script.shooting_notes as unknown[]) : []
+    if (notes.length) sub.push(`拍摄建议:${notes.map(String).join('；')}`)
+    push(pkg.content_type === 'video_script' ? '分镜脚本' : '口播脚本', sub.join('\n\n'))
+  }
+
+  return blocks.join('\n\n————\n\n')
+}
+
 export function parseEventPayload(event: OperationTaskEvent): Record<string, unknown> | null {
   if (!event.payload_json) {
     return null

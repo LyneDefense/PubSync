@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImagePlanList from '../components/ImagePlanList.vue'
+import PublishPackageExporter from '../components/PublishPackageExporter.vue'
 import { parseJsonObject, xhsContentTypeLabel, xhsPackageCopyText } from '../utils/format'
 import {
   copyText,
@@ -117,6 +118,7 @@ function typeKind(ct: string): 'video' | 'image' {
           <h2 class="head-title">{{ selectedXhsPackage.title }}</h2>
           <p class="head-meta">{{ selectedXhsPackageBloggerName }} · 生成于 {{ formatDate(selectedXhsPackage.created_at) }}</p>
           <div class="head-actions">
+            <PublishPackageExporter :pkg="selectedXhsPackage" :blogger-name="selectedXhsPackageBloggerName" />
             <button type="button" class="btn btn--ghost" @click="copyText(xhsPackageCopyText(selectedXhsPackage), '发布文案')">复制发布文案</button>
             <button
               v-if="!selectedXhsPackage.published_at"

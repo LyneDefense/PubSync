@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 import HashtagCloud from '../components/HashtagCloud.vue'
 import ImagePlanList from '../components/ImagePlanList.vue'
 import LiveProgress from '../components/LiveProgress.vue'
+import PublishPackageExporter from '../components/PublishPackageExporter.vue'
 import { parseJsonObject, xhsContentTypeLabel, xhsPackageCopyText } from '../utils/format'
 import {
   bloggers,
@@ -66,6 +67,9 @@ const showNext = computed(() => {
   if (s === 3) return Boolean(currentXhsDraft.value)
   return true
 })
+
+// 草稿对标博主名(导出长图署名用)。
+const draftBloggerName = computed(() => bloggers.value.find((b) => b.id === currentXhsDraft.value?.blogger_id)?.display_name || '')
 
 // 步骤条:点已完成节点回退(生成中禁止跳转)。
 function goToStep(n: number) {
@@ -309,6 +313,7 @@ function avatarStyle(id: number) {
         <div class="pv-head">
           <span class="type-badge">{{ xhsContentTypeLabel(currentXhsDraft.content_type) }}</span>
           <h3>{{ currentXhsDraft.title }}</h3>
+          <PublishPackageExporter :pkg="currentXhsDraft" :blogger-name="draftBloggerName" class="pv-export" />
         </div>
         <div class="metric-grid">
           <article class="metric"><span>主题</span><b class="metric-text">{{ currentXhsDraft.topic }}</b></article>
@@ -953,8 +958,10 @@ function avatarStyle(id: number) {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
+.pv-export { margin-left: auto; }
 .type-badge {
   padding: 3px 10px;
   border-radius: var(--radius-pill);
