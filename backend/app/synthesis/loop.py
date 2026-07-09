@@ -56,12 +56,14 @@ def run_synthesis(
     # 避免预算用尽时返回一个分数虚高但结构无效（如阻断不通过）的结果。
     best_rank: tuple[bool, int] | None = None
     total = max(1, budget.max_attempts)
+    # 业务级 system 在各轮之间稳定（不随纠错反馈变），构造一次即可；guide 不给则 None（旧行为）。
+    system = guide.build_system(context) if guide.build_system else None
 
     for attempt in range(1, total + 1):
         _emit(on_event, "attempt_start", attempt=attempt, total=total)
         started = time.perf_counter()
         prompt = with_feedback(guide.build_prompt(context), feedback)
-        data = create_json_response(settings, prompt, model=model)
+        data = create_json_response(settings, prompt, model=model, system=system)
         if guide.normalize:
             data = guide.normalize(data, context)
         elapsed = round(time.perf_counter() - started, 2)

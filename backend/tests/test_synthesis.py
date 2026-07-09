@@ -13,9 +13,11 @@ class _ScriptedModel:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = 0
+        self.last_system = None  # 记录最近一次的业务 system(验证分层是否透传)
 
-    def __call__(self, settings, prompt, model=None):
+    def __call__(self, settings, prompt, model=None, system=None):
         self.calls += 1
+        self.last_system = system
         return self.responses[min(self.calls - 1, len(self.responses) - 1)]
 
 
@@ -134,6 +136,23 @@ def test_budget_exhausted_prefers_passing_over_higher_scoring_failed(monkeypatch
     assert trace.final_passed is False
     assert result == {"v": 1}
     assert trace.final_score == 60
+
+
+def test_build_system_threaded_to_model(monkeypatch):
+    # guide.build_system 存在 → 业务 system 透传给 create_json_response。
+    model = _ScriptedModel([{"v": 1}])
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
+    guide = TaskGuide(name="t", build_prompt=lambda ctx: "u", build_system=lambda ctx: "SYS-CONTRACT")
+    run_synthesis(_settings(), guide, None, [_ScoreSensor([95])], _budget())
+    assert model.last_system == "SYS-CONTRACT"
+
+
+def test_no_build_system_passes_none(monkeypatch):
+    # guide 不给 build_system → system=None(退回旧通用系统句,行为不变)。
+    model = _ScriptedModel([{"v": 1}])
+    monkeypatch.setattr(synthesis_loop, "create_json_response", model)
+    run_synthesis(_settings(), _guide(), None, [_ScoreSensor([95])], _budget())
+    assert model.last_system is None
 
 
 def test_critic_runs_only_before_revision(monkeypatch):

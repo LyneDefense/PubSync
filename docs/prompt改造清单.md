@@ -23,8 +23,8 @@
 图例:`[ ]` 待改 · `[x]` 已改 · 👍样板 · ⚠️重点 · 💤已弃用
 
 ### 蒸馏 · blogger_distillation
-- [ ] **D1** `service/distill_engine.py:280` — 蒸馏**内核**(认知/策略/人设,跨模态)· agent-loop
-- [ ] **D2** `service/distill_engine.py:299` — 蒸馏**分车道**(图文/视频写法)· agent-loop
+- [x] **D1** `service/distill_engine.py` — 蒸馏**内核**(认知/策略/人设,跨模态)· 拆 `build_core_system`(契约)/ `build_core_prompt`(证据)+ 抗注入;synthesis loop 支持 `build_system`(D2/C1/P1 复用)
+- [ ] **D2** `service/distill_engine.py:299` — 蒸馏**分车道**(图文/视频写法)· agent-loop(照 D1 样板)
 - [ ] **D3** `service/distill_engine.py:248` — 蒸馏**质量评审** critic(抽公共骨架)
 
 ### 创作 · xhs_creation
@@ -65,4 +65,5 @@
 ## 进度日志
 | 项 | commit | 说明 |
 |----|--------|------|
-| 地基 | _(待填)_ | ai_service `system=` 参 + `_compose_system` |
+| 地基 | `29050d2` | ai_service `system=` 参 + `_compose_system` |
+| D1 | _(本次)_ | synthesis loop 支持 `build_system`;蒸馏内核拆 system(契约)/user(证据)+ 抗注入。样板确立 |

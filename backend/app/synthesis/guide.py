@@ -8,12 +8,15 @@ from typing import Any, Callable
 class TaskGuide:
     """任务「指南」（feedforward control）：把提示词与产出规范集中成可复用对象。
 
-    build_prompt(context)：构造基础提示词（不含纠错反馈，反馈由循环用 with_feedback 追加）。
+    build_prompt(context)：构造 user 提示词（本次可变数据；不含纠错反馈，反馈由循环用 with_feedback 追加）。
+    build_system(context)：构造业务级 system（角色 + 硬边界 + 输出契约，稳定可缓存、与抓取数据分层抗注入）。
+        可选；不给则 system=None，退回 ai_service 的通用系统句（旧行为）。
     normalize(data, context)：对模型返回做确定性补全/清洗（可选）。
     """
 
     name: str
     build_prompt: Callable[[Any], str]
+    build_system: Callable[[Any], str] | None = None
     normalize: Callable[[dict[str, Any], Any], dict[str, Any]] | None = None
 
 
