@@ -73,4 +73,5 @@
 | 项 | commit | 说明 |
 |----|--------|------|
 | 地基 | `29050d2` | ai_service `system=` 参 + `_compose_system` |
-| D1 | _(本次)_ | synthesis loop 支持 `build_system`;蒸馏内核拆 system(契约)/user(证据)+ 抗注入。样板确立 |
+| D1 | `8e58e56` | synthesis loop 支持 `build_system`;蒸馏内核拆 system(契约)/user(证据)+ 抗注入。样板确立 |
+| D1+ | _(本次)_ | 内核 prompt 按最佳实践优化:XML 分隔(`<rules>`/`<quality_bar>`/`<output_schema>`/`<evidence>`)+ 加 few-shot 质量标杆(打"正确的废话")。查证 GLM 已开 JSON 模式 + temp 0.2,故 ④⑥ 无需动 |
