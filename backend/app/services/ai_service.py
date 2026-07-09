@@ -97,19 +97,45 @@ def generate_image(settings: Settings, prompt: str, filename_prefix: str) -> str
     return public_path
 
 
+# 通用 JSON 约束:所有 provider 共用。传入业务 system 时,它会叠加在业务规则之后。
+_JSON_RULE = (
+    "所有输出必须是合法 JSON。"
+    "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
+)
+
+
+def _compose_system(system: str | None, default_persona: str) -> str:
+    """组装最终 system 消息。
+
+    - system 为空 → 沿用原通用系统提示(default_persona + JSON 规则),旧行为完全不变。
+    - 传入业务 system → 业务角色/规则在前 + JSON 规则在后(不再套用通用 persona)。
+    """
+    if system and system.strip():
+        return f"{system.strip()}\n\n{_JSON_RULE}"
+    return f"{default_persona}{_JSON_RULE}"
+
+
 def create_json_response(
-    settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None
+    settings: Settings,
+    prompt: str,
+    model: str | None = None,
+    *,
+    system: str | None = None,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
-    """timeout(秒):None → 默认 180;分类型短任务可传更短值,卡住快速失败而非干等。"""
+    """system(可选):业务级系统提示(角色/规则/输出契约)。不传则沿用旧通用系统提示,行为不变。
+
+    timeout(秒):None → 默认 180;分类型短任务可传更短值,卡住快速失败而非干等。
+    """
     provider = settings.llm_provider.lower()
     if provider == "minimax":
-        text = minimax_text(settings, prompt, model=model, timeout=timeout)
+        text = minimax_text(settings, prompt, model=model, system=system, timeout=timeout)
     elif provider == "openai":
-        text = openai_text(settings, prompt, model=model, timeout=timeout)
+        text = openai_text(settings, prompt, model=model, system=system, timeout=timeout)
     elif provider in ("claude", "anthropic"):
-        text = anthropic_text(settings, prompt, model=model, timeout=timeout)
+        text = anthropic_text(settings, prompt, model=model, system=system, timeout=timeout)
     elif provider in ("glm", "zhipu", "bigmodel"):
-        text = glm_text(settings, prompt, model=model, timeout=timeout)
+        text = glm_text(settings, prompt, model=model, system=system, timeout=timeout)
     else:
         raise AIServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
@@ -139,18 +165,21 @@ def create_json_response(
     return parsed
 
 
-def openai_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
+def openai_text(settings: Settings, prompt: str, model: str | None = None, *, system: str | None = None, timeout: int | None = None) -> str:
     payload: dict[str, Any] = {
         "model": model or settings.openai_text_model,
         "input": prompt,
         "text": {"format": {"type": "json_object"}},
     }
+    if system and system.strip():
+        # Responses API 用 instructions 承载系统级指令(system=None 时保持原样,不引入变化)
+        payload["instructions"] = _compose_system(system, "")
     data = openai_post(settings=settings, path="/responses", payload=payload, timeout=timeout or 180)
     record_text_usage("openai", payload["model"], data)
     return extract_openai_response_text(data)
 
 
-def minimax_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
+def minimax_text(settings: Settings, prompt: str, model: str | None = None, *, system: str | None = None, timeout: int | None = None) -> str:
     if not settings.minimax_api_key:
         raise AIServiceError("未配置 MINIMAX_API_KEY")
 
@@ -161,10 +190,7 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None, *, t
             {
                 "role": "system",
                 "name": "PubSync",
-                "content": (
-                    "你是严谨的 AI 新闻编辑。所有输出必须是合法 JSON。"
-                    "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
-                ),
+                "content": _compose_system(system, "你是严谨的 AI 新闻编辑。"),
             },
             {"role": "user", "name": "User", "content": prompt},
         ],
@@ -186,17 +212,14 @@ def minimax_text(settings: Settings, prompt: str, model: str | None = None, *, t
     raise AIServiceError(f"MiniMax 文本响应中没有可解析内容：{data}")
 
 
-def anthropic_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
+def anthropic_text(settings: Settings, prompt: str, model: str | None = None, *, system: str | None = None, timeout: int | None = None) -> str:
     if not settings.anthropic_api_key:
         raise AIServiceError("未配置 ANTHROPIC_API_KEY")
     model = model or settings.anthropic_text_model
     payload = {
         "model": model,
         "max_tokens": int(settings.anthropic_max_tokens),
-        "system": (
-            "你是严谨的助手。所有输出必须是合法 JSON。"
-            "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
-        ),
+        "system": _compose_system(system, "你是严谨的助手。"),
         "messages": [{"role": "user", "content": prompt}],
     }
     data = anthropic_post(settings, "/v1/messages", payload, timeout=timeout or 180)
@@ -210,7 +233,7 @@ def anthropic_text(settings: Settings, prompt: str, model: str | None = None, *,
     raise AIServiceError(f"Anthropic 文本响应中没有可解析内容：{data}")
 
 
-def glm_text(settings: Settings, prompt: str, model: str | None = None, *, timeout: int | None = None) -> str:
+def glm_text(settings: Settings, prompt: str, model: str | None = None, *, system: str | None = None, timeout: int | None = None) -> str:
     """智谱 GLM 文本(OpenAI 兼容 /chat/completions)。"""
     if not settings.glm_api_key:
         raise AIServiceError("未配置 GLM_API_KEY")
@@ -220,10 +243,7 @@ def glm_text(settings: Settings, prompt: str, model: str | None = None, *, timeo
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "你是严谨的助手。所有输出必须是合法 JSON。"
-                    "不要输出 Markdown 代码块、解释文字、推理过程、<think> 标签或 JSON 之外的任何字符。"
-                ),
+                "content": _compose_system(system, "你是严谨的助手。"),
             },
             {"role": "user", "content": prompt},
         ],
