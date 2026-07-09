@@ -601,6 +601,7 @@ function avatarStyle(id: number) {
   gap: 10px;
 }
 .pick {
+  min-width: 0; /* 网格项:允许缩到轨道宽度,长内容不外溢重叠 */
   border: 1px solid var(--color-rule);
   border-radius: 12px;
   background: var(--color-surface);
@@ -683,6 +684,9 @@ function avatarStyle(id: number) {
   flex-direction: column;
   gap: 5px;
   padding: 14px 16px;
+  /* 全局 button 默认 white-space: nowrap;这是多行文本卡,必须放开换行,否则长文本溢出重叠 */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tp-name {
   font-size: 14px;
