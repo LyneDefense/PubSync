@@ -116,9 +116,8 @@ function openAccount(id: number) {
       </button>
     </div>
 
-    <div class="grid">
-      <!-- 对标博主（主） -->
-      <div class="main">
+    <!-- 博主档案（主，全宽） -->
+    <div class="main">
         <div class="toolbar">
           <h2>博主档案</h2>
           <span class="cnt">{{ benchmarks.length }}</span>
@@ -189,8 +188,8 @@ function openAccount(id: number) {
         </div>
       </div>
 
-      <!-- 右栏 -->
-      <aside class="rail">
+    <!-- 我的账号 / 最近草稿 / 公众号：平铺到博主档案下面 -->
+    <div class="tiles">
         <div class="panel">
           <h3>我的账号<span v-if="accountCount" class="n">{{ accountCount }}</span></h3>
           <div v-if="accountCount" class="plist">
@@ -219,12 +218,14 @@ function openAccount(id: number) {
           <p v-else class="pempty">还没有草稿。选个博主「用它创作」就有了。</p>
         </div>
 
-        <button type="button" class="wechat" @click="router.push({ name: 'workspace', params: { platform: 'wechat', tab: 'brief' } })">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></svg>
-          <b>公众号早报</b>
-          <span class="wgo" aria-hidden="true">进入 →</span>
+        <button type="button" class="panel wx" @click="router.push({ name: 'workspace', params: { platform: 'wechat', tab: 'brief' } })">
+          <span class="wx-head">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></svg>
+            公众号早报
+          </span>
+          <span class="wx-desc">把选题做成每天可发的早报推送。</span>
+          <span class="wx-go" aria-hidden="true">进入 →</span>
         </button>
-      </aside>
     </div>
   </section>
 </template>
@@ -253,8 +254,8 @@ function openAccount(id: number) {
 }
 .mast-cta:hover { background: var(--color-accent-press); }
 
-/* —— 两栏 —— */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+/* —— 单列:博主档案(全宽) + 下方平铺三块 —— */
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 18px; align-items: start; }
 
 /* —— 主：工具条 —— */
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -263,17 +264,16 @@ function openAccount(id: number) {
 .toolbar .sp { flex: 1; }
 .chip { border: 1px solid var(--color-rule); background: var(--color-surface); color: var(--color-ink-2); border-radius: var(--radius-pill); padding: 3px 11px; font-size: 12px; cursor: pointer; }
 .chip.on { border-color: var(--color-accent-soft-bd); background: var(--color-accent-soft); color: var(--color-accent-ink); }
-.search { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-ink-3); }
+.search { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-ink-3); }
 .search:focus-within { border-color: var(--color-accent-soft-bd); }
-.search input { border: 0; background: none; outline: none; font-size: 12.5px; color: var(--color-ink); width: 116px; }
+.search input { border: 0; background: none; outline: none; font-size: 13px; color: var(--color-ink); width: 180px; }
 .search input::placeholder { color: var(--color-ink-3); }
-.sort { height: 30px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-ink-2); font-size: 12.5px; padding: 0 8px; cursor: pointer; }
-.add { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--color-accent-soft-bd); background: var(--color-accent-tint); color: var(--color-accent-ink); border-radius: var(--radius-md); cursor: pointer; }
-.add:hover { border-color: var(--color-accent); }
+.add { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 14px; border: 1px solid var(--color-accent-soft-bd); background: var(--color-accent-tint); color: var(--color-accent-ink); border-radius: var(--radius-md); font-size: 13px; font-weight: 550; white-space: nowrap; cursor: pointer; }
+.add:hover { border-color: var(--color-accent); background: var(--color-accent-soft); }
 
 /* —— 清单表：单一边框容器 + 发丝分隔行（去掉一格格盒子）—— */
 .table { border: 1px solid var(--color-rule); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
-.thead, .trow { display: grid; grid-template-columns: minmax(240px, 1fr) 104px 88px 100px 152px; align-items: center; gap: 12px; padding: 0 16px; }
+.thead, .trow { display: grid; grid-template-columns: minmax(260px, 1fr) 150px 120px 140px 180px; align-items: center; gap: 12px; padding: 0 18px; }
 .thead { height: 34px; font-size: 11px; color: var(--color-ink-3); background: var(--color-paper-3); border-bottom: 1px solid var(--color-rule); }
 .thead .r { text-align: right; }
 .trow { height: 62px; border-bottom: 1px solid var(--color-paper-3); }
@@ -316,9 +316,8 @@ function openAccount(id: number) {
 .link { border: 0; background: none; color: var(--color-accent-ink); font-size: 13px; cursor: pointer; padding: 0; }
 .link:hover { text-decoration: underline; }
 
-/* —— 右栏 —— */
-.rail { display: flex; flex-direction: column; gap: 13px; }
-.panel { background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-lg); padding: 13px 14px; }
+/* —— 平铺三块(我的账号 / 最近草稿 / 公众号)—— */
+.panel { display: flex; flex-direction: column; background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-lg); padding: 15px 16px; min-height: 132px; }
 .panel h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; }
 .panel h3 .n { margin-left: 7px; font-size: 11px; font-weight: 500; color: var(--color-ink-3); }
 .panel h3 .all { margin-left: auto; border: 0; background: none; font-size: 11.5px; color: var(--color-ink-3); cursor: pointer; padding: 0; }
@@ -334,17 +333,17 @@ function openAccount(id: number) {
 .pgo { flex: 0 0 auto; color: var(--color-ink-3); font-size: 13px; }
 .pempty { margin: 0; font-size: 12px; line-height: 1.55; color: var(--color-ink-3); }
 
-.wechat { display: flex; align-items: center; gap: 10px; background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-lg); padding: 13px 14px; color: var(--color-ink-2); cursor: pointer; transition: border-color 120ms var(--ease-out); }
-.wechat:hover { border-color: var(--color-accent-soft-bd); }
-.wechat b { font-size: 13px; font-weight: 600; color: var(--color-ink); }
-.wgo { margin-left: auto; font-size: 11.5px; color: var(--color-ink-3); }
+.wx { align-items: flex-start; gap: 7px; text-align: left; cursor: pointer; transition: border-color 120ms var(--ease-out); }
+.wx:hover { border-color: var(--color-accent-soft-bd); }
+.wx-head { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--color-ink); }
+.wx-desc { font-size: 12px; line-height: 1.55; color: var(--color-ink-3); }
+.wx-go { margin-top: auto; padding-top: 8px; font-size: 12px; font-weight: 550; color: var(--color-accent-ink); }
 
-/* —— 响应式:两栏先叠成一栏(让清单表拿到全宽),再窄才收起 采集/画像 列 —— */
-@media (max-width: 1080px) {
-  .grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 772px) {
-  .thead, .trow { grid-template-columns: minmax(0, 1fr) 76px 100px; }
+/* —— 响应式:全宽表先收 采集/画像 列;下方三块 3→2→1 —— */
+@media (max-width: 940px) {
+  .thead, .trow { grid-template-columns: minmax(0, 1fr) 88px 108px; }
   .col-hide { display: none; }
 }
+@media (max-width: 860px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } }
 </style>
