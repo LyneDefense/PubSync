@@ -62,6 +62,13 @@
 
 ---
 
+## Backlog · 结构性重构(定了方案,暂缓)
+
+**蒸馏 schema 单一事实源(Pydantic 模型)** — 2026-07-09 review distill_engine.py 时定。
+- **问题**:蒸馏输出 schema 字段名(`body_structures`/`core_beliefs`/`title_formulas`…)**手抄在 ~7 处、跨 3 文件**(prompt schema 字面量 / `normalize`(`_LANE_LIST_KEYS`、`_CORE_LAYERS`+`_COGNITIVE_KEYS` 同组抄两遍)/ 质量分 / 阻断传感器+is_*_empty / artifacts label / creation_kit),无共享定义 → 改名漏一处 = silent 空字段。
+- **方案**(用户认可):建 `blogger_distillation/schema.py` 的 Pydantic 模型 `CoreDistillation`/`LaneContent`,**description 挂在字段上**(现在 prompt 里 `"one_glance":"一句话说清…"` 那句挂 `Field(description=...)`);prompt schema 段改成 `render_skeleton(model)` **生成**;`normalize_*`→`model_validate`(`_as_list` 做 `field_validator(mode="before")`;`extra="ignore"`+默认值 兼容老 report_json);质量分权重挂 `Field(json_schema_extra=...)` 放第二步。**顺带吃掉 D2**(车道 schema 生成后进 system)。
+- **状态**:DEFERRED(用户"先记下来,先不急着改")。等 prompt 分层收尾或下次大改 schema 时,作独立小重构。守卫测试临时方案已被否决(要根治)。
+
 ## 进度日志
 | 项 | commit | 说明 |
 |----|--------|------|
