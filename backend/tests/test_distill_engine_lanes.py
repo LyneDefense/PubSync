@@ -8,6 +8,7 @@ from app.blogger_distillation.service.distill_engine import (
     build_core_prompt,
     build_core_system,
     build_lane_prompt,
+    build_lane_system,
     evaluate_core_quality,
     evaluate_lane_quality,
     normalize_core,
@@ -45,12 +46,19 @@ def test_core_system_mode_framing():
     assert "模式 B" in build_core_system(_ctx({}, mode="B"))
 
 
-def test_lane_prompt_framing_by_modality():
-    # 收敛后:视频层一条,吃话术+拍法;图文层照旧。
-    vp = build_lane_prompt(_ctx({}, lane=VIDEO))
-    assert "拍法" in vp and "video_script_structures" in vp
-    ip = build_lane_prompt(_ctx({}, lane=IMAGE_TEXT))
-    assert "图文笔记" in ip and "title_formulas" in ip
+def test_lane_system_framing_by_modality():
+    # 车道说明 + schema 在 system;视频层带拍法 + 治冗余规则,图文层照旧。
+    vs = build_lane_system(_ctx({}, lane=VIDEO))
+    assert "拍法" in vs and "video_script_structures" in vs and "<output_schema>" in vs
+    assert "别重复进 language_dna" in vs  # 治「拍法重复进 language_dna」的冗余
+    is_ = build_lane_system(_ctx({}, lane=IMAGE_TEXT))
+    assert "图文笔记" in is_ and "title_formulas" in is_
+
+
+def test_lane_prompt_is_data_only():
+    # 证据(user)包在 <evidence>,不含 schema。
+    p = build_lane_prompt(_ctx({}, lane=VIDEO))
+    assert "<evidence>" in p and "title_formulas" not in p
 
 
 def test_normalize_core_fills_skeleton():
