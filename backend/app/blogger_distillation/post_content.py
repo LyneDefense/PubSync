@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.blogger_distillation.modality import VISUAL_VIDEO
+
 
 def visual_digest_dict(post: Any) -> dict[str, Any]:
     raw = getattr(post, "visual_digest", "") or ""
@@ -35,7 +37,13 @@ def assemble_learnable_text(post: Any) -> str:
     if body:
         parts.append(body)
     if transcript:
-        parts.append(transcript)
+        # 非口播视频(混剪/卡点/纯 BGM)的转写多是背景音乐歌词/环境音,不是博主口播——
+        # 标注降级,别当口播语料喂进蒸馏污染口播车道(口播视频/图文/未知则照旧当正文/口播稿)。
+        subtype = (getattr(post, "content_subtype", "") or "").strip()
+        if subtype == VISUAL_VIDEO:
+            parts.append(f"[字幕/背景音（非口播，仅参考）]\n{transcript}")
+        else:
+            parts.append(transcript)
     if image_text:
         parts.append(f"[图内文字]\n{image_text}")
     motion = motion_context(post)

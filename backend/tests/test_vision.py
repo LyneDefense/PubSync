@@ -49,6 +49,7 @@ class _FakePost:
         self.transcript_text = kw.get("transcript_text", "")
         self.image_text = kw.get("image_text", "")
         self.visual_digest = kw.get("visual_digest", "")
+        self.content_subtype = kw.get("content_subtype", "")
 
 
 class _FakeCandidate:
@@ -194,6 +195,21 @@ def test_assemble_learnable_text_includes_image_text():
     text = assemble_learnable_text(post)
     assert "标题" in text and "正文" in text and "图内卡片文字" in text
     assert "[图内文字]" in text
+
+
+def test_talking_video_transcript_kept_as_narration():
+    # 口播视频:转写就是博主口播,原样进"可学文本",不加降级标注。
+    post = _FakePost(title="标题", transcript_text="今天教大家三招", content_subtype="talking_video")
+    text = assemble_learnable_text(post)
+    assert "今天教大家三招" in text and "非口播" not in text
+
+
+def test_visual_video_transcript_downgraded():
+    # 非口播视频(混剪/纯 BGM):转写常是背景歌词 → 标注降级,别当口播语料污染蒸馏。
+    post = _FakePost(title="标题", transcript_text="曾看着同星空闲聊", content_subtype="visual_video")
+    text = assemble_learnable_text(post)
+    assert "曾看着同星空闲聊" in text  # 信息保留
+    assert "非口播" in text  # 但标注清楚,不当口播稿
 
 
 def test_visual_context_from_digest():

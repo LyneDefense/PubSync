@@ -38,6 +38,14 @@ const activeImageIndex = ref(0)
 const activeImage = computed(() => images.value[activeImageIndex.value] || '')
 const lightboxOpen = ref(false)
 
+// 转写区标题按模态:只有口播视频才叫「口播逐字稿」;非口播(混剪/卡点/纯 BGM)的转写常是背景音乐歌词,
+// 标清楚别误导也别当口播稿。无转写 → 正文。
+const transcriptHeading = computed(() => {
+  const post = activeNotePost.value
+  if (!post?.transcript_text) return '正文'
+  return post.content_subtype === 'talking_video' ? '口播逐字稿' : '音频转写（可能含背景音/歌词）'
+})
+
 // 换笔记时重置到第一张、关灯箱。
 watch(activeNotePost, () => {
   activeImageIndex.value = 0
@@ -175,7 +183,7 @@ function focusImage(index: number) {
           </div>
 
           <div class="nm-section">
-            <h4>{{ activeNotePost.transcript_text ? '口播逐字稿' : '正文' }}</h4>
+            <h4>{{ transcriptHeading }}</h4>
             <p v-if="noteBodyText(activeNotePost)" class="nm-text">{{ noteBodyText(activeNotePost) }}</p>
             <p v-else class="empty-region">这篇笔记没有可展示的文字内容。</p>
           </div>
