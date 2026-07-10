@@ -65,7 +65,7 @@ def test_set_manual_tags_dedupes_auto_against_new_manual():
 
 
 def test_generate_auto_tags_cleans_and_caps(monkeypatch):
-    def fake_model(settings, prompt, model=None):
+    def fake_model(settings, prompt, model=None, system=None):
         return {"tags": ["#带井号", " 留白 ", "留白", "超过十二个字的标签算太长了不要", "正常", "再一个", "第七个"]}
 
     monkeypatch.setattr(tagging, "create_json_response", fake_model)

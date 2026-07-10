@@ -266,12 +266,15 @@ def glm_vision_chat(
     image_parts: list[str],
     instruction: str,
     model: str | None = None,
+    system: str | None = None,
     timeout: int | None = None,
 ) -> str:
     """智谱 GLM 视觉理解(OpenAI 兼容 /chat/completions,多模态 content)。
 
     image_parts 每项是图片公网 URL 或 data:image/...;base64,... 。返回模型文本回复(由调用方解析)。
     单请求图片数由调用方控制(GLM 上限 5 张)。用量走 record_text_usage 记账(与 glm_text 一致)。
+    system 非空 → 作为独立 system 消息(自动附加 JSON 规则),契约与图片分层、抵御图内夹带的指令;
+    为空则维持旧行为(仅一条 user 消息)。
     """
     if not settings.glm_api_key:
         raise AIServiceError("未配置 GLM_API_KEY")
@@ -279,9 +282,13 @@ def glm_vision_chat(
     content: list[dict[str, Any]] = [{"type": "text", "text": instruction}]
     for part in image_parts:
         content.append({"type": "image_url", "image_url": {"url": part}})
+    messages: list[dict[str, Any]] = []
+    if system and system.strip():
+        messages.append({"role": "system", "content": _compose_system(system, "")})
+    messages.append({"role": "user", "content": content})
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": content}],
+        "messages": messages,
         "temperature": 0.2,
     }
     data = glm_post(settings, "/chat/completions", payload, timeout=timeout or 180)

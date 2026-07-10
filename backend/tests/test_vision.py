@@ -172,7 +172,7 @@ def test_analyze_images_parses_result(monkeypatch, with_ffmpeg):
     monkeypatch.setattr(
         vision_mod,
         "glm_vision_chat",
-        lambda settings, *, image_parts, instruction, model=None: '{"image_text":"卡片要点","visual_digest":{"cover_hook":"每天拆解一个博主"}}',
+        lambda settings, *, image_parts, instruction, model=None, system=None, timeout=None: '{"image_text":"卡片要点","visual_digest":{"cover_hook":"每天拆解一个博主"}}',
     )
     provider = GlmVisionProvider(_settings())
     result = provider.analyze_images(["http://c/cover.jpg", "http://c/b1.jpg"], source_id="n1")
