@@ -5,6 +5,17 @@ prompt 里的 schema 段;支柱二(去重复)靠 blocks 把抗注入/rules/outpu
 """
 
 from app.prompts.blocks import anti_injection, output_schema, rules_block
+from app.prompts.registry import PromptSite, get, list_prompts, load_all_sites, prompt
 from app.prompts.schema import render_schema
 
-__all__ = ["anti_injection", "output_schema", "rules_block", "render_schema"]
+__all__ = [
+    "anti_injection",
+    "output_schema",
+    "rules_block",
+    "render_schema",
+    "prompt",
+    "get",
+    "list_prompts",
+    "load_all_sites",
+    "PromptSite",
+]

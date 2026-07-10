@@ -21,7 +21,7 @@ from app.blogger_distillation.modality import (
 )
 from app.config import Settings
 from app.models import BloggerProfile
-from app.prompts import anti_injection
+from app.prompts import anti_injection, prompt
 from app.services.ai_service import AIServiceError, create_json_response
 from app.synthesis import (
     Critic,
@@ -62,6 +62,7 @@ def _grounding_block(ctx: DistillContext) -> str:
 
 # ============================ 内核(认知 / 策略 / 人设) ============================
 
+@prompt("distill.core.system", version="2026-07-10", kind="agent_system", owner="pinjie")
 def build_core_system(ctx: DistillContext) -> str:
     """内核蒸馏的**系统契约**:引擎角色 + 硬边界 + 输出 schema。稳定、可缓存、只依赖 mode(受信);
     不含任何抓取数据 —— 与 user 里的样本证据分层,抵御证据中夹带的注入指令。"""
@@ -176,6 +177,7 @@ _LANE_SCHEMA = """{
 }"""
 
 
+@prompt("distill.lane.system", version="2026-07-10", kind="agent_system", owner="pinjie")
 def build_lane_system(ctx: DistillContext) -> str:
     """车道内容层的**系统契约**:角色 + 硬边界 + 车道说明 + 输出 schema。只依赖 lane(受信),证据在 user。"""
     lane = ctx.lane or IMAGE_TEXT
@@ -274,6 +276,7 @@ _CRITIC_FOCUS: dict[str, str] = {
 }
 
 
+@prompt("distill.critic", version="2026-07-10", kind="critic", owner="pinjie")
 def _critic_system(kind: str) -> str:
     """蒸馏评审的**系统契约**:角色 + 评审重点 + 输出 feedback 契约 + 抗注入。只依赖 kind(受信)。"""
     focus = _CRITIC_FOCUS.get(kind, _CRITIC_FOCUS["core"])

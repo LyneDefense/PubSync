@@ -5,7 +5,7 @@ from typing import Any
 
 from app.blogger_distillation.modality import coarse_modality
 from app.compliance import detect_verticals, prompt_guidance
-from app.prompts import anti_injection
+from app.prompts import anti_injection, prompt
 from app.xhs_creation.agent.content_types import BASE_SCHEMA, CONTENT_TYPE_SPECS
 from app.xhs_creation.agent.context import CreationContext
 from app.xhs_creation.agent.creation_kit import build_creation_kit
@@ -85,6 +85,7 @@ def _shooting_ability_block(ctx: CreationContext) -> str:
     return "\n落到我的拍摄条件(学得会的版本,别只给看着爽的):\n" + body + "\n"
 
 
+@prompt("creation.system", version="2026-07-10", kind="agent_system", owner="pinjie")
 def build_creation_system(ctx: CreationContext) -> str:
     """创作的**系统契约**:角色 + 平台口径 + 内容类型指令 + 硬边界 + 合规 + 输出 schema。
     稳定(按 平台×内容类型),不含抓取数据——对标套件/爆文示例在 user,抗其中夹带的指令。"""
