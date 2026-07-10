@@ -88,29 +88,34 @@ def _extract_frame(video_path: Path, timestamp: float, out_path: Path) -> bool:
     return out_path.exists() and out_path.stat().st_size > 0
 
 
-def analyze_video_motion(settings: Settings, video_url: str) -> MotionExtract | None:
-    """下载 → 镜头切分(节奏)→ 代表帧(字节)。任何失败返回 None,上层降级(不掀翻采集)。"""
+def analyze_video_motion(settings: Settings, video_url: str, *, video_path: Path | None = None) -> MotionExtract | None:
+    """下载 → 镜头切分(节奏)→ 代表帧(字节)。任何失败返回 None,上层降级(不掀翻采集)。
+
+    video_path 给了(ASR 已下过的共享文件)则跳过下载、直接用;否则自行下载 video_url。
+    """
     if not shutil.which("ffmpeg"):
         logger.warning("未装 ffmpeg,跳过视频抽帧")
         return None
-    if not video_url:
+    if video_path is None and not video_url:
         return None
     try:
         with tempfile.TemporaryDirectory(prefix="pubsync-motion-") as tmp_dir:
             tmp = Path(tmp_dir)
-            video_path = tmp / "video.mp4"
-            try:
-                download_video(settings, video_url, video_path)
-            except ASRError as exc:
-                logger.info("视频抽帧下载失败,降级:%s", exc)
-                return None
-            duration = probe_duration(video_path)
-            scene_times = _detect_scene_times(video_path, settings.video_scene_threshold)
+            source = video_path
+            if source is None:  # 未共享则自行下载(向后兼容)
+                source = tmp / "video.mp4"
+                try:
+                    download_video(settings, video_url, source)
+                except ASRError as exc:
+                    logger.info("视频抽帧下载失败,降级:%s", exc)
+                    return None
+            duration = probe_duration(source)
+            scene_times = _detect_scene_times(source, settings.video_scene_threshold)
             pacing = compute_pacing(scene_times, duration, fast_cpm=settings.video_pace_fast_cpm, slow_cpm=settings.video_pace_slow_cpm)
             frames: list[bytes] = []
             for i, ts in enumerate(pick_frame_timestamps(scene_times, duration, settings.video_shot_frame_cap)):
                 frame_path = tmp / f"f{i:03d}.jpg"
-                if _extract_frame(video_path, ts, frame_path):
+                if _extract_frame(source, ts, frame_path):
                     frames.append(frame_path.read_bytes())
             return MotionExtract(duration_s=duration, pacing=pacing, frames=frames)
     except (subprocess.SubprocessError, OSError) as exc:

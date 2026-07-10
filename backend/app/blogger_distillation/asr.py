@@ -44,12 +44,12 @@ ProgressCallback = Callable[[str], None]
 
 
 class ASRProvider:
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None, local_video: Path | None = None) -> ASRResult:
         raise NotImplementedError
 
 
 class DisabledASRProvider(ASRProvider):
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None, local_video: Path | None = None) -> ASRResult:
         raise ASRError("ASR 未开启")
 
 
@@ -72,13 +72,14 @@ class TencentRecTaskASRProvider(ASRProvider):
         if not shutil.which("ffmpeg"):
             raise ASRError("服务器未安装 ffmpeg，无法从视频提取音频")
 
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None, local_video: Path | None = None) -> ASRResult:
         started_at = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="pubsync-asr-") as tmp_dir:
             tmp_path = Path(tmp_dir)
-            video_path = tmp_path / "source-video"
+            video_path = local_video or (tmp_path / "source-video")
             audio_path = tmp_path / "audio.mp3"
-            download_video(self.settings, video_url, video_path)
+            if local_video is None:  # 未共享则自行下载(向后兼容);共享时复用 pipeline 下过的那份
+                download_video(self.settings, video_url, video_path)
             streams = probe_media_streams(video_path)
             if "audio" not in streams["types"]:
                 codecs = ", ".join(streams["codecs"][:6]) or "unknown"
@@ -218,13 +219,14 @@ class GlmAsrASRProvider(ASRProvider):
         if not shutil.which("ffmpeg"):
             raise ASRError("服务器未安装 ffmpeg，无法从视频提取音频")
 
-    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None) -> ASRResult:
+    def transcribe_video_url(self, video_url: str, *, source_id: str = "", on_progress: ProgressCallback | None = None, local_video: Path | None = None) -> ASRResult:
         started_at = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="pubsync-asr-") as tmp_dir:
             tmp_path = Path(tmp_dir)
-            video_path = tmp_path / "source-video"
+            video_path = local_video or (tmp_path / "source-video")
             audio_path = tmp_path / "audio.mp3"
-            download_video(self.settings, video_url, video_path)
+            if local_video is None:  # 未共享则自行下载(向后兼容);共享时复用 pipeline 下过的那份
+                download_video(self.settings, video_url, video_path)
             streams = probe_media_streams(video_path)
             if "audio" not in streams["types"]:
                 codecs = ", ".join(streams["codecs"][:6]) or "unknown"
@@ -318,6 +320,32 @@ def download_video(settings: Settings, video_url: str, video_path: Path) -> None
             download_file(http_url, video_path, max_seconds=max_seconds, max_bytes=max_bytes)
         except httpx.HTTPError as exc2:
             raise ASRError(f"视频下载失败(https/http 均失败)：{exc2}") from exc2
+
+
+class VideoFetcher:
+    """按需下载一条视频、缓存本地路径,让 ASR 与拍法抽帧**共用同一次下载**(同一视频别下两遍)。
+
+    get(url) 首次真下载并缓存路径;之后无论谁再问都返回缓存。下载失败缓存 None(各步各自降级、不抛)。
+    谁先需要谁触发下载,后来者复用;两步都复用历史/都用不到 → 一次都不下。
+    临时目录生命周期由调用方(pipeline 级 TemporaryDirectory)负责。
+    """
+
+    def __init__(self, settings: Settings, dest_dir: Path) -> None:
+        self._settings = settings
+        self._dest = dest_dir / "shared-video"
+        self._tried = False
+        self._path: Path | None = None
+
+    def get(self, video_url: str) -> Path | None:
+        if not self._tried:
+            self._tried = True
+            if video_url:
+                try:
+                    download_video(self._settings, video_url, self._dest)
+                    self._path = self._dest
+                except ASRError as exc:
+                    logger.info("共享视频下载失败,ASR/拍法各自降级：%s", exc)
+        return self._path
 
 
 def download_file(url: str, output_path: Path, *, max_seconds: int = 120, max_bytes: int = 0, read_timeout: float = 30.0) -> None:

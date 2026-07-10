@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.blogger_distillation.asr import ASRError, build_asr_provider
+from app.blogger_distillation.asr import ASRError, VideoFetcher, build_asr_provider
 from app.blogger_distillation.modality import assemble_video_profile_l0, classify_subtype, derive_video_tags
 from app.blogger_distillation.privacy import anonymize_comments
 from app.blogger_distillation.quality import evaluate_post_quality
@@ -129,13 +131,16 @@ def _process_video_note(db, tenant_id, task_id, blogger, client, settings, candi
         record_task_event(db, tenant_id, task_id, "样本清洗", "failed", "跳过一条空内容笔记")
         return None
     ensure_distillation_not_cancelled(db, tenant_id, task_id)
-    handle_video_asr(db, tenant_id, task_id, candidate, normalized, providers.asr, blogger)
-    ensure_distillation_not_cancelled(db, tenant_id, task_id)
-    # 视频只解析封面(scope=cover):正文图基本没有,省 GLM 开销。
-    handle_note_vision(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings, scope="cover")
-    ensure_distillation_not_cancelled(db, tenant_id, task_id)
-    # 拍法(video_profile L1/L2:镜头切分 + 代表帧 VLM);受 video_motion_enabled 控,默认关。趁直链新鲜、刚下过一次做掉。
-    handle_video_motion(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings)
+    # ASR 与拍法抽帧共用一次视频下载(同一份文件,别下两遍)——谁先需要谁触发,后来者复用。
+    with tempfile.TemporaryDirectory(prefix="pubsync-shared-video-") as shared_dir:
+        fetch_video = VideoFetcher(settings, Path(shared_dir)).get
+        handle_video_asr(db, tenant_id, task_id, candidate, normalized, providers.asr, blogger, fetch_video=fetch_video)
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        # 视频只解析封面(scope=cover):正文图基本没有,省 GLM 开销。
+        handle_note_vision(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings, scope="cover")
+        ensure_distillation_not_cancelled(db, tenant_id, task_id)
+        # 拍法(video_profile L1/L2:镜头切分 + 代表帧 VLM);受 video_motion_enabled 控。复用 ASR 那次下载抽帧。
+        handle_video_motion(db, tenant_id, task_id, candidate, normalized, providers.vision, blogger, settings, fetch_video=fetch_video)
     _collect_comments(db, tenant_id, task_id, client, candidate, normalized, comments_per_post)
     return _finalize_post(db, tenant_id, task_id, blogger, settings, candidate, normalized, current, total)
 

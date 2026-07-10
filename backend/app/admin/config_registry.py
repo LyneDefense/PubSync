@@ -93,7 +93,7 @@ OVERRIDABLE: list[ConfigField] = [
     ConfigField("modality_density_high_cps", "asr", "模态-口播密度上阈(字/秒,≥判口播)", "float"),
     ConfigField("modality_density_low_cps", "asr", "模态-非口播密度下阈(字/秒,≤判非口播)", "float"),
     ConfigField("modality_llm_adjudicate_enabled", "asr", "模态-模糊带 LLM 裁决(已弃用,T2 已删)", "bool"),
-    ConfigField("video_motion_enabled", "asr", "视频拍法-采集时抽帧+镜头切分+代表帧VLM(默认关)", "bool"),
+    ConfigField("video_motion_enabled", "asr", "视频拍法-采集时抽帧+镜头切分+代表帧VLM(默认开)", "bool"),
     ConfigField("video_scene_threshold", "asr", "视频拍法-场景切换阈值(0~1,越大越不敏感)", "float"),
     ConfigField("video_shot_frame_cap", "asr", "视频拍法-每条送VLM代表帧上限", "int"),
     ConfigField("asr_provider", "asr", "ASR 供应商 (glm_asr / tencent_rec_task)"),

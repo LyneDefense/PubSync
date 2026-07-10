@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -53,6 +55,7 @@ def handle_video_asr(
     normalized: dict[str, Any],
     asr_provider: Any,
     blogger: BloggerProfile,
+    fetch_video: Callable[[str], Path | None] | None = None,
 ) -> None:
     # 优先复用历史转写(应对 note_id 漂移导致的重复采集),省下重复 ASR 成本。
     # 注:面向用户的进度文案里不出现 note_id/note_key/ASR/provider 这类技术词(见「进度文案净化」)。
@@ -120,7 +123,11 @@ def handle_video_asr(
             db, tenant_id, task_id, "视频 ASR", "running",
             f"正在把视频语音转成文字…（视频 {size_label}）",
         )
-        result = asr_provider.transcribe_video_url(video_url, source_id=candidate.external_id, on_progress=on_progress)
+        # 共享下载:pipeline 若给了 fetch_video,复用它下过的那份视频(抽帧也用同一份),不重下。
+        local_video = fetch_video(video_url) if fetch_video else None
+        result = asr_provider.transcribe_video_url(
+            video_url, source_id=candidate.external_id, on_progress=on_progress, local_video=local_video
+        )
         normalized["transcript_text"] = strip_asr_timestamps(result.text)
         normalized["asr_status"] = "succeeded"
         normalized["asr_error"] = ""

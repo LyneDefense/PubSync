@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -73,6 +75,7 @@ def handle_video_motion(
     vision_provider: Any,
     blogger: BloggerProfile,
     settings: Settings,
+    fetch_video: Callable[[str], Path | None] | None = None,
 ) -> None:
     if not settings.video_motion_enabled or normalized.get("content_type") != "video":
         return
@@ -85,7 +88,9 @@ def handle_video_motion(
         return
     try:
         record_task_event(db, tenant_id, task_id, "视频拍法", "running", f"正在分析{label}的镜头与节奏…")
-        extract = video_frames.analyze_video_motion(settings, video_url)
+        # 共享下载:复用 ASR 已下过的那份视频抽帧(pipeline 传入 fetch_video 时),不重下。
+        local_video = fetch_video(video_url) if fetch_video else None
+        extract = video_frames.analyze_video_motion(settings, video_url, video_path=local_video)
         if extract is None:
             record_task_event(db, tenant_id, task_id, "视频拍法", "succeeded", f"{label}画面没分析成,改用文字/封面信息")
             return
