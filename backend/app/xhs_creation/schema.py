@@ -45,3 +45,25 @@ class TopicIdeas(BaseModel):
     def _only_dicts(cls, v: object) -> list:
         # AI 偶尔在 ideas 里塞非对象项;跳过(等价原 `if isinstance(item, dict)` 过滤)。
         return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+class BenchmarkComparison(BaseModel):
+    """对标对比(C3)输出的 typed return。固定 schema:render_schema 生成 prompt 段、model_validate 校验。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title_fit: str = Field("", description="标题贴合度的一句话点评")
+    language_fit: str = Field("", description="语言/口吻贴合度的一句话点评")
+    formula_fit: str = Field("", description="与对标博主爆款套路吻合度的一句话点评")
+    gaps: list[str] = Field(default_factory=list, description="还差哪些(可执行,1-4 条)")
+    summary: str = Field("", description="一句话总结这篇离对标博主还有多远、强在哪")
+
+    @field_validator("title_fit", "language_fit", "formula_fit", "summary", mode="before")
+    @classmethod
+    def _clean_str(cls, v: object) -> str:
+        return str(v or "").strip()
+
+    @field_validator("gaps", mode="before")
+    @classmethod
+    def _clean_gaps(cls, v: object) -> list[str]:
+        return [str(x).strip() for x in v if str(x).strip()][:4] if isinstance(v, list) else []

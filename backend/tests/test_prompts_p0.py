@@ -41,3 +41,14 @@ def test_topic_ideas_validate_cleans_like_old_normalize():
 def test_topic_ideas_empty_on_garbage():
     assert TopicIdeas.model_validate({}).ideas == []
     assert TopicIdeas.model_validate({"ideas": "not-a-list"}).ideas == []
+
+
+def test_benchmark_comparison_typed_return():
+    from app.xhs_creation.schema import BenchmarkComparison
+
+    m = BenchmarkComparison.model_validate(
+        {"title_fit": " 好 ", "gaps": ["a", "", "b", "c", "d", "e"], "summary": None, "extra": "忽略"}
+    )
+    assert m.title_fit == "好" and m.summary == ""  # strip / None→""
+    assert m.gaps == ["a", "b", "c", "d"]  # 去空 + 上限 4(等价原手写清洗)
+    assert m.language_fit == ""  # 缺字段 → 默认
