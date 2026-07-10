@@ -21,7 +21,8 @@ from app.blogger_distillation.modality import (
 )
 from app.config import Settings
 from app.models import BloggerProfile
-from app.prompts import anti_injection, prompt
+from app.blogger_distillation.schema import CoreDistillation, LaneContent
+from app.prompts import anti_injection, output_schema, prompt, render_schema
 from app.services.ai_service import AIServiceError, create_json_response
 from app.synthesis import (
     Critic,
@@ -97,29 +98,7 @@ def build_core_system(ctx: DistillContext) -> str:
 - core_beliefs　差:「要真诚 / 要努力」｜好:具体且反共识的信念,如「某群体的无力感本质是缺『具体怎么做』的说明书,不是缺意愿」
 </quality_bar>
 
-<output_schema>
-只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
-{{
-  "one_glance": "一句话说清这个账号的价值和爆款原因（带关键数字）",
-  "persona": {{"identity": "身份感/人设", "stance": "表达姿态", "trust_source": "信任来源"}},
-  "voice": {{"self_ref": "自称方式（如'阿璐我啊'）", "tone": "语气一句话", "catchphrases": ["高频口头禅/标志性表达"]}},
-  "audience": "目标读者画像",
-  "cognitive_layer": {{
-    "core_beliefs": ["核心信念：TA 默认相信什么"],
-    "opinion_tensions": ["观点张力/反共识：TA 常对抗的常识"],
-    "value_stance": ["价值立场"]
-  }},
-  "angle_layer": {{
-    "topic_method": ["选题方法/思路（最高杠杆、可迁移到别的赛道）：TA 怎么**决定做什么题**，如'从已验证爆款反推可复用结构，再套自己话术二次表达'"],
-    "topic_angles": ["从观点张力推出的选题角度（可迁移的'从什么角度切'，不是具体标题）"],
-    "trend_hijacking": ["蹭热点/借势方式"]
-  }},
-  "comment_insights": ["评论区暴露的读者真实需求和互动机会"],
-  "do_not_do": ["创作禁区/不该模仿的部分"],
-  "self_diagnosis": {{"strengths": ["模式B：账号优势"], "weaknesses": ["模式B：明显短板"], "action_plan": ["模式B：可立即执行的增长动作"]}},
-  "core_conclusion": "给用户的核心使用建议（一段话）"
-}}
-</output_schema>"""
+{output_schema(render_schema(CoreDistillation), preface="只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：")}"""
 
 
 def build_core_prompt(ctx: DistillContext) -> str:
@@ -159,24 +138,6 @@ _LANE_FRAMING: dict[str, str] = {
     ),
 }
 
-# 车道内容层输出 schema(system 契约段;各车道共用一份)。
-_LANE_SCHEMA = """{
-  "title_formulas": ["标题公式 TOP5，结合 title_patterns 的占比"],
-  "opening_templates": ["开头模板 TOP3，结合 opening_patterns"],
-  "body_structures": ["图文正文结构，只能基于 body_text；非图文车道见车道说明"],
-  "video_script_structures": ["视频口播/字幕结构，只能基于 transcript；无转写则空数组"],
-  "emotional_rhythm": ["情绪节奏/留人钩子公式"],
-  "language_dna": ["语言 DNA：高频表达、句式节奏、人称策略、口头禅（按车道说明加「书面：」/「口播：」前缀）"],
-  "cta_strategy": ["CTA/互动引导策略，结合 cta_patterns"],
-  "cover_text_rules": ["封面文案规律"],
-  "visual_layout_patterns": ["图内信息编排/版式套路：图内要点如何分屏/分卡/分步编排（图文车道；非图文留空数组）"],
-  "hashtag_strategy": ["标签策略，结合 frequent_hashtags"],
-  "top_post_breakdowns": [
-    {"rank": 1, "title_ref": "该车道爆款样本标题(可截断)", "source": "external_id 或标题", "why_viral": "为什么火（贴数据）", "reusable_tactic": "可复用的具体技巧"}
-  ]
-}"""
-
-
 @prompt("distill.lane.system", version="2026-07-10", kind="agent_system", owner="pinjie")
 def build_lane_system(ctx: DistillContext) -> str:
     """车道内容层的**系统契约**:角色 + 硬边界 + 车道说明 + 输出 schema。只依赖 lane(受信),证据在 user。"""
@@ -200,10 +161,7 @@ def build_lane_system(ctx: DistillContext) -> str:
 - reusable_tactic　差:「标题吸引人」｜好:说清为什么火的机制,如「用反常识数字制造认知缺口→正文逐条兑现→评论区追问下一篇」
 </quality_bar>
 
-<output_schema>
-只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：
-{_LANE_SCHEMA}
-</output_schema>"""
+{output_schema(render_schema(LaneContent), preface="只输出下面这个 JSON（字段齐全；不确定的列表给空数组）：")}"""
 
 
 def build_lane_prompt(ctx: DistillContext) -> str:
@@ -355,57 +313,21 @@ def distill_lane(
 
 # ============================ 归一 ============================
 
-_CORE_LAYERS: dict[str, list[str]] = {
-    "cognitive_layer": ["core_beliefs", "opinion_tensions", "value_stance"],
-    "angle_layer": ["topic_method", "topic_angles", "trend_hijacking"],
-}
 _COGNITIVE_KEYS = ("core_beliefs", "opinion_tensions", "value_stance")
-_LANE_LIST_KEYS = [
-    "title_formulas", "opening_templates", "body_structures", "video_script_structures",
-    "emotional_rhythm", "language_dna", "cta_strategy", "cover_text_rules", "visual_layout_patterns", "hashtag_strategy",
-]
-
-
-def _as_list(value: Any) -> list:
-    return value if isinstance(value, list) else ([] if value in (None, "") else [value])
 
 
 def normalize_core(data: dict[str, Any], mode: str) -> dict[str, Any]:
+    """typed return:CoreDistillation 单一源做解析校验(等价旧 _as_list/填骨架),model_dump 回 dict 保下游接口。"""
     if not isinstance(data, dict):
         raise AIServiceError("内核蒸馏结果不是 JSON 对象")
-    for layer, keys in _CORE_LAYERS.items():
-        layer_value = data.get(layer) if isinstance(data.get(layer), dict) else {}
-        for key in keys:
-            layer_value[key] = _as_list(layer_value.get(key))
-        data[layer] = layer_value
-    persona = data.get("persona")
-    if not isinstance(persona, dict):
-        data["persona"] = {"identity": str(persona or ""), "stance": "", "trust_source": ""}
-    voice = data.get("voice") if isinstance(data.get("voice"), dict) else {}
-    data["voice"] = {
-        "self_ref": str(voice.get("self_ref") or "").strip(),
-        "tone": str(voice.get("tone") or "").strip(),
-        "catchphrases": _as_list(voice.get("catchphrases")),
-    }
-    data.setdefault("one_glance", "")
-    data.setdefault("audience", "")
-    for list_key in ("comment_insights", "do_not_do"):
-        data[list_key] = _as_list(data.get(list_key))
-    data.setdefault("core_conclusion", "")
-    diagnosis = data.get("self_diagnosis") if isinstance(data.get("self_diagnosis"), dict) else {}
-    for key in ("strengths", "weaknesses", "action_plan"):
-        diagnosis[key] = _as_list(diagnosis.get(key))
-    data["self_diagnosis"] = diagnosis
-    return data
+    return CoreDistillation.model_validate(data).model_dump()
 
 
 def normalize_lane(data: dict[str, Any]) -> dict[str, Any]:
+    """typed return:LaneContent 单一源做解析校验,model_dump 回 dict 保下游接口。"""
     if not isinstance(data, dict):
         raise AIServiceError("车道内容层结果不是 JSON 对象")
-    for key in _LANE_LIST_KEYS:
-        data[key] = _as_list(data.get(key))
-    data["top_post_breakdowns"] = _as_list(data.get("top_post_breakdowns"))
-    return data
+    return LaneContent.model_validate(data).model_dump()
 
 
 def is_core_empty(data: dict[str, Any]) -> bool:

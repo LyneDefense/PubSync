@@ -20,7 +20,7 @@ def _is_model(tp: typing.Any) -> bool:
 
 
 def _placeholder(annotation: typing.Any, description: str) -> typing.Any:
-    """按字段类型给一个占位值:str→说明;list[str]→[说明];嵌套模型→递归 dict;list[模型]→[dict]。"""
+    """按字段类型给一个占位值:str→说明;int/bool/float→示例值;list[X]→[占位];嵌套模型→递归 dict。"""
     if _is_model(annotation):
         return _model_example(annotation)
     if typing.get_origin(annotation) is list:
@@ -29,6 +29,12 @@ def _placeholder(annotation: typing.Any, description: str) -> typing.Any:
         if _is_model(item):
             return [_model_example(item)]
         return [description or "值"]
+    if annotation is bool:
+        return True
+    if annotation is int:
+        return description or 1  # 无说明的 int(如 rank)给示例 1,等价手写 "rank": 1
+    if annotation is float:
+        return description or 0.0
     return description or ""
 
 
